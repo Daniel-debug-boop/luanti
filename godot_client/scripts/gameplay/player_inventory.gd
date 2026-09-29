@@ -30,6 +30,10 @@ const BACKPACK_CAPACITY := 32
 const MAX_STACK := 999
 ## Prefix for generated prototype ids, so they never collide with other sets.
 const BLOCK_PREFIX := "block_"
+## Prefix for engineering items -- components, tools and materials. They live
+## in this same GLoot inventory, not a second container: one backpack, one
+## save file, one set of hotbar rules.
+const ENG_PREFIX := "eng_"
 
 ## GLoot container holding everything not currently held in a hotbar slot.
 var inventory: Inventory
@@ -82,6 +86,18 @@ static func block_id_of(proto_id: String) -> int:
 	return int(proto_id.substr(BLOCK_PREFIX.length()))
 
 
+## "eng_motor" for the item "motor".
+static func eng_prototype_id(item: String) -> String:
+	return ENG_PREFIX + item
+
+
+## The engineering item a prototype id names, or "" if it is not one.
+static func eng_item_of(proto_id: String) -> String:
+	if not proto_id.begins_with(ENG_PREFIX):
+		return ""
+	return proto_id.substr(ENG_PREFIX.length())
+
+
 ## One GLoot prototype per placeable block, carrying what the HUD and the drop
 ## entities need (name, colour, hardness, stack size).
 func _build_protoset() -> JSON:
@@ -98,6 +114,20 @@ func _build_protoset() -> JSON:
 			"block_id": str(id),
 			"color": "Color(%f, %f, %f, %f)" % [c.r, c.g, c.b, c.a],
 			"hardness": "%.3f" % entry.hardness,
+			"max_stack": str(MAX_STACK),
+		}
+	# Engineering items are registered into the SAME protoset, so components
+	# and tools stack, drop and save exactly like blocks do. The full set is
+	# known at construction time because the component and tool tables are
+	# static; a mod that registers later gets a clear warning instead of a
+	# silently unusable item.
+	for item in EngItems.all_item_ids():
+		var info := EngItems.info(item)
+		data[eng_prototype_id(item)] = {
+			"display_name": String(info.get("name", item)),
+			"color": "Color(%f, %f, %f, %f)" % [info.get("color", Color.GRAY).r,
+				info.get("color", Color.GRAY).g, info.get("color", Color.GRAY).b,
+				info.get("color", Color.GRAY).a],
 			"max_stack": str(MAX_STACK),
 		}
 	var j := JSON.new()
@@ -228,6 +258,178 @@ func available_blocks() -> Array[int]:
 			out.append(bid)
 	out.sort()
 	return out
+
+
+# --- engineering items ------------------------------------------------------
+#
+# The same GLoot machinery, the same backpack, the same save. Only the id
+# scheme differs, and the block helpers above are untouched by it.
+
+func _find_eng(item: String) -> InventoryItem:
+	var proto := eng_prototype_id(item)
+	for slot in hotbar:
+		var held := slot.get_item()
+		if held != null and held.get_prototype().get_id() == proto:
+			return held
+	for it in inventory.get_items():
+		if it.get_prototype().get_id() == proto:
+			return it
+	return null
+
+
+## Add engineering items to the backpack. Returns how many were actually
+## stored, so a caller can notice a full inventory rather than losing parts.
+func give_eng(item: String, n: int = 1) -> int:
+	if n <= 0 or not protoset.data.has(eng_prototype_id(item)):
+		return 0
+	var stored := 0
+	while stored < n:
+		var existing := _find_eng(item)
+		if existing != null:
+			var count := int(existing.get_property("count", 1))
+			if count >= MAX_STACK:
+				break
+			existing.set_property("count", count + 1)
+			stored += 1
+			continue
+		var made: InventoryItem = inventory.create_and_add_item(
+			eng_prototype_id(item))
+		if made == null:
+			break
+		made.set_property("count", 1)
+		var slot := get_selected_slot()
+		if slot != null and slot.get_item() == null:
+			slot.equip(made)
+		stored += 1
+	return stored
+
+
+## Remove `n` of an engineering item from anywhere it is held. Returns how many
+## were actually removed.
+func consume_eng(item: String, n: int = 1) -> int:
+	var removed := 0
+	while removed < n:
+		var existing := _find_eng(item)
+		if existing == null:
+			break
+		var count := int(existing.get_property("count", 1))
+		if count > 1:
+			existing.set_property("count", count - 1)
+			removed += 1
+			continue
+		var owner_slot: ItemSlot = null
+		for slot in hotbar:
+			if slot.get_item() == existing:
+				owner_slot = slot
+				break
+		if owner_slot != null:
+			owner_slot.clear()
+		else:
+			inventory.remove_item(existing)
+		removed += 1
+	return removed
+
+
+## How many of an engineering item the player is carrying.
+func count_eng(item: String) -> int:
+	var found := _find_eng(item)
+	return 0 if found == null else int(found.get_property("count", 1))
+
+
+## Can the player actually afford a bill of materials? Used before a
+## manufacturing operation consumes anything, so a failure is never partial.
+func can_afford_eng(bill: Dictionary) -> bool:
+	for item in bill.keys():
+		if count_eng(String(item)) < int(bill[item]):
+			return false
+	return true
+
+
+## Consume a whole bill of materials, or nothing at all.
+func pay_eng(bill: Dictionary) -> bool:
+	if not can_afford_eng(bill):
+		return false
+	for item in bill.keys():
+		consume_eng(String(item), int(bill[item]))
+	return true
+
+
+## Distinct engineering item names the player is carrying.
+func available_eng() -> Array[String]:
+	var seen := {}
+	var out: Array[String] = []
+	for it in inventory.get_items():
+		var name := eng_item_of(it.get_prototype().get_id())
+		if name != "" and not seen.has(name):
+			seen[name] = true
+			out.append(name)
+	for slot in hotbar:
+		var held := slot.get_item()
+		if held == null:
+			continue
+		var name := eng_item_of(held.get_prototype().get_id())
+		if name != "" and not seen.has(name):
+			seen[name] = true
+			out.append(name)
+	out.sort()
+	return out
+
+
+## The engineering item in the selected hotbar slot, or "".
+func selected_eng_item() -> String:
+	var slot := get_selected_slot()
+	if slot == null:
+		return ""
+	var item := slot.get_item()
+	return "" if item == null else eng_item_of(item.get_prototype().get_id())
+
+
+## ContentDB id for a block name, or -1. Lets a bill of materials be written
+## in readable names ("copper", "steel") rather than magic numbers.
+static func block_id_by_name(block_name: String) -> int:
+	for id in range(1, 32):
+		if ContentDB.get_entry(id) != null and ContentDB.get_entry(id).name == block_name:
+			return id
+	return -1
+
+
+## Count a bill entry that resolves to a block rather than an engineering
+## item. Bills mix both -- a motor wants copper (a block) and a shaft (a
+## component) -- so the resolution has to happen at the point of use.
+func count_bill_item(item: String) -> int:
+	if EngItems.has(item):
+		return count_eng(item)
+	var bid := EngItems.block_id_for(item)
+	if bid < 0:
+		bid = block_id_by_name(item)
+	return 0 if bid < 0 else count_of(bid)
+
+
+func consume_bill_item(item: String, n: int = 1) -> int:
+	if EngItems.has(item):
+		return consume_eng(item, n)
+	var bid := EngItems.block_id_for(item)
+	if bid < 0:
+		bid = block_id_by_name(item)
+	return 0 if bid < 0 else consume_block(bid, n)
+
+
+## Can the player afford a whole bill, counting both blocks and components?
+func can_afford_bill(bill: Dictionary) -> bool:
+	for item in bill.keys():
+		if count_bill_item(String(item)) < int(bill[item]):
+			return false
+	return true
+
+
+## Pay a whole bill, or nothing at all. A partial payment would eat a
+## player's copper and then fail to make the motor.
+func pay_bill(bill: Dictionary) -> bool:
+	if not can_afford_bill(bill):
+		return false
+	for item in bill.keys():
+		consume_bill_item(String(item), int(bill[item]))
+	return true
 
 
 # --- hotbar -----------------------------------------------------------------

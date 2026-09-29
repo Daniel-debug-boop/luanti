@@ -252,6 +252,49 @@ requiring a custom Godot build (its releases target a specific branch), so the
 stock 4.4 binary this project targets cannot load it, and it would replace the
 voxel renderer rather than provide a shader.
 
+## Measuring and surviving a long session
+
+Three pieces of instrumentation, because "it runs on my machine" is not a
+performance claim.
+
+**`scripts/diagnostics/game_profiler.gd`** — per-system frame timing plus the
+engine's own counters: fps, process and physics time, draw calls, objects and
+primitives in frame, static/video/texture memory, and the video adapter name.
+Press **F10** in game for the overlay; it auto-writes a JSON report every two
+minutes while open, and `GameProfiler.snapshot()` returns the same data for a
+script. Cost when disabled is one boolean branch per entry point.
+
+**`scripts/diagnostics/stability_watchdog.gd`** — samples node count, object
+count, orphan nodes and the three memory counters on an interval and keeps two
+and a half hours of history. Its verdict separates **leak** (a counter climbs
+and does not come back while the world is static) from **pressure** (a single
+sample past a ceiling, which is a different problem with a different fix).
+`main.gd` declares the world quiescent when nothing is being built or run, so
+deliberately growing the world is not mistaken for a leak.
+
+**`scripts/net/authority.gd`** — the server's side of multiplayer. Every
+mutation arrives as a command and passes an allow-list of ops, a required-field
+check, a session check, a per-peer token bucket, a server-side economy charge,
+an ownership check on every node the command touches, and a reach check against
+*the server's own belief* about where that player is (movement is clamped, so a
+teleport cannot defeat reach). The apply closure is only ever called after all
+of it passes, so a rejected command cannot leave a partial mutation. Accepted
+commands are replicated back as a server-derived snapshot; there is no field in
+the protocol a client fills in.
+
+**Save safety** — `scripts/gameplay/save_migration.gd` adds a version chain, a
+checksum, and a backup taken *before* each write. `F9` recovers automatically
+from the backup when the slot is truncated or spliced, and a save from a newer
+build is refused rather than guessed at. The checksum canonicalises through one
+JSON round trip, because JSON has a single number type and a raw hash over the
+serialisation would make every file fail its own check.
+
+**Village ⇄ engineering** — `scripts/engineering/society.gd` is the one place
+the AI and the machines meet. Villagers near a live electrical network are
+powered and work at full rate; unpowered, they still work, just slower. The
+network reads the graph and the village is written back to — one direction of
+authority, so there is no second simulation.
+
 ## Architecture
 
 ```
@@ -271,6 +314,9 @@ godot_client/
 │   ├── player/
 │   │   ├── voxel_pick.gd      Amanatides-Woo DDA raycast against the voxel field
 │   │   └── player_interaction.gd  mine/place, fall damage, regen, drowning, melee
+│   ├── engineering/           the universal engineering system (18 files)
+│   ├── diagnostics/           profiler + long-run stability watchdog
+│   └── net/authority.gd       server-authoritative command validation
 │   └── world/
 │       ├── content_db.gd      block registry: palette, translucency, light, hardness
 │       ├── world_generator.gd six biomes, caves, trees, The Deeps dimension
@@ -323,7 +369,7 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Eleven suites run headless:
+Eleven suites run headless (seventeen, counting the engineering ones below):
 
 | Suite | Covers |
 |---|---|
@@ -338,9 +384,30 @@ Eleven suites run headless:
 | `e2e_test` | real scene streams chunks, textured surfaces bound in the scene graph, collision reads terrain |
 | `features_test` | village + clock + HDRI sky, dimension switch both ways, glowstone in loaded chunks, mobs spawn, mining through the scene |
 | `render_test` | textured and vertex-coloured surfaces, world-space bounds, camera present, HDRI panorama bound |
+| `engineering_test` | material properties and serialization, component/port registration, port compatibility both ways, part geometry and mass, operation accept/reject leaving the part untouched, thermal gating |
+| `engineering_sim_test` | connection graph, network formation and destruction, mechanical/electrical/fluid networks, overload bogs down rather than cheating, assembly recognition including unusual builds, LOD tiers, graph serialization |
+| `engineering_world_test` | the full vertical slice: mine → smelt → workbench → manufacture → motor → wire → switch → pump → water, plus blueprint round trip, save/load, performance budgets |
+| `diagnostics_test` | profiler sections and percentiles, JSON report, watchdog sampling, leak vs burst vs pressure classification, village power coupling on/off, wage payout, sleeping networks supply nobody |
+| `multiplayer_test` | every exploit: unknown op, missing field, unjoined peer, rate-limit flood, out-of-reach build, ownership violation, forged economy, teleport, mid-session revoke, distance-filtered replication, audit log |
+| `robustness_test` | save migration chain and forward-refusal, checksum integrity, backup recovery from a truncated file, complex factory round trip byte-identical, anti-duplication invariants, 12 000-tick soak for determinism / no growth / LOD sleeping / 60 successive autosaves |
 
 ## Honest limitations
 
+* **No real GPU profiling has been done, because this environment has no GPU.**
+  The instrumentation for it now exists and is wired to **F10** — fps, frame
+  percentiles, process/physics time, draw calls, objects and primitives in
+  frame, the three memory pools, and the video adapter name, with a JSON report
+  written to `user://profiling/` every two minutes while the overlay is open.
+  What that buys is that the numbers are now *obtainable* on real hardware in
+  one keystroke. It does not mean anyone has run it on a GPU yet, and the
+  regression suite cannot assert frame times headless, so it asserts the
+  structural budgets (mesh cap, sleeping networks, no counter growth) instead.
+* **Multiplayer is authority-only, not a transport.** `NetAuthority` is the
+  complete server-side validation and the replication-shape logic, and it is
+  tested against fourteen distinct attacks. It is not wired to a real
+  `MultiplayerAPI` peer transport, because a loopback host/client pair cannot
+  be stood up in a headless sandbox to prove the handshake. Everything above
+  the transport is done; the socket layer is not.
 * **Nothing has ever been rendered.** This environment has no GPU, no X11 and
   no Wayland. Every check is structural — properties exist and are enabled,
   shaders compile, voxels read back the right ids. No frame has been displayed,

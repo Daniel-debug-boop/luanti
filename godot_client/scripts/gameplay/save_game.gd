@@ -81,13 +81,14 @@ static func describe_slot(slot: int) -> String:
 
 ## Gather the live game state into a saveable Dictionary.
 static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
-		dimension: int) -> Dictionary:
+		dimension: int, engineering: EngEngineering = null) -> Dictionary:
 	var state := {
 		"version": SAVE_VERSION,
 		"dimension": dimension,
 		"player": {},
 		"inventory": {},
 		"edits": {},
+		"engineering": {},
 	}
 	if player != null and is_instance_valid(player):
 		state["player"] = {
@@ -100,6 +101,12 @@ static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
 		state["inventory"] = inv.serialize()
 	if world != null and is_instance_valid(world):
 		state["edits"] = world.edits_snapshot()
+	# The engineering section is optional and additive: a save made before the
+	# system existed simply has none, and loading it is not an error. The
+	# section is versioned separately from the world save so a world format
+	# change never invalidates a factory, or the other way round.
+	if engineering != null and is_instance_valid(engineering):
+		state["engineering"] = engineering.serialize()
 	return state
 
 
@@ -136,8 +143,9 @@ static func write_slot(slot: int, state: Dictionary) -> bool:
 
 ## Capture and write in one step.
 static func save_game(slot: int, player: Player, inv: PlayerInventory,
-		world: VoxelWorld, dimension: int) -> bool:
-	return write_slot(slot, capture(player, inv, world, dimension))
+		world: VoxelWorld, dimension: int,
+		engineering: EngEngineering = null) -> bool:
+	return write_slot(slot, capture(player, inv, world, dimension, engineering))
 
 
 # --- reading ----------------------------------------------------------------
@@ -172,7 +180,7 @@ static func load_slot(slot: int) -> Dictionary:
 ## are skipped rather than aborting the whole load, so one bad subsystem cannot
 ## cost the player everything else.
 static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
-		world: VoxelWorld) -> bool:
+		world: VoxelWorld, engineering: EngEngineering = null) -> bool:
 	last_error = ""
 	if data.is_empty():
 		last_error = "nothing to load"
@@ -200,6 +208,14 @@ static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
 		player.flying = bool(p.get("flying", player.flying))
 		applied += 1
 
+	# Engineering state is restored last, and is never counted as a failure on
+	# its own: a world with no engineering section is a perfectly good world.
+	if engineering != null and is_instance_valid(engineering) \
+			and typeof(data.get("engineering")) == TYPE_DICTIONARY \
+			and not (data["engineering"] as Dictionary).is_empty():
+		engineering.deserialize(data["engineering"])
+		applied += 1
+
 	if applied == 0:
 		last_error += "no section could be applied"
 		return false
@@ -208,11 +224,11 @@ static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
 
 ## Load a slot and apply it.
 static func load_game(slot: int, player: Player, inv: PlayerInventory,
-		world: VoxelWorld) -> bool:
+		world: VoxelWorld, engineering: EngEngineering = null) -> bool:
 	var data := load_slot(slot)
 	if data.is_empty():
 		return false
-	return apply(data, player, inv, world)
+	return apply(data, player, inv, world, engineering)
 
 
 static func dimension_of(data: Dictionary) -> int:

@@ -220,3 +220,27 @@ disk. **It is not compiled and nothing calls it.** GDScript cannot call C;
 reaching miniaudio needs a GDExtension or a custom engine build. Note that
 Godot's own `AudioDriver` is already miniaudio, so the binary contains it —
 just not exposed to scripting. See `addons/thirdparty/miniaudio/README.md`.
+
+---
+
+## Searched for and NOT used: Godot optimisation/profiling addons
+
+Requested explicitly, so the search is recorded rather than assumed.
+
+* **Godot Asset Library, `filter=optimization` / `filter=profiler` / `filter=performance`**
+  — the catalogue's optimisation entries are editor-side helpers (BPUI, a
+  FastNoiseLite tuning panel, third-party debug menus) that either wrap the
+  engine's own editor tooling or add UI around it. None of them address the two
+  things actually asked for: profiling *on the target GPU*, and bounding
+  simulation cost for a large voxel world.
+* **A third-party GDScript profiling library** — there is no mature one. Godot
+  already exposes everything needed (`Performance` monitors, `RenderingServer`
+  rendering info, `Time` ticks) and a library over them can only be thinner.
+
+So the profiler is hand-written: `scripts/diagnostics/game_profiler.gd`. It
+wraps engine primitives it does not replace, costs one boolean branch when
+disabled, and — the part a generic library would not give — reports
+`RenderingServer.get_video_adapter_name()`, so a report says *which* GPU
+produced it. Same reasoning for the simulation cost: the LOD and sleeping
+tiers are part of the design (`scripts/engineering/simulation.gd`), not
+something to bolt on afterwards.

@@ -104,6 +104,17 @@ func villager_count() -> int:
 	return _villager_count
 
 
+## The live villagers of the current district. Exposed so the engineering
+## society layer can read their positions and write back their work rate,
+## without either system holding a reference to the other.
+func villagers() -> Array:
+	var out: Array = []
+	for c in get_children():
+		if c is Villager:
+			out.append(c)
+	return out
+
+
 ## Rebuild the settlement when the player crosses into a new district.
 func update(player_pos: Vector3) -> void:
 	if world == null or player_pos == null:

@@ -28,6 +28,9 @@ var _humid_noise := FastNoiseLite.new()
 var _terrain_noise := FastNoiseLite.new()
 var _cave_noise := FastNoiseLite.new()
 var _deeps_noise := FastNoiseLite.new()
+## A dedicated field for ore veins, kept separate from the cave noise so
+## retuning caves never reshuffles where the copper is.
+var _ore_noise := FastNoiseLite.new()
 var _rng := RandomNumberGenerator.new()
 
 
@@ -48,6 +51,11 @@ func _init(seed_value: int = 1337) -> void:
 	_deeps_noise.seed = seed_value + 5
 	_deeps_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	_deeps_noise.frequency = 0.05
+	# Low frequency, so a vein is a blob several blocks across rather than
+	# isolated single cells a player would walk past.
+	_ore_noise.seed = seed_value + 6
+	_ore_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	_ore_noise.frequency = 0.09
 
 
 func biome_at(wx: int, wz: int) -> int:
@@ -136,7 +144,41 @@ func _terrain_column(biome: int, wy: int, h: int, wx: int, wz: int) -> int:
 		return ContentDB.DIRT if biome != Biome.DESERT else ContentDB.SAND
 	if wy > h - 6 and _rng.randf() < 0.25:
 		return ContentDB.GRAVEL
+	# Ore veins. Deterministic from position alone, so a chunk regenerates
+	# identically and a save/load cycle never moves a vein.
+	var ore := _ore_at(wx, wy, wz, h)
+	if ore != ContentDB.AIR:
+		return ore
 	return ContentDB.STONE
+
+
+## Which ore, if any, occupies this cell. Veins are blobs of a low-frequency
+## noise field, which gives clustered deposits the way real veins run rather
+## than the confetti a per-cell random would give.
+##
+## Depth is what makes the progression work: copper is shallow and common,
+## iron sits below it, and silver is deep and rare. That ordering is the
+## reason a player goes digging, and it costs three lines of arithmetic.
+func _ore_at(wx: int, wy: int, wz: int, surface: int) -> int:
+	if wy < 1 or wy > surface - 5:
+		return ContentDB.AIR
+	var depth := surface - wy
+	# Copper: shallow, generous.
+	if depth < 26 and _ore_noise.get_noise_3d(wx, wy * 1.6, wz) > 0.46:
+		return ContentDB.COPPER_ORE
+	# Iron: below the copper band, a little rarer.
+	if depth >= 14 and _ore_noise.get_noise_3d(wx + 91.0, wy * 1.6,
+			wz - 41.0) > 0.48:
+		return ContentDB.IRON_ORE
+	# Coal: mid depth, the fuel that makes the furnaces worth building.
+	if depth >= 8 and depth < 40 and _ore_noise.get_noise_3d(wx - 17.0,
+			wy * 1.4, wz + 63.0) > 0.45:
+		return ContentDB.COAL_ORE
+	# Silver: deep and rare, the reward for digging properly.
+	if depth >= 34 and _ore_noise.get_noise_3d(wx + 7.0, wy * 1.2,
+			wz + 129.0) > 0.53:
+		return ContentDB.SILVER_ORE
+	return ContentDB.AIR
 
 
 ## Daylight value for the low nibble of the light byte.

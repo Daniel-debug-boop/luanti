@@ -34,6 +34,19 @@ var audio: AudioDirector
 var _drops: Node3D
 ## The 3x3 drag-and-drop crafting grid, opened with C.
 var crafting: CraftingPanel
+
+## The universal engineering and manufacturing system. Owns the component
+## graph and its simulation; borrows the world and the backpack.
+var engineering: EngEngineering
+var engineering_hud: EngHud
+
+## Performance instrumentation and the multiplayer authority. Both are
+## ordinary members of the game, not developer tooling bolted on: the
+## profiler is what makes the game measurable on real hardware (F10), and the
+## authority is the only path by which any mutation is allowed to happen.
+var profiler: GameProfiler
+var watchdog: StabilityWatchdog
+var authority: NetAuthority
 ## Optional Voxel Tools backend. Null unless F8 successfully builds it, which
 ## only happens on the Voxel Tools engine build.
 var zylann: ZylannWorld = null
@@ -65,6 +78,29 @@ func _ready() -> void:
 	inventory = PlayerInventory.new()
 	inventory.name = "Inventory"
 	add_child(inventory)
+
+	# The engineering system. It is added here, as a sibling of the world and
+	# the backpack, and handed pointers to both -- it owns neither, which is
+	# why there is exactly one inventory, one world and one save file.
+	engineering = EngEngineering.new()
+	engineering.name = "Engineering"
+	add_child(engineering)
+	engineering.build()
+	engineering.attach(world, inventory)
+
+	engineering_hud = EngHud.new()
+	engineering_hud.name = "EngineeringHud"
+	add_child(engineering_hud)
+	engineering_hud.attach(engineering)
+
+	# One profiler, one watchdog, one authority for the whole process. This is
+	# the anti-duplication rule made concrete: there is no second place a
+	# frame can be measured from, and no second door into the world state.
+	profiler = GameProfiler.new()
+	profiler.name = "Profiler"
+	add_child(profiler)
+	watchdog = StabilityWatchdog.new()
+	authority = NetAuthority.new()
 
 	audio = AudioDirector.new()
 	audio.name = "Audio"
@@ -212,21 +248,38 @@ func _setup_environment() -> void:
 func _process(delta: float) -> void:
 	if world == null or player == null:
 		return
+	profiler.begin("world")
 	world.update_around(_player_chunk())
 	# Keep the probe and fog volumes on the player: SDFGI traces through the
 	# volume, so a volume left behind would bake probes for terrain the player
 	# can no longer see.
 	_follow_volumes()
 	_collect_drops()
+	profiler.unmark("world")
+	profiler.begin("villagers")
 	_update_villager_schedule()
+	profiler.unmark("villagers")
+	if engineering != null:
+		# One place that knows where the player is, which is what the
+		# simulation's level-of-detail tiers are computed from.
+		profiler.begin("engineering")
+		engineering.tick(delta, [player.position], village.villagers() \
+			if _current_dim == WorldGenerator.DIM_OVERWORLD else [])
+		profiler.unmark("engineering")
+		if engineering_hud != null:
+			engineering_hud.set_target(_engineering_target())
+			engineering_hud.set_tool_preview(_tool_preview_text())
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
+		profiler.begin("village")
 		village.update(player.position)
+		profiler.unmark("village")
 		# Respawn the player at their spawn point when they die outright.
 		if not interaction.is_alive():
 			player.health = player.max_health
 			_place_on_surface()
+	_sample_stability(delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -244,6 +297,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_do_load()
 		elif key == KEY_C:
 			_toggle_crafting()
+		elif key == KEY_F:
+			_engineering_use_held()
+		elif key == KEY_R:
+			_engineering_cycle_level()
+		elif key == KEY_B:
+			if engineering_hud != null:
+				engineering_hud.toggle_workshop()
 		elif key == KEY_F8:
 			_toggle_zylann()
 		elif key == KEY_F1:
@@ -260,6 +320,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_texture_mapping(2)
 		elif key == KEY_F7:
 			set_texture_mapping(3)
+		elif key == KEY_F10:
+			# The profiler is how the game gets measured on hardware this
+			# development environment is not.
+			if profiler != null:
+				profiler.toggle_overlay()
+				print("[main] profiler ", "on" if profiler.overlay else "off",
+					"; ", profiler.snapshot()["renderer"] if profiler.overlay else "")
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -399,27 +466,168 @@ func _collect_drops() -> void:
 
 
 ## Write the whole player state to `save_slot`.
+## The engineering node under the crosshair, or -1.
+##
+## The engineering cursor snaps to whatever is nearest the aim rather than
+## demanding pixel accuracy, which is what lets the player build without
+## hunting for a one-block target.
+func _engineering_target() -> int:
+	if engineering == null or player == null:
+		return -1
+	var near := engineering.graph.nodes_near(player.position, 4.0)
+	var best := -1
+	var best_d := 2.0
+	for n in near:
+		var node_ref: EngGraph.EngNode = n
+		var d: float = node_ref.position.distance_to(player.position)
+		if d < best_d:
+			best_d = d
+			best = node_ref.id
+	return best
+
+
+## F: use whatever the player is holding on whatever they are looking at.
+## If it is a tool, the tool's process runs; if it is a component, the
+## component is placed or fastened. One key, context decides.
+func _engineering_use_held() -> void:
+	if engineering == null or inventory == null:
+		return
+	var target := _engineering_target()
+	var held := inventory.selected_eng_item()
+	if held == "":
+		# Holding a block: smelt it, because that is the step the whole
+		# progression starts with.
+		if inventory.selected_block_id() >= 0:
+			var r := engineering.smelt_held()
+			if not bool(r["ok"]):
+				_toast(String(r["reason"]))
+		return
+	if EngTools.get_tool(held) != null:
+		if target < 0:
+			return
+		var ctx := _tool_context()
+		var used := engineering.use_tool(held, target, ctx)
+		if not bool(used["ok"]):
+			_toast(String(used["reason"]))
+		return
+	if target < 0:
+		engineering.place(held, player.position + Vector3(0, -1.2, -1.6))
+		return
+	# A component in hand aimed at an existing assembly means "fasten this to
+	# it", which is how a motor gets bolted into a housing.
+	var fastened := engineering.fasten(player.position + Vector3(0, -1.2, -1.6))
+	if not bool(fastened["ok"]):
+		engineering.place(held, player.position + Vector3(0, -1.2, -1.6))
+
+
+## What the held tool would do to what the player is looking at, and whether
+## it can. This is the entire build UI: a sentence, not a menu.
+func _tool_preview_text() -> String:
+	if engineering == null or inventory == null:
+		return ""
+	var held := inventory.selected_eng_item()
+	if held == "":
+		return ""
+	var t := EngTools.get_tool(held)
+	if t == null:
+		return ""
+	if not engineering.graph.has_station_tools() and not \
+			EngWorkshop.available_tools(engineering.graph).has(held):
+		return "%s: no station for it yet" % t.name.capitalize()
+	var target := _engineering_target()
+	if target < 0:
+		return "%s  --  aim at something" % t.name.capitalize()
+	var node_ref := engineering.graph.node(target)
+	if node_ref == null:
+		return ""
+	var part: EngPart = node_ref.part if node_ref.part != null else \
+		EngPart.block(EngItems.material_of(node_ref.component_id), 0.1)
+	var p := EngTools.preview(held, part, _tool_context())
+	if bool(p["ok"]):
+		return "%s  ->  %s  (%.0f energy)" % [t.name.capitalize(),
+			String(p["process"]), float(p.get("energy", 0.0))]
+	return "%s  x  %s" % [t.name.capitalize(), String(p["reason"])]
+
+
+## Turn the held tool at whatever is under the crosshair and let the cursor
+## say where the operation will land.
+func _tool_context() -> Dictionary:
+	return {"axis": "x", "at": 0.5,
+		"position": player.position + Vector3(0, -1.2, -1.6), "radius": 0.02}
+
+
+func _toast(text: String) -> void:
+	if engineering_hud != null:
+		engineering_hud.show_toast(text)
+
+
+## R cycles the three interaction levels: assisted, standard, precision.
+func _engineering_cycle_level() -> void:
+	if engineering == null:
+		return
+	engineering.cursor_level = (engineering.cursor_level + 1) % 3
+	_toast("engineering: %s" % ["assisted", "standard", "precision"][
+		engineering.cursor_level])
+
+
 func _do_save() -> void:
 	if crafting != null and crafting.visible:
 		_toggle_crafting()
-	if SaveGame.save_game(save_slot, player, inventory, world, _current_dim):
+	# Sealed with a checksum and written over a backup, so a crash mid-save
+	# costs at most the last save, never the world.
+	var state := SaveGame.capture(player, inventory, world, _current_dim, engineering)
+	state["version"] = SaveGame.SAVE_VERSION
+	var why := SaveMigration.write_with_backup(save_slot, SaveMigration.seal(state))
+	if why == "":
 		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
 			SaveGame.describe_slot(save_slot)])
 	else:
-		print("[main] save failed: ", SaveGame.last_error)
+		print("[main] save failed: ", why)
+
+
+## Feed the stability watchdog. It samples on its own interval, and only calls
+## the (comparatively expensive) counter gather when it is actually due.
+func _sample_stability(delta: float) -> void:
+	if watchdog == null:
+		return
+	# "Quiescent" means the player is not building, the sim is idle and no
+	# chunks are streaming: growth measured during a burst is not a leak.
+	var busy := engineering != null and engineering.is_busy()
+	watchdog.set_quiescent(not busy, float(Time.get_ticks_msec()) / 1000.0)
+	watchdog.tick(float(Time.get_ticks_msec()) / 1000.0, delta * 1000.0)
+
+
+## Print the stability report to the console. F10 shows the live overlay;
+## this is the end-of-session summary.
+func print_stability_report() -> void:
+	if watchdog == null:
+		return
+	print(watchdog.report())
 
 
 ## Restore from `save_slot`, including which dimension the player was in.
 func _do_load() -> void:
-	var data := SaveGame.load_slot(save_slot)
-	if data.is_empty():
-		print("[main] load failed: ", SaveGame.last_error)
+	# The resilient reader falls back to the previous save when the current
+	# one is truncated or spliced, and says which file it actually used.
+	var read := SaveMigration.read_resilient(save_slot)
+	if not bool(read["ok"]):
+		print("[main] load failed: ", read["reason"])
 		return
+	var data: Dictionary = read["data"]
+	if String(read["source"]) == "backup":
+		print("[main] slot %d was damaged; recovered from its backup" % save_slot)
+	var migrated := SaveMigration.migrate(data)
+	if not bool(migrated["ok"]):
+		print("[main] load refused: ", migrated["reason"])
+		return
+	data = migrated["data"]
+	if not (migrated["steps"] as Array).is_empty():
+		print("[main] migrated: ", ", ".join(migrated["steps"]))
 	var dim := SaveGame.dimension_of(data)
 	if dim != _current_dim:
 		_switch_dimension_to(dim)
-	if not SaveGame.apply(data, player, inventory, world):
+	if not SaveGame.apply(data, player, inventory, world, engineering):
 		print("[main] load incomplete: ", SaveGame.last_error)
 		return
 	interaction.refresh_hotbar()

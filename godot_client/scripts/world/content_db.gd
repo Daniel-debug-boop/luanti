@@ -59,6 +59,50 @@ const VOID_ROCK := 15
 # --- Bedrock ---
 const BEDROCK := 16
 
+# --- Ores and refined metals (the engineering vertical slice) ---
+#
+# Ids 17..24 exist so the progression has a real starting point: you mine
+# ore, you smelt it, and the refined block is what the manufacturing system
+# consumes. The refined metals are separate blocks rather than an inventory
+# concept so that the existing mine/place/inventory/save path carries them
+# with no special cases.
+const COPPER_ORE := 17
+const IRON_ORE := 18
+const COAL_ORE := 19
+const SILVER_ORE := 20
+const COPPER_BLOCK := 21
+const IRON_BLOCK := 22
+const STEEL_BLOCK := 23
+const BRASS_BLOCK := 24
+
+## Blocks that are refined metal rather than natural terrain, and so have a
+## matching engineering material id. Everything else returns "".
+const METAL_OF := {
+	COPPER_ORE: "copper",
+	IRON_ORE: "iron",
+	COPPER_BLOCK: "copper",
+	IRON_BLOCK: "iron",
+	STEEL_BLOCK: "steel",
+	BRASS_BLOCK: "brass",
+}
+
+
+## The engineering material a content id is made of, or "".
+static func material_of(id: int) -> String:
+	return String(METAL_OF.get(id, ""))
+
+
+## ContentDB id for a block name, or -1. The engineering system writes bills in
+## material names, and this is where those meet the world.
+static func name_to_id(block_name: String) -> int:
+	if block_name == "":
+		return -1
+	_table()
+	for id in _entries.size():
+		if _entries[id] != null and _entries[id].name == block_name:
+			return id
+	return -1
+
 
 static var _entries: Array[Entry] = []
 
@@ -85,6 +129,14 @@ static func _table() -> Array[Entry]:
 		Entry.new(GLOWSTONE, "glowstone", Color(1.0, 0.85, 0.45), false, 15),
 		Entry.new(VOID_ROCK, "void_rock", Color(0.07, 0.06, 0.09)),
 		Entry.new(BEDROCK, "bedrock", Color(0.18, 0.18, 0.18), false, 0, 100.0),
+		Entry.new(COPPER_ORE, "copper_ore", Color(0.62, 0.36, 0.24), false, 0, 2.2),
+		Entry.new(IRON_ORE, "iron_ore", Color(0.60, 0.50, 0.42), false, 0, 2.6),
+		Entry.new(COAL_ORE, "coal_ore", Color(0.16, 0.16, 0.17), false, 0, 2.0),
+		Entry.new(SILVER_ORE, "silver_ore", Color(0.72, 0.74, 0.78), false, 0, 3.0),
+		Entry.new(COPPER_BLOCK, "copper_block", Color(0.72, 0.45, 0.28), false, 0, 2.0),
+		Entry.new(IRON_BLOCK, "iron_block", Color(0.78, 0.78, 0.80), false, 0, 2.5),
+		Entry.new(STEEL_BLOCK, "steel_block", Color(0.56, 0.58, 0.62), false, 0, 3.0),
+		Entry.new(BRASS_BLOCK, "brass_block", Color(0.80, 0.68, 0.32), false, 0, 2.4),
 	]
 	return _entries
 
