@@ -148,11 +148,14 @@ var _last_visual_anchor := Vector3.INF
 func is_busy() -> bool:
 	if graph.dirty or _visuals_dirty:
 		return true
-	for nid in graph.node_ids():
-		var n: EngGraph.EngNode = graph.node(int(nid))
-		if n != null and n.state.has("job_progress") and float(n.state["job_progress"]) > 0.0:
+	for entry in graph.all_nodes():
+		var n: EngGraph.EngNode = entry
+		if n != null and n.state.has("job_progress") \
+				and float(n.state["job_progress"]) > 0.0:
 			return true
 	return false
+
+
 ## How far the player must walk before the visual pass is worth repeating.
 const VISUAL_STEP := 12.0
 

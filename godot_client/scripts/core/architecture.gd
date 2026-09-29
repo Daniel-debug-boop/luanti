@@ -62,6 +62,9 @@ const MODULES := {
 	"WorldBackend":       {"layer": "core",        "visibility": PUBLIC},
 	"Determinism":        {"layer": "core",        "visibility": PUBLIC},
 	"Threading":          {"layer": "core",        "visibility": PUBLIC},
+	"System":             {"layer": "core",        "visibility": PUBLIC},
+	"SystemRegistry":     {"layer": "core",        "visibility": PUBLIC},
+	"GameApi":            {"layer": "app",         "visibility": PUBLIC},
 
 	# --- world: voxels, content, generation, rendering ---
 	"ContentDB":          {"layer": "world",       "visibility": PUBLIC},
@@ -74,6 +77,7 @@ const MODULES := {
 	"MaterialLibrary":    {"layer": "world",       "visibility": PUBLIC},
 	"RenderSettings":     {"layer": "world",       "visibility": PUBLIC},
 	"VoxelPick":          {"layer": "world",       "visibility": PUBLIC},
+	"StreamScheduler":    {"layer": "world",       "visibility": INTERNAL},
 	"DayNight":           {"layer": "world",       "visibility": PUBLIC},
 
 	# --- mob ---
@@ -96,6 +100,7 @@ const MODULES := {
 	"CraftingSlot":       {"layer": "gameplay",    "visibility": INTERNAL},
 	"SaveGame":           {"layer": "gameplay",    "visibility": PUBLIC},
 	"SaveMigration":      {"layer": "gameplay",    "visibility": PUBLIC},
+	"Persistence":        {"layer": "gameplay",    "visibility": PUBLIC},
 
 	# --- engineering ---
 	"EngEngineering":     {"layer": "engineering", "visibility": PUBLIC},
@@ -125,6 +130,7 @@ const MODULES := {
 
 	# --- ui ---
 	"WorldHud":           {"layer": "ui",          "visibility": PUBLIC},
+	"DevTools":           {"layer": "app",         "visibility": PUBLIC},
 
 	# --- diagnostics ---
 	"GameProfiler":       {"layer": "diagnostics", "visibility": PUBLIC},

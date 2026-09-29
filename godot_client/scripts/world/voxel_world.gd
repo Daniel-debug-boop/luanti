@@ -36,6 +36,19 @@ var _dirty := {}           # key -> true
 var _edits := {}           # "dim:x:y:z:vx:vy:vz" -> id, survives chunk reload
 var _built := 0
 
+## Streaming lives here rather than in a loop inside `update_around`. The
+## scheduler owns the queue, the priority, the per-frame budget, cancellation
+## and the cache; this class owns what a chunk *is*. Splitting them means the
+## ordering rules can be tested without a renderer and the chunk code can be
+## read without a queue.
+var stream := StreamScheduler.new()
+## How far the player may be looking, in world space. Drives the streaming
+## direction bias, so chunks ahead of the camera beat chunks behind it.
+var view_forward := Vector3.FORWARD
+## Set false to stream terrain only and skip meshing, which is what a
+## dedicated server wants.
+@export var mesh_enabled := true
+
 
 func _ready() -> void:
 	generator = WorldGenerator.new(1337)
@@ -94,6 +107,8 @@ func get_content_at(world_pos: Vector3i) -> int:
 
 
 ## True when the node is solid and blocks movement.
+## True only for a cell that is loaded *and* solid. See `is_resident` for why
+## the two must not be conflated.
 func solid_at(world_pos: Vector3i) -> bool:
 	return ContentDB.is_solid(get_content_at(world_pos))
 
@@ -137,61 +152,198 @@ func get_stats() -> Dictionary:
 	}
 
 
-## Load/unload chunks around `focus` and mesh a bounded number per call.
+## Stream chunks around `focus`, within this frame's budget.
+##
+## The ordering, the budget and the cancellation all belong to
+## `StreamScheduler`. This method is the seam: it says what "generated" and
+## "meshed" mean, and the scheduler says what to do and when to stop.
 func update_around(focus: Vector3i) -> void:
 	var centre := _block_pos(focus)
+	_last_focus = focus
+	stream.select(centre, view_forward, view_radius, _is_resident)
+	drop_distant(centre)
+	if mesh_enabled:
+		stream.step(_generate_job, _mesh_job, _has_mesh_work)
 
-	var want := {}
-	var r := view_radius
-	for dx in range(-r, r + 1):
-		for dy in range(-r, r + 1):
-			for dz in range(-r, r + 1):
-				if dx * dx + dy * dy + dz * dz > r * r + r:
+
+func _is_resident(p: Vector3i) -> bool:
+	return _blocks.has(_key(p))
+
+
+## Is the chunk containing this cell loaded? An unloaded cell is *unknown*, not
+## empty, and the difference matters: a mob that reads unloaded terrain as air
+## sees a cliff at the edge of the loaded region and turns away from a
+## perfectly flat plain, and a projectile test sees through the world. Anything
+## asking "is this solid?" across the streaming boundary has to ask this
+## first.
+func is_resident(world_pos: Vector3i) -> bool:
+	return _blocks.has(_key(_block_pos(world_pos)))
+
+
+## Load every chunk in a sphere around `focus` **right now**, ignoring the
+## frame budget.
+##
+## This is not a test hook; it is what "the world must exist here before the
+## next line runs" looks like. Three callers need it and all three are real:
+##
+##   * Start-up and teleport arrival. A budgeted streamer fills in over a
+##     second, and a player who arrives in that second falls through the world
+##     and lands in The Deeps. Arrival is exactly the moment the budget does
+##     not apply.
+##   * A dedicated server, which has no renderer and no frame budget and needs
+##     the answer to "what is at x" to be immediate.
+##   * Anything that edits the world and needs its neighbours to exist first.
+##
+## The radius is deliberately small: a large sphere is the hitch the scheduler
+## exists to avoid, and the caller that wants a big one wants the streamer.
+func ensure_region(focus: Vector3i, radius: int) -> int:
+	var centre := _block_pos(focus)
+	var loaded := 0
+	var r2 := radius * radius + radius
+	for dx in range(-radius, radius + 1):
+		for dy in range(-radius, radius + 1):
+			for dz in range(-radius, radius + 1):
+				if dx * dx + dy * dy + dz * dz > r2:
 					continue
 				var p := centre + Vector3i(dx, dy, dz)
-				want[p] = true
-				if not _blocks.has(_key(p)):
-					_load_chunk(p)
-
-	# Drop far chunks (with hysteresis) so memory stays bounded.
-	for key in _blocks.keys():
-		var parts: PackedStringArray = key.split(":")
-		if int(parts[0]) != dimension:
-			continue
-		var p := Vector3i(int(parts[1]), int(parts[2]), int(parts[3]))
-		var dd := p - centre
-		var lim := view_radius + 2
-		if dd.x * dd.x + dd.y * dd.y + dd.z * dd.z > lim * lim:
-			_unload_chunk(p, key)
-
-	_refresh_dirty(centre)
+				if _blocks.has(_key(p)):
+					continue
+				_load_chunk(p)
+				loaded += 1
+	return loaded
 
 
-func _load_chunk(pos: Vector3i) -> void:
-	var key := _key(pos)
-	var block: VoxelBlock = null
-	# A converted world takes priority for the overworld.
-	if dimension == WorldGenerator.DIM_OVERWORLD \
+## Generate one chunk: the converted world if there is one, otherwise the
+## generator. The only place in the world that decides where voxels come from.
+func _generate_block(pos: Vector3i) -> VoxelBlock:
+	# A converted Luanti world takes priority for the overworld.
+	if dimension == WorldGenerator.DIM_OVERWORLD and world_dir != "" \
 			and ChunkFiles.has_chunk(world_dir, pos.x, pos.y, pos.z):
-		block = ChunkFiles.load_chunk(world_dir, pos.x, pos.y, pos.z)
-	if block == null:
-		if dimension == WorldGenerator.DIM_OVERWORLD:
-			block = generator.generate_block(pos)
-		else:
-			block = generator.generate_deeps_block(pos)
-	_apply_edits(block, pos)
-	_blocks[key] = block
-	chunk_loaded.emit(pos)
+		var converted: VoxelBlock = ChunkFiles.load_chunk(
+			world_dir, pos.x, pos.y, pos.z) as VoxelBlock
+		if converted != null:
+			stream.stats["disk_hits"] = int(stream.stats["disk_hits"]) + 1
+			return converted
+	if dimension == WorldGenerator.DIM_OVERWORLD:
+		return generator.generate_block(pos)
+	return generator.generate_deeps_block(pos)
 
+
+## The scheduler's generate callback. Returns false when the chunk could not
+## be produced, which the scheduler counts as a cancellation.
+func _generate_job(p: Vector3i) -> bool:
+	var key := _key(p)
+	if _blocks.has(key):
+		return true
+	var block: VoxelBlock = stream.cache_take(key) as VoxelBlock
+	if block == null:
+		block = _generate_block(p)
+	if block == null:
+		return false
+	# A cached chunk still needs its player edits replayed.
+	_apply_edits(block, p)
+	_blocks[key] = block
+	_mark_neighbours_dirty(p)
+	chunk_loaded.emit(p)
+	return true
+
+
+## The scheduler's mesh callback: the nearest chunk that is ready to be meshed.
+## Takes no argument -- the mesh queue is "which dirty chunk is nearest and
+## ready", which is a question about the world, not about the job.
+func _mesh_job() -> bool:
+	var key := _nearest_meshable()
+	if key == "":
+		return false
+	_mesh_chunk(_key_pos(key), key)
+	_dirty.erase(key)
+	return true
+
+
+## The scheduler's "is there anything worth meshing" probe. A chunk waits
+## until all 26 neighbours have terrain, because a mesh built against missing
+## neighbours guesses which faces are interior -- and the guess is wrong, and
+## the player sees through the world.
+func _has_mesh_work() -> bool:
+	return _nearest_meshable() != ""
+
+
+## A candidate is dirty, resident, inside the view sphere, and has all 26
+## neighbours.
+func _nearest_meshable() -> String:
+	if _dirty.is_empty():
+		return ""
+	var centre := _block_pos(_last_focus)
+	var best := ""
+	var best_d := 1 << 60
+	for key in _dirty.keys():
+		if not _blocks.has(key):
+			continue
+		var p := _key_pos(key)
+		var d := p - centre
+		var d2 := d.x * d.x + d.y * d.y + d.z * d.z
+		if d2 > view_radius * view_radius + view_radius:
+			continue
+		if not _can_mesh(p):
+			continue
+		if d2 < best_d:
+			best_d = d2
+			best = String(key)
+	return best
+
+
+## The focus the streaming decisions are relative to, kept so the mesh probe
+## does not have to be handed the camera position every call.
+var _last_focus := Vector3i.ZERO
+
+
+func _rehydrate(block: VoxelBlock, pos: Vector3i) -> VoxelBlock:
+	# A cached chunk still needs its player edits replayed, or walking back
+	# over a hole you dug undoes it.
+	_apply_edits(block, pos)
+	return block
+
+
+func _mark_neighbours_dirty(pos: Vector3i) -> void:
 	for dx in [-1, 0, 1]:
 		for dy in [-1, 0, 1]:
 			for dz in [-1, 0, 1]:
 				if dx == 0 and dy == 0 and dz == 0:
 					continue
 				var n := pos + Vector3i(dx, dy, dz)
-				if _blocks.has(_key(n)):
-					_dirty[_key(n)] = true
-	_dirty[key] = true
+				var nk := _key(n)
+				if _blocks.has(nk):
+					_dirty[nk] = true
+	_dirty[_key(pos)] = true
+
+
+## Unload chunks that left the view, into the cache rather than into the void,
+## and with hysteresis so a chunk on the boundary does not thrash.
+func drop_distant(centre: Vector3i) -> void:
+	var lim := view_radius + 2
+	var lim2 := lim * lim
+	for key in _blocks.keys().duplicate():
+		var parts: PackedStringArray = String(key).split(":")
+		if int(parts[0]) != dimension:
+			continue
+		var p := Vector3i(int(parts[1]), int(parts[2]), int(parts[3]))
+		var dd := p - centre
+		if dd.x * dd.x + dd.y * dd.y + dd.z * dd.z > lim2:
+			_unload_chunk(p, String(key))
+
+
+## Force a chunk resident, outside the scheduler. Used by the tests and by
+## anything that needs a specific chunk *now* rather than in queue order.
+func _load_chunk(pos: Vector3i) -> void:
+	if _blocks.has(_key(pos)):
+		return
+	var block := _generate_block(pos)
+	if block == null:
+		return
+	_apply_edits(block, pos)
+	_blocks[_key(pos)] = block
+	_mark_neighbours_dirty(pos)
+	chunk_loaded.emit(pos)
 
 
 ## Replay player edits onto a freshly generated or reloaded chunk, so digging a
@@ -221,32 +373,12 @@ func _unload_chunk(pos: Vector3i, key: String) -> void:
 	if ti != null:
 		ti.queue_free()
 	_trans_nodes.erase(key)
+	# The terrain goes to the cache, not into the void: walking back three
+	# chunks should not regenerate the world.
+	stream.cache_put(key, _blocks.get(key))
 	_blocks.erase(key)
 	_dirty.erase(key)
 	chunk_unloaded.emit(pos)
-
-
-## Mesh whatever is dirty and ready, nearest-first, within the budget.
-func _refresh_dirty(centre: Vector3i) -> void:
-	if _dirty.is_empty():
-		return
-	var order := _dirty.keys()
-	order.sort_custom(func(a: String, b: String) -> bool:
-		return _dist2(_key_pos(a), centre) < _dist2(_key_pos(b), centre))
-
-	var budget := build_budget
-	for key in order:
-		if budget <= 0:
-			break
-		if not _blocks.has(key):
-			_dirty.erase(key)
-			continue
-		var pos := _key_pos(key)
-		if not _can_mesh(pos):
-			continue
-		_mesh_chunk(pos, key)
-		_dirty.erase(key)
-		budget -= 1
 
 
 static func _key_pos(key: String) -> Vector3i:

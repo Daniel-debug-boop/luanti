@@ -275,6 +275,11 @@ func _ledge_ahead() -> bool:
 	for step in range(1, LEDGE_LOOK + 1):
 		var p := here + dir * (float(step) * 0.7)
 		var col := Vector3i(floori(p.x), floori(here.y), floori(p.z))
+		# An unloaded chunk is unknown, not empty. Treating it as air makes
+		# every mob refuse to walk towards the edge of the streamed region,
+		# which reads as a mob stuck pacing a circle on flat ground.
+		if not world.is_resident(col):
+			continue
 		if not world.solid_at(col - Vector3i(0, 1, 0)):
 			return true
 	return false

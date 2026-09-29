@@ -350,7 +350,11 @@ func _flat_world() -> VoxelWorld:
 	w.materials = MaterialLibrary.new()
 	w.materials.set_mapping(w.texture_mapping)
 	root.add_child(w)
-	w.update_around(Vector3i.ZERO)
+	# `update_around` is a budgeted streaming tick -- it fills in over a few
+	# frames. A test that is about to edit or stand on the world needs it now,
+	# which is what `ensure_region` is for and what the game itself uses on
+	# arrival.
+	w.ensure_region(Vector3i.ZERO, 2)
 	# Level everything to y=20, then wall off x=0 for z in -4..4.
 	for x in range(-8, 9):
 		for z in range(-8, 9):

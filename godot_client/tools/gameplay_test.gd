@@ -10,7 +10,7 @@ var _fails := 0
 ## A ready-to-use VoxelWorld.
 ## `_ready` is deferred to the first frame when the node is added from
 ## SceneTree._init, so the generator and materials are assigned here as well --
-## otherwise update_around() hits a null generator.
+## otherwise `ensure_region()` hits a null generator.
 func _make_world() -> VoxelWorld:
 	var w := VoxelWorld.new()
 	w.view_radius = 1
@@ -18,7 +18,11 @@ func _make_world() -> VoxelWorld:
 	w.materials = MaterialLibrary.new()
 	w.materials.set_mapping(w.texture_mapping)
 	root.add_child(w)
-	w.update_around(Vector3i.ZERO)
+	# `update_around` is a budgeted streaming tick -- it fills in over a few
+	# frames. A test that is about to edit or stand on the world needs it now,
+	# which is what `ensure_region` is for and what the game itself uses on
+	# arrival.
+	w.ensure_region(Vector3i.ZERO, 2)
 	return w
 
 
@@ -256,6 +260,10 @@ func _test_save_load() -> void:
 	for slot in inv.hotbar:
 		slot.clear()
 	world.apply_edits_snapshot({})
+	# Loading replays edits onto chunks as they stream in, so the destination
+	# has to be resident before the assertion -- `ensure_region` is the
+	# synchronous load the game itself uses on arrival.
+	world.ensure_region(Vector3i(12, 30, -4), 2)
 
 	_eq(SaveGame.load_game(1, player, inv, world), true, "load from slot 1")
 	_eq(player.health, 11.0, "health restored")

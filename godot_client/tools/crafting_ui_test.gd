@@ -175,7 +175,9 @@ func _test_villager_production() -> void:
 	w.materials = MaterialLibrary.new()
 	w.materials.set_mapping(w.texture_mapping)
 	root.add_child(w)
-	w.update_around(Vector3i.ZERO)
+	# Arrival is synchronous; a budgeted frame is not enough for a test that
+	# is about to edit the world underneath the player.
+	w.ensure_region(Vector3i.ZERO, 1)
 	# A flat stone platform at y=20 to work on.
 	for x in range(-6, 7):
 		for z in range(-6, 7):

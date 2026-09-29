@@ -69,7 +69,7 @@ func tick(delta: float, graph: EngGraph, villagers: Array,
 			continue
 		var node: Node3D = v
 		var efficiency := _efficiency_for(node.position, live)
-		_apply_efficiency(v, efficiency)
+		_apply_efficiency(node, efficiency)
 		if efficiency >= 1.0:
 			powered += 1
 		else:
@@ -149,13 +149,20 @@ func _efficiency_for(where: Vector3, live: Array) -> float:
 
 
 ## The villager side of the contract: a `power_efficiency` field and a work
-## rate derived from it. Written through `_set` so a villager from a future
-## build without these properties is skipped rather than crashing the tick.
-func _apply_efficiency(v: Variant, efficiency: float) -> void:
+## rate derived from it.
+##
+## Every read goes through `_num()` with a default rather than `float(v.get())`.
+## A property that does not exist yet returns null, and `float(null)` is a hard
+## error -- not a zero -- which aborts the rest of the function and takes the
+## frame with it. The first version of this did exactly that against the real
+## `Villager`, which has no `base_produce_interval` until the first write.
+func _apply_efficiency(v: Object, efficiency: float) -> void:
+	if v == null or not is_instance_valid(v):
+		return
 	v.set("power_efficiency", efficiency)
-	var base := float(v.get("base_produce_interval"))
+	var base := _num(v, "base_produce_interval", 0.0)
 	if base <= 0.0:
-		base = float(v.get("produce_interval"))
+		base = _num(v, "produce_interval", 0.0)
 		if base <= 0.0:
 			return
 		v.set("base_produce_interval", base)
@@ -163,6 +170,15 @@ func _apply_efficiency(v: Variant, efficiency: float) -> void:
 	# stock cap still limits total output, so this is a rate change and the
 	# economy stays balanced against an unpowered villager.
 	v.set("produce_interval", base / maxf(efficiency, 0.05))
+
+
+## Read a numeric property that may not exist yet. `v.get()` on a missing
+## property returns null, and every numeric conversion of null throws.
+func _num(v: Object, property: String, fallback: float) -> float:
+	var raw: Variant = v.get(property)
+	if raw == null or not (raw is float or raw is int):
+		return fallback
+	return float(raw)
 
 
 ## Take the accumulated wage. Returns the amount and zeroes the pool, so a

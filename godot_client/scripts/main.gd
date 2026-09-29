@@ -47,6 +47,14 @@ var engineering_hud: EngHud
 var profiler: GameProfiler
 var watchdog: StabilityWatchdog
 var authority: NetAuthority
+## One owner per system, and the single door between them. Everything below
+## registers here; nothing reaches into anything else's internals.
+var systems := SystemRegistry.new()
+var api: GameApi = null
+var devtools: DevTools = null
+## The lifecycle wrapper for the save file, and the owner the API resolves
+## `persistence` to.
+var persistence: Persistence = null
 ## Which save slot F5 writes / F9 reads.
 var save_slot := 1
 var _env_over: Environment
@@ -196,7 +204,11 @@ func _ready() -> void:
 		add_child(p)
 		_probes.append(p)
 
-	# Drop the player onto the terrain surface once the spawn chunk exists.
+	# Arrival is the one moment the streaming budget does not apply: the player
+	# is about to stand on this world, and a chunk that has not been generated
+	# yet is a hole they fall through.
+	world.ensure_region(_player_chunk(), 2)
+	world.drop_distant(_player_chunk())
 	_place_on_surface()
 
 	world.update_around(_player_chunk())
@@ -204,6 +216,11 @@ func _ready() -> void:
 	print("[main] ready in ", world.biome_name_at(
 		Vector3i(int(spawn.x), int(spawn.y), int(spawn.z))), " biome")
 	print("[main] render: ", settings.describe())
+	_register_systems()
+	devtools = DevTools.new()
+	devtools.name = "DevTools"
+	add_child(devtools)
+	devtools.attach(self, api)
 	# Last, once every singleton exists: the structural invariants describe
 	# the tree that was actually built, not the one we intended to build.
 	_check_architecture()
@@ -290,6 +307,7 @@ func _process(delta: float) -> void:
 		if not interaction.is_alive():
 			player.health = player.max_health
 			_place_on_surface()
+	systems.tick_all(delta)
 	_sample_stability(delta)
 
 
@@ -329,10 +347,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_texture_mapping(2)
 		elif key == KEY_F7:
 			set_texture_mapping(3)
-		elif key == KEY_F11:
-			# The full architecture check, including the source scan.
-			print("[arch] ", verify_architecture())
 		elif key == KEY_F10:
+			# The debug panel: read-only, and the answer to "what was the game
+			# doing when it broke" without a debugger.
+			if devtools != null:
+				devtools.toggle()
+		elif key == KEY_F11:
+			print("[dev] ", devtools.report("systems") if devtools != null else "no devtools")
+		elif key == KEY_F12:
 			# The profiler is how the game gets measured on hardware this
 			# development environment is not.
 			if profiler != null:
@@ -585,17 +607,18 @@ func _engineering_cycle_level() -> void:
 func _do_save() -> void:
 	if crafting != null and crafting.visible:
 		_toggle_crafting()
-	# Sealed with a checksum and written over a backup, so a crash mid-save
-	# costs at most the last save, never the world.
-	var state := SaveGame.capture(player, inventory, world, _current_dim, engineering)
-	state["version"] = SaveGame.SAVE_VERSION
-	var why := SaveMigration.write_with_backup(save_slot, SaveMigration.seal(state))
-	if why == "":
+	# The persistence layer owns the policy: seal, back up, write atomically.
+	# main.gd asks; it does not know how a save is made safe.
+	var r := _persistence().save_to(save_slot, player, world, _current_dim,
+		engineering)
+	if bool(r["ok"]):
 		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
 			SaveGame.describe_slot(save_slot)])
 	else:
-		print("[main] save failed: ", why)
+		# A failed save is a recoverable situation, not a crash: the player is
+		# told, the game keeps running, and the previous save is still there.
+		push_warning("[main] save failed: ", r["reason"])
 
 
 ## Feed the stability watchdog. It samples on its own interval, and only calls
@@ -616,6 +639,46 @@ func print_stability_report() -> void:
 	if watchdog == null:
 		return
 	print(watchdog.report())
+
+
+## Declare who owns what. Each entry answers "which one is the authority for
+## this?" in one line, and the registry refuses a duplicate -- so a second
+## world or a second authority is a start-up error, not a latent bug.
+func _register_systems() -> void:
+	systems.register(_system("world", "the voxel world and its streaming",
+		world), world)
+	systems.register(_system("player", "the player body and its vitals", player),
+		player)
+	systems.register(_system("village", "mobs, villagers and settlements", village),
+		village)
+	systems.register(_system("engineering",
+		"components, machines and networks", engineering), engineering)
+	systems.register(_system("net", "server authority over every mutation",
+		authority), authority)
+	persistence = Persistence.new()
+	persistence.inventory = inventory
+	systems.register(_system("persistence", "the save file and the backpack",
+		persistence), persistence)
+	systems.register(_system("audio", "sound playback and its budget", audio), audio)
+	systems.register(_system("profiler", "frame timing and engine counters",
+		profiler), profiler)
+	systems.register(_system("hud", "the on-screen readouts", hud), hud)
+	var failures := systems.start_all()
+	if not failures.is_empty():
+		for f in failures:
+			push_warning("[main] system %s failed to %s: %s" % [
+				f["system"], f["stage"], f["reason"]])
+	api = GameApi.new()
+
+
+## A lifecycle wrapper for something `main.gd` already owns. The wrapper does
+## not take ownership of the node -- `main.gd` still frees it -- it only
+## carries the state, the error and the teardown accounting.
+func _system(key: String, owns: String, owner_object: Object) -> System:
+	var s := System.new()
+	s.system_name = key
+	s.owns = owns
+	return s
 
 
 ## Structural invariants, checked against the tree that actually exists rather
@@ -644,31 +707,30 @@ func verify_architecture() -> String:
 
 ## Restore from `save_slot`, including which dimension the player was in.
 func _do_load() -> void:
-	# The resilient reader falls back to the previous save when the current
-	# one is truncated or spliced, and says which file it actually used.
-	var read := SaveMigration.read_resilient(save_slot)
-	if not bool(read["ok"]):
-		print("[main] load failed: ", read["reason"])
+	# The persistence layer owns the recovery policy too: it picks the slot or
+	# the backup, refuses a future format, and applies. main.gd reports.
+	var r := _persistence().load_from(save_slot, player, world, engineering)
+	if not bool(r["ok"]):
+		print("[main] load failed: ", r["reason"])
 		return
-	var data: Dictionary = read["data"]
-	if String(read["source"]) == "backup":
+	if String(r["source"]) == "backup":
 		print("[main] slot %d was damaged; recovered from its backup" % save_slot)
-	var migrated := SaveMigration.migrate(data)
-	if not bool(migrated["ok"]):
-		print("[main] load refused: ", migrated["reason"])
-		return
-	data = migrated["data"]
-	if not (migrated["steps"] as Array).is_empty():
-		print("[main] migrated: ", ", ".join(migrated["steps"]))
-	var dim := SaveGame.dimension_of(data)
-	if dim != _current_dim:
-		_switch_dimension_to(dim)
-	if not SaveGame.apply(data, player, inventory, world, engineering):
-		print("[main] load incomplete: ", SaveGame.last_error)
-		return
+	var migrated: Array = r["migrated"]
+	if not migrated.is_empty():
+		print("[main] migrated: ", ", ".join(migrated))
 	interaction.refresh_hotbar()
 	audio.play("load")
 	print("[main] loaded slot %d: %s" % [save_slot, SaveGame.describe_slot(save_slot)])
+
+
+## The persistence layer, or a loud failure. Built at start-up; this exists
+## so a call before `_ready` finished reports a reason instead of a null
+## dereference.
+func _persistence() -> Persistence:
+	if persistence == null:
+		persistence = Persistence.new()
+		persistence.inventory = inventory
+	return persistence
 
 
 ## Open or close the 3x3 crafting grid.

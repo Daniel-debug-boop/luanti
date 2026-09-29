@@ -168,7 +168,103 @@ difference gets switched off, so this distinction is load-bearing.
 
 ---
 
-## 4. The one world
+## 4. One owner per system, and one door between them
+
+`main.gd` is the only thing that constructs anything. Every major system
+registers its authority in `SystemRegistry`, and a second registration of the
+same name is **refused with a reason**:
+
+| System | Owns | Registered as |
+|---|---|---|
+| World | the voxel world, its streaming and its edit log | `world` |
+| Player | the body, its vitals, its collision | `player` |
+| Village | mobs, villagers, settlements, job production | `village` |
+| Engineering | components, machines, networks, blueprints | `engineering` |
+| Net | authority over every mutation | `net` |
+| Persistence | the save file, the slot, the backpack | `persistence` |
+| Audio | sound playback and its per-frame budget | `audio` |
+| Profiler | frame timing and engine counters | `profiler` |
+| HUD | the on-screen readouts | `hud` |
+
+`SystemRegistry.run_order()` is data: input, world, player, village,
+engineering, net, persistence, audio, profiler, HUD. Anything not named runs
+last, which is the right default for a presenter. `shutdown_all()` is its
+exact **reverse**, so a system is always released before the thing it read.
+
+### The door
+
+Systems do not call each other. They call `GameApi`, which holds the owners
+and forwards to their public API:
+
+```
+villager ──► GameApi ──► VoxelWorld / PlayerInventory / EngGraph / NetAuthority
+```
+
+Every fallible call returns a `GameApi.Result` — `ok`, `reason`, `value`.
+GDScript has no exceptions, and a silent `-1` is how a refused action becomes
+a mystery three systems later. Three properties the facade enforces:
+
+* **Authority.** `api.authoritative` is true on the server. On a client,
+  `set_block`, `give_item`, `manufacture` and `save` return
+  `Result.denied()` instead of pretending to work. This is the structural
+  half of *"the client says I want to; the server decides if"*.
+* **Reasoning.** Every refusal says why, and the reason names a rule
+  (`version`, `ownership`, `reach`, `not running`, `no room`).
+* **Accounting.** `api.call_counts()` is per calling system, so a villager
+  that went from 40 calls a second to 4000 is visible in a profile rather
+  than guessed at.
+
+## 5. Lifecycle
+
+`System` is the base for anything with a lifetime. States are explicit and
+forward-only except Suspend/Resume:
+
+```
+CREATED ──► INITIALIZED ──► RUNNING ◄──► SUSPENDED
+                            │
+                            └──► FAILED          DESTROYED
+```
+
+Resources, nodes, timers, threads and signal connections are acquired through
+`own*()` helpers, never directly, because that is the only way the release
+list stays complete. `teardown()` drains them in reverse order of acquisition
+— connections before the objects they reference, threads before anything they
+might be touching — and is **idempotent**, because shutdown in Godot is
+routinely reached by two paths. `leaked()` returns what the system still owes
+the process, and a non-zero value after teardown is a leak the soak test
+watches.
+
+One distinction matters and cost a rewrite to get right:
+
+* `FAILED` means *the system is broken*. The registry stops ticking it and the
+  game continues degraded.
+* A **misuse** — `run()` before `initialize()`, `initialize()` twice — records
+  the reason and changes **nothing**. Marking a working subsystem FAILED
+  because of a bad call order somewhere else removes it from the game, and the
+  next symptom is somewhere unrelated entirely.
+
+## 6. Failure handling
+
+Failure is a return value, not an exception and not a crash.
+
+| Failure | Where it is caught | What happens |
+|---|---|---|
+| Missing system | `GameApi` returns `Result.unavailable` | the call is refused; the frame continues |
+| System init failed | `SystemRegistry.start_all` | recorded; other systems run |
+| Non-authoritative write | `GameApi.authoritative == false` | refused with the rule named |
+| Invalid port/op/field | `NetProtocol.validate` | refused, `rule` says which check |
+| Out of reach / not owned | `NetAuthority.submit` | refused, apply never called |
+| Truncated or spliced save | `SaveMigration.read_resilient` | recovered from `.bak`, and says so |
+| Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
+| Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
+| Chunk generation failed | `StreamScheduler.step` | the job is cancelled, not fatal |
+| Mod registered an unknown material | `EngMaterials.deserialize` | reported, the rest of the save applies |
+
+`SystemRegistry.healthy()` is false only when a **required** system (world,
+player, persistence) failed. Everything else is degradation, and
+`health_report()` says what.
+
+## 7. The one world
 
 `WorldBackend` is the interface every voxel backend must satisfy:
 
@@ -201,7 +297,7 @@ Checked at every startup (`main.gd` → `EngArch.verify_runtime`) and by
 
 ---
 
-## 5. Server boundaries and the message contract
+## 8. Server boundaries and the message contract
 
 Two files, two jobs:
 
@@ -254,7 +350,7 @@ honest gap. Everything the handshake would call is done and tested.
 
 ---
 
-## 6. Determinism
+## 9. Determinism
 
 Two kinds of code, with opposite rules.
 
@@ -287,7 +383,7 @@ simulation is a bug, and the way to find it is to hash, run twice, compare.
 
 ---
 
-## 7. Threading
+## 10. Threading
 
 EMERGENT is single-threaded **by decision**. Godot's scene tree, physics
 servers and rendering servers are main-thread objects; touching one from a
@@ -315,7 +411,7 @@ can state the rule without depending on the layers the rule is about.
 
 ---
 
-## 8. Ownership and lifetime of world entities
+## 11. Ownership and lifetime of world entities
 
 **Who owns a node.** `main.gd` owns everything. It creates the world, the
 player, the inventory, the engineering root, the HUD, the profiler and the
@@ -352,7 +448,7 @@ returned to the pool when the node leaves the streaming radius.
 
 ---
 
-## 9. Persistence
+## 12. Persistence
 
 One save format. Every subsystem is a **section** of the same `Dictionary`.
 
@@ -381,7 +477,7 @@ would have made every future subsystem an edit to that file.
 
 ---
 
-## 10. What was removed, and why
+## 13. What was removed, and why
 
 Nothing here was removed for tidiness. Each removal closed a hole where two
 systems could answer the same question.
@@ -402,7 +498,7 @@ down the intent, not by suppressing the finding.
 
 ---
 
-## 11. How to check any of this
+## 14. How to check any of this
 
 ```sh
 sh godot_client/tools/run_tests.sh <path-to-godot>
@@ -425,15 +521,16 @@ trusted.
 
 ---
 
-## 12. Keys
+## 15. Keys
 
 | Key | |
 |---|---|
 | F1–F3 | render quality |
 | F4–F7 | texture mapping |
 | F5 / F9 | save / load |
-| F10 | performance overlay |
-| F11 | architecture report |
+| F10 | developer tools |
+| F11 | system health report |
+| F12 | performance overlay |
 | C | crafting grid |
 | E | talk |
 | F | use held tool |

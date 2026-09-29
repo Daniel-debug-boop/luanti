@@ -259,6 +259,17 @@ requiring a custom Godot build (its releases target a specific branch), so the
 stock 4.4 binary this project targets cannot load it, and it would replace the
 voxel renderer rather than provide a shader.
 
+## Systems, ownership and the one door
+
+Every major system has exactly one owner, registered in `SystemRegistry` at
+start-up; a second registration of the same name is refused with a reason.
+Systems never call each other — they call `GameApi`, which returns a
+`Result` (`ok`, `reason`, `value`) for every fallible call and refuses
+mutations outright on a non-authoritative end. `System` gives each one an
+explicit lifecycle and accounts for every node, timer, thread, resource and
+signal connection it acquires, so "leaked" is a number rather than a surprise.
+See `ARCHITECTURE.md` §§4–7.
+
 ## Measuring and surviving a long session
 
 Three pieces of instrumentation, because "it runs on my machine" is not a
@@ -376,7 +387,7 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Eighteen suites run headless:
+Nineteen suites run headless:
 
 | Suite | Covers |
 |---|---|
@@ -397,6 +408,7 @@ Eighteen suites run headless:
 | `diagnostics_test` | profiler sections and percentiles, JSON report, watchdog sampling, leak vs burst vs pressure classification, village power coupling on/off, wage payout, sleeping networks supply nobody |
 | `multiplayer_test` | every exploit: unknown op, missing field, unjoined peer, rate-limit flood, out-of-reach build, ownership violation, forged economy, teleport, mid-session revoke, distance-filtered replication, audit log |
 | `robustness_test` | save migration chain and forward-refusal, checksum integrity, backup recovery from a truncated file, complex factory round trip byte-identical, anti-duplication invariants, 12 000-tick soak for determinism / no growth / LOD sleeping / 60 successive autosaves |
+| `systems_test` | one owner per system (a second world is refused), the lifecycle state machine including misuse-vs-failure, idempotent teardown, signal disconnection, run order and reverse teardown, a failed system not taking the frame with it, the API facade returning results instead of crashing, a client being denied every mutating call, and interrupted saves recovering from the backup |
 | `architecture_test` | layer and visibility rules over the whole source tree, **tests of the checker itself** (a checker that never rejects anything is not a checker), exactly one world / inventory / profiler / player in `main.tscn`, the message envelope and direction rules, sequence ordering, determinism hashing and the fixed step, the threading rule, and the absence of the removed dead architecture |
 
 ## Honest limitations
