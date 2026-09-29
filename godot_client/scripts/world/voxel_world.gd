@@ -385,6 +385,41 @@ func rebind_materials() -> void:
 
 ## Switch between plain box UVs, triplanar projection, and parallax occlusion,
 ## then rebind every live surface to the reconfigured materials.
+## Every player edit as {"dim:x:y:z:vx:vy:vz": id}, for the save file.
+## The edit log -- not the chunk cache -- is the part of the world that is not
+## reproducible from the generator, so this is what has to survive a restart.
+func edits_snapshot() -> Dictionary:
+	var out := {}
+	for k in _edits.keys():
+		out[str(k)] = int(_edits[k])
+	return out
+
+
+## Replace the edit log with one loaded from disk, then replay it onto every
+## chunk that is currently resident. Chunks loaded later pick the edits up in
+## _apply_edits(), so this works whether the player is standing in the saved
+## area or a thousand blocks away.
+func apply_edits_snapshot(edits: Dictionary) -> void:
+	_edits.clear()
+	for k in edits.keys():
+		var key := String(k)
+		var parts := key.split(":")
+		if parts.size() != 7:
+			continue
+		_edits[key] = int(edits[k])
+	# _blocks is keyed by the string from _key(), not by Vector3i, so the
+	# position has to be parsed back out to rebuild the edit prefix.
+	for k in _blocks.keys():
+		var block_key := String(k)
+		var parts := block_key.split(":")
+		if parts.size() != 4:
+			continue
+		var pos := Vector3i(int(parts[1]), int(parts[2]), int(parts[3]))
+		var block: VoxelBlock = _blocks[block_key]
+		_apply_edits(block, pos)
+		_dirty[block_key] = true
+
+
 func set_texture_mapping(m: int) -> void:
 	texture_mapping = m
 	if materials == null:

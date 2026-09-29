@@ -14,8 +14,58 @@ godot --path godot_client           # or open godot_client/ in the Godot editor
 
 Controls: `WASD` move · `Space` jump/up · `Shift` sprint · `F` toggle fly ·
 `G` switch dimension · `LMB` mine · `RMB` place · `1`–`8`/scroll select block ·
-`E` talk · `F1`–`F3` render quality · `F4`–`F7` texture mapping · `Esc` release
+`E` talk · `C` craft · `F5` save · `F9` load · `F8` toggle the Voxel Tools
+backend · `F1`–`F3` render quality · `F4`–`F7` texture mapping · `Esc` release
 mouse.
+
+## Inventory and crafting
+
+Mining now yields a real item and placing consumes one, instead of picking
+from a fixed block list. The container is the prebuilt **GLoot** addon
+(`addons/gloot`, MIT, v3.0.1) — the inventory, hotbar, item protoset, capacity
+constraint and item serialization are all GLoot's;
+`scripts/gameplay/player_inventory.gd` is only the glue that maps ContentDB
+block ids onto GLoot prototypes.
+
+Crafting (`C`) is hand-written: the Asset Library has **no** crafting addons
+for Godot 4.4 — the category returns zero results — and GLoot has no recipe
+system. It supports shaped recipes (with empty-border trimming, so a 2x2 works
+in any corner of a 3x3 grid) and shapeless recipes. The 3x3 grid is currently
+implicit: `C` crafts the first recipe your carried blocks can afford, rather
+than a real drag-and-drop grid UI.
+
+## Saving
+
+`F5` writes a slot, `F9` loads it. Saves go to `user://saves/slot_N.json`
+(8 slots) and hold the player's position, health and fly state, the whole GLoot
+inventory, and the world's edit log — the part of the world the generator
+cannot reproduce. Writes are atomic (temp file + rename) so a crash mid-write
+cannot corrupt a slot.
+
+For the Voxel Tools backend, voxel data persists through its own
+`VoxelStreamRegionFiles` instead.
+
+## Voxel Tools backend (Zylann)
+
+A second world backend built on [Zylann's Voxel Tools](https://github.com/Zylann/godot_voxel)
+(MIT): infinite streaming, LOD terrain, MultiMesh instancing, GDScript
+generation, and region-file persistence.
+
+```sh
+sh godot_client/tools/fetch_voxel_engine.sh   # prints the binary path
+sh godot_client/tools/run_tests.sh <that path>
+```
+
+**Why a separate engine.** Voxel Tools is a C++ module. Its published
+GDExtension packages all require Godot 4.4.1 and are *silently* skipped by
+stock 4.4-stable. The supported route is the project's own module build:
+release `v1.4.0` is Godot commit `4c311cbee` — the same engine commit as stock
+4.4-stable — with Voxel Tools 1.4.0 compiled in. The project's GDScript is
+identical; only the binary differs.
+
+The project **still runs on stock Godot 4.4**. `ZylannWorld` checks
+`ClassDB.class_exists("VoxelTerrain")` and degrades to an inert node, so both
+engines pass the full test suite.
 
 ## Loading a real Luanti world
 
@@ -201,10 +251,12 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Seven suites run headless:
+Nine suites run headless:
 
 | Suite | Covers |
 |---|---|
+| `zylann_test` | Voxel Tools presence, graceful degradation on stock Godot, streaming + GDScript generation + voxel read/write on the custom build |
+| `gameplay_test` | GLoot protoset/stacking/hotbar/serialization, shaped + shapeless recipe matching, craft consumes-and-produces, save/load round-trip including world edits, malformed-payload rejection |
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
 | `interaction_test` | DDA raycast hit/normal/place cell, break/place, bedrock immunity, edit replay across reload, mining to completion, HDRI set + clock, village props and villagers |
@@ -215,6 +267,11 @@ Seven suites run headless:
 
 ## Honest limitations
 
+* **Nothing has ever been rendered.** This environment has no GPU, no X11 and
+  no Wayland. Every check is structural — properties exist and are enabled,
+  shaders compile, voxels read back the right ids. No frame has been displayed,
+  and `is_area_meshed()` stays false headless. Treat all visual claims here as
+  unverified.
 * **SDFGI is configured but not running** — it needs an `SDFGIProbeVolume3D`
   node, which cannot be created from script in Godot 4.4. Add one in the
   editor and the settings already in `RenderSettings` take effect. Bounce
@@ -222,15 +279,26 @@ Seven suites run headless:
 * **SDFGI and SSIL and volumetric fog were not visually verified** — this
   environment has no GPU or display server, so every check is structural
   (the properties are real and enabled), not visual.
-* **No inventory or crafting** — the hotbar is a fixed block list, not a
-  container, and there is no recipe system.
-* **No saving to disk** — edits live in memory for the session. A converted
-  world on disk is never written back.
+* **Inventory, crafting and saving exist but are shallow.** The container is
+  GLoot and the save system is real and tested, but: there is no drag-and-drop
+  3x3 crafting grid (the `C` key crafts from what you carry), the recipe book
+  is 12 placeholder recipes, there is no furnace/smelting, no item durability,
+  and only the GDScript backend's edit log is saved — a converted Luanti world
+  is read but never written back.
 * **Mobs have no pathfinding** — they wander, chase, auto-jump one block, and
   melee, but do not navigate around obstacles.
 * **Villagers are built from primitives**, not downloaded character models;
   the Poly Haven prop set is furniture rather than people.
-* **No audio**, and no block-drop entities when something is mined.
+* **No audio**, and no block-drop entities when something is mined. miniaudio
+  is vendored (`addons/thirdparty/miniaudio/`, public domain / MIT-0) but
+  **not compiled** — GDScript cannot call C. Godot's own `AudioDriver` already
+  *is* miniaudio; it is just not exposed to scripting. Any audio has to be
+  built on Godot's `AudioStream*` classes.
+* **The Voxel Tools backend is new and only partly wired up.** Streaming,
+  generation, voxel read/write, LOD terrain, the instancer and the stream
+  objects are constructed and verified, and `F8` builds it at runtime. But
+  mining/placing still goes through the GDScript world only: the two backends
+  are not yet interchangeable in play, and nothing has rendered them.
 * **Legacy Luanti worlds** load for the overworld only; The Deeps is always
   procedural.
 * **Format versions below 27** decompress but skip legacy sections (node

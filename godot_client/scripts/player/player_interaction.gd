@@ -27,6 +27,10 @@ signal block_placed(pos: Vector3i, id: int)
 
 @export var world: VoxelWorld
 @export var player: Player
+## When set, mining yields items into it and placing consumes from it. When
+## null, the legacy fixed `hotbar` list is used instead, so the old tests and
+## the fixed-block behaviour still work.
+@export var inventory: PlayerInventory
 
 ## Blocks the player has mined, for the HUD statistic.
 var mined := 0
@@ -85,6 +89,9 @@ func _advance_break(id: int, delta: float) -> void:
 	if break_progress >= 1.0:
 		if world.break_block(_mine_pos):
 			mined += 1
+			# Mining now produces an item rather than vanishing.
+			if inventory != null and is_instance_valid(inventory):
+				inventory.give_block(id)
 			block_broken.emit(_mine_pos, id)
 		_stop_break()
 
@@ -129,21 +136,39 @@ func place() -> bool:
 		return false
 	if _player_intersects(hit.place):
 		return false
-	if world.place_block(hit.place, selected_block()):
+	var block_id := selected_block()
+	if block_id < 0:
+		return false
+	if world.place_block(hit.place, block_id):
 		placed += 1
-		block_placed.emit(hit.place, selected_block())
+		if inventory != null and is_instance_valid(inventory):
+			inventory.consume_selected()
+		block_placed.emit(hit.place, block_id)
 		return true
 	return false
 
 
+## Block id the player would place right now, or -1 when they hold nothing.
 func selected_block() -> int:
+	if inventory != null and is_instance_valid(inventory):
+		return inventory.selected_block_id()
 	if hotbar.is_empty():
 		return ContentDB.STONE
 	return int(hotbar[clampi(selected, 0, hotbar.size() - 1)])
 
 
 func select_slot(i: int) -> void:
+	if inventory != null and is_instance_valid(inventory):
+		inventory.select_slot(i)
+		selected = inventory.selected
+		return
 	selected = clampi(i, 0, hotbar.size() - 1)
+
+
+## Re-read the hotbar after the inventory changed (craft, load, stow).
+func refresh_hotbar() -> void:
+	if inventory != null and is_instance_valid(inventory):
+		selected = inventory.selected
 
 
 ## True when placing at `pos` would put a block inside the player's own box.

@@ -66,15 +66,102 @@ default render path.
 
 ---
 
-## Not vendored: Zylann's godot_voxel
+## Zylann's godot_voxel (Voxel Tools) — USED, via the official module build
 
 * Upstream: <https://github.com/Zylann/godot_voxel>
+* Licence: MIT
+* Release used: **v1.4.0 — "Godot 4.4.stable.custom_build [4c311cbee]"**
+* Fetched by: `tools/fetch_voxel_engine.sh` (downloads, unzips, verifies the build string)
 
-Referenced in the request as a chunking/voxel engine. It is a **C++
-GDExtension module**, and its own documentation states the plugin packages
-"contain the word GDExtension in the title" and are built for a specific
-`4.7` branch of a custom Godot build. It cannot be loaded by the stock Godot
-4.4 binary this project targets, and it would replace the voxel renderer
-outright rather than providing a shader. Using it means switching this project
-to a custom engine build, which is a different decision from the one asked
-for here.
+### Correction to an earlier claim in this file
+
+A previous revision of this file stated that Voxel Tools "cannot be loaded by
+the stock Godot 4.4 binary this project targets". **That was wrong.** The
+accurate picture:
+
+* Every published `GodotVoxelExtension.zip` (v1.4.1x, v1.5x, v1.6x, v1.7x)
+  declares `compatibility_minimum = "4.4.1"`. Stock `4.4-stable` reports
+  itself as `4.4.0`, so Godot **silently skips** the extension — no error, just
+  `ClassDB.class_exists("VoxelTerrain") == false`. Verified.
+* The supported route is the **module build** the project publishes itself.
+  Release `v1.4.0` is built from Godot commit `4c311cbee` — the *same* engine
+  commit as stock `4.4-stable` — with Voxel Tools 1.4.0 compiled in. The
+  project's GDScript is unchanged; only the binary differs.
+
+### What this gives us, and what is verified
+
+Verified headlessly on the custom build (`tools/zylann_test.gd`):
+
+* `VoxelTerrain` infinite streaming — 64 data blocks generated in 300 frames
+* `VoxelGeneratorScript` — our GDScript terrain generator runs on Voxel Tools'
+  worker threads
+* voxel read/write round-trip through `VoxelToolTerrain`
+* `VoxelLodTerrain`, `VoxelInstancer`, `VoxelMesherBlocky`,
+  `VoxelBlockyLibrary`, `VoxelStreamRegionFiles` / `VoxelStreamMemory` all
+  construct and run
+
+**Not verified:** mesh upload and rendering. This machine has no GPU, no X11
+and no Wayland, so nothing has ever been displayed. `is_area_meshed()` stays
+false headless, which is consistent with the dummy renderer rather than with a
+runtime fault, but that is inference, not proof.
+
+### Engine requirement
+
+The project still runs on stock Godot 4.4 — `ZylannWorld` checks
+`ClassDB.class_exists("VoxelTerrain")` and degrades to inert. The Voxel Tools
+features are opt-in.
+
+---
+
+## GLoot (Universal Inventory System) — USED
+
+* Upstream: <https://github.com/peter-kish/gloot>
+* Licence: MIT
+* Version: v3.0.1, Godot 4.4, installed unmodified from the Asset Library
+  release `c687406b7b2b21e8967d60e1dc7303216a5f6fe2`
+
+The player inventory, hotbar, item protoset, capacity constraint and item
+serialization are all GLoot. `scripts/gameplay/player_inventory.gd` is only
+glue that maps ContentDB block ids onto GLoot prototypes. It has no
+dependencies outside `addons/gloot`.
+
+Two GLoot behaviours the glue has to work around, both read from the addon
+source rather than guessed:
+
+* an `ItemSlot` owns a *private* one-item container, and `equip()` moves the
+  item out of the backpack into it;
+* an `InventoryConstraint` registers by being **parented** to an `Inventory` --
+  there is no `add_constraint()`.
+
+---
+
+## Searched for and NOT found: crafting
+
+The Asset Library was queried for Godot 4.4 crafting addons
+(`filter=crafting`). **Zero results** -- there is no such category. GLoot is a
+container library with no recipe system, and neither do the inventory addons
+that were reviewed. So `scripts/gameplay/crafting.gd` is hand-written.
+
+## Searched for and NOT used: generic save/load addons
+
+The Asset Library was also queried for save/load addons (`filter=save`). The
+results are generic resource serialisers aimed at editor tooling (Game State
+Saver Plugin, Easy Save Lite, SaveState, Locker) rather than a runtime
+player-state store. Voxel Tools' own `VoxelStreamRegionFiles` *is* used, for
+the Voxel Tools backend, but it only persists voxel blocks -- not the player,
+the vitals or the inventory. `scripts/gameplay/save_game.gd` is therefore
+hand-written.
+
+---
+
+## miniaudio — vendored, NOT compiled
+
+* Upstream: <https://github.com/mackron/miniaudio>
+* Version: v0.11.25, single-header amalgamation, unmodified
+* Licence: public domain **or** MIT-0 (dual licensed)
+
+Vendored because it was asked for and it costs nothing to keep licensed and on
+disk. **It is not compiled and nothing calls it.** GDScript cannot call C;
+reaching miniaudio needs a GDExtension or a custom engine build. Note that
+Godot's own `AudioDriver` is already miniaudio, so the binary contains it —
+just not exposed to scripting. See `addons/thirdparty/miniaudio/README.md`.

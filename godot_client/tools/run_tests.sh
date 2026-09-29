@@ -8,7 +8,7 @@ GODOT_SILENCE_ROOT_WARNING=1 "$GODOT_BIN" --headless --path "$DIR" \
   --editor --quit >/dev/null 2>&1   # rebuild the class cache first
 FAIL=0
 for t in mesher_test world_test interaction_test render_settings_test \
-    e2e_test features_test render_test; do
+    e2e_test features_test render_test zylann_test gameplay_test; do
   printf "%-15s " "$t"
   OUT=$(GODOT_SILENCE_ROOT_WARNING=1 "$GODOT_BIN" --headless --path "$DIR" \
     --script "res://tools/$t.gd" 2>&1 | grep -vE "fontconfig|Godot Engine")

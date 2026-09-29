@@ -25,6 +25,9 @@ const HEARTS := 10
 ## Not @export: RenderSettings is a RefCounted, not a Resource, so the editor
 ## cannot serialise it as a node property.
 var settings: RenderSettings
+## When set, the hotbar shows what the player actually carries (GLoot slots)
+## rather than the legacy fixed block list.
+var inventory: PlayerInventory = null
 
 var _panel: PanelContainer
 var _stats: Label
@@ -364,17 +367,30 @@ func _update_vitals() -> void:
 
 
 ## Paint each slot with its block's palette colour and mark the selected one.
+## With an inventory attached this reads the GLoot hotbar, so the display
+## follows what the player has actually mined and crafted.
 func _update_hotbar() -> void:
-	var bar: Array = interaction.hotbar if interaction != null else []
-	var sel: int = interaction.selected if interaction != null else -1
+	var bar: Array = []
+	var sel := -1
+	if inventory != null and is_instance_valid(inventory):
+		sel = inventory.selected
+		for i in inventory.hotbar.size():
+			var held := inventory.hotbar[i].get_item()
+			bar.append(-1 if held == null
+				else PlayerInventory.block_id_of(held.get_prototype().get_id()))
+	elif interaction != null:
+		bar = interaction.hotbar
+		sel = interaction.selected
 	for i in _hotbar_slots.size():
 		var slot := _hotbar_slots[i]
 		var swatch := slot.get_meta("swatch") as ColorRect
-		if i < bar.size():
+		if i < bar.size() and int(bar[i]) >= 0:
 			var id := int(bar[i])
 			swatch.color = ContentDB.color_of(id)
 			slot.modulate = Color(1, 1, 1, 1)
-			_hotbar_names[i].text = ContentDB.name_of(id)
+			_hotbar_names[i].text = "%s x%d" % [ContentDB.name_of(id),
+				inventory.count_of(id)] if inventory != null \
+				else ContentDB.name_of(id)
 		else:
 			swatch.color = Color(0, 0, 0, 0)
 			slot.modulate = Color(1, 1, 1, 0.4)
