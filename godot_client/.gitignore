@@ -1,0 +1,7 @@
+# Godot import cache and editor state. The .import manifests next to each
+# asset ARE tracked; the binary cache they point into is not.
+.godot/
+*.translation
+
+# Converted worlds produced by tools/convert_world.py
+world/
