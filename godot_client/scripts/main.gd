@@ -32,6 +32,8 @@ var inventory: PlayerInventory
 var audio: AudioDirector
 ## Where BlockDrop entities are parented.
 var _drops: Node3D
+## The 3x3 drag-and-drop crafting grid, opened with C.
+var crafting: CraftingPanel
 ## Optional Voxel Tools backend. Null unless F8 successfully builds it, which
 ## only happens on the Voxel Tools engine build.
 var zylann: ZylannWorld = null
@@ -135,6 +137,10 @@ func _ready() -> void:
 	hud.day_night = day_night
 	hud.settings = settings
 	hud.inventory = inventory
+	crafting = CraftingPanel.new()
+	crafting.name = "CraftingPanel"
+	add_child(crafting)
+	crafting.setup(inventory, audio)
 	add_child(hud)
 
 	# --- Bounce probes and fog volume ---
@@ -237,7 +243,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_F9:
 			_do_load()
 		elif key == KEY_C:
-			_do_craft()
+			_toggle_crafting()
 		elif key == KEY_F8:
 			_toggle_zylann()
 		elif key == KEY_F1:
@@ -394,6 +400,8 @@ func _collect_drops() -> void:
 
 ## Write the whole player state to `save_slot`.
 func _do_save() -> void:
+	if crafting != null and crafting.visible:
+		_toggle_crafting()
 	if SaveGame.save_game(save_slot, player, inventory, world, _current_dim):
 		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
@@ -419,23 +427,21 @@ func _do_load() -> void:
 	print("[main] loaded slot %d: %s" % [save_slot, SaveGame.describe_slot(save_slot)])
 
 
-## Craft the first recipe the player's own inventory can afford. The grid is
-## their carried blocks, so this is a "craft from what I hold" shortcut; a real
-## 3x3 grid UI is still missing.
-func _do_craft() -> void:
-	var doable := Crafting.available(inventory)
-	if doable.is_empty():
-		audio.play("craft_fail")
-		print("[main] nothing craftable")
+## Open or close the 3x3 crafting grid.
+func _toggle_crafting() -> void:
+	if crafting == null:
 		return
-	var recipe: Dictionary = doable[0]
-	if Crafting.craft(inventory, recipe):
-		audio.play("craft")
-		interaction.refresh_hotbar()
-		print("[main] crafted %s x%d" % [recipe["id"],
-			int(recipe.get("count", 1))])
+	# Let go of the mouse while a panel is open, or the cursor stays captured
+	# by the FPS controls behind it.
+	if crafting.toggle():
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		interaction.set_crafting_open(true)
 	else:
-		audio.play("craft_fail")
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		interaction.set_crafting_open(false)
+
+
+## Close the crafting panel before a save, so the cursor is not left free.
 
 
 ## Build (or tear down) the Voxel Tools backend. Only the official Voxel Tools

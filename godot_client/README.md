@@ -14,9 +14,9 @@ godot --path godot_client           # or open godot_client/ in the Godot editor
 
 Controls: `WASD` move · `Space` jump/up · `Shift` sprint · `F` toggle fly ·
 `G` switch dimension · `LMB` mine · `RMB` place · `1`–`8`/scroll select block ·
-`E` talk · `C` craft · `F5` save · `F9` load · `F8` toggle the Voxel Tools
-backend · `F1`–`F3` render quality · `F4`–`F7` texture mapping · `Esc` release
-mouse.
+`E` talk/trade · `C` crafting grid · `F5` save · `F9` load · `F8` toggle the
+Voxel Tools backend · `F1`–`F3` render quality · `F4`–`F7` texture mapping ·
+`Esc` release mouse.
 
 ## Mobs, villagers and audio
 
@@ -59,9 +59,32 @@ are passive. Mobs come in hostile and passive flavours.
 
 Villagers now run a **daily schedule** — work by day, rest in the late
 afternoon, sleep at night, with a shorter wander radius when off shift — and
-**trade**: each villager's job determines what they sell (Farmer → sand, Miner
-→ gravel, Woodcutter → wood, Blacksmith → stone, Healer → glowstone) for
-stone, from limited stock.
+**actually produce what they sell**. Each job has a work site in the district
+and a resource that must be nearby for it to function: a Woodcutter whose site
+has no trees stands there all day producing nothing, and a Miner's site needs
+stone underfoot. Production is per-unit over time, capped by a per-villager
+stock ceiling, and only accrues while the villager is on shift and standing at
+their site. What they sell follows from the job: Farmer → sand, Baker → snow,
+Miner → gravel, Woodcutter → wood, Blacksmith → stone, Healer → glowstone,
+traded for stone.
+
+The Healer's reagent is glowstone, which only exists in The Deeps, so a
+surface Healer works slowly rather than never — the intent is a reason to go
+underground, not a dead villager.
+
+## Crafting grid
+
+`C` opens a real 3x3 drag-and-drop grid. Drag blocks from the inventory strip
+into the nine cells and the result slot updates live; drop anything on the
+result to collect the craft. The panel uses Godot's built-in Control
+drag-and-drop (`_get_drag_data` / `_can_drop_data` / `_drop_data`) and the same
+`Crafting.find_recipe()` matcher as everything else, so shaped recipes still
+trim their empty border (a 2x2 works in any corner) and shapeless recipes
+ignore position.
+
+This replaced the earlier `C`-key "craft from what you carry" shortcut. A craft
+is refused unless the player is carrying *enough of every input* — a single
+stone cannot be stretched into a 3x3 recipe.
 
 Note on miniaudio: Godot's own `AudioDriver` *is* miniaudio, which is why these
 files decode and mix at all. GDScript cannot call miniaudio's C API directly, so
@@ -300,13 +323,14 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Ten suites run headless:
+Eleven suites run headless:
 
 | Suite | Covers |
 |---|---|
 | `zylann_test` | Voxel Tools presence, graceful degradation on stock Godot, streaming + GDScript generation + voxel read/write on the custom build |
 | `gameplay_test` | GLoot protoset/stacking/hotbar/serialization, shaped + shapeless recipe matching, craft consumes-and-produces, save/load round-trip including world edits, malformed-payload rejection |
 | `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, the 76+ shipped clips drive every animator state, mobs flee/attack/avoid ledges, villager schedules and trading, A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
+| `crafting_ui_test` | 3x3 grid construction, shaped and shapeless matching through the panel, drag payload source/target rules, an unaffordable craft is refused and consumes nothing, villager production requires shift + work site + nearby resource, stock caps, and production draws down on trade |
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
 | `interaction_test` | DDA raycast hit/normal/place cell, break/place, bedrock immunity, edit replay across reload, mining to completion, HDRI set + clock, village props and villagers |
@@ -335,11 +359,14 @@ Ten suites run headless:
   is 12 placeholder recipes, there is no furnace/smelting, no item durability,
   and only the GDScript backend's edit log is saved — a converted Luanti world
   is read but never written back.
-* **Villagers have a schedule and a trade, but no dialogue** — they work, rest,
-  sleep, greet and trade, but there is no conversation tree, no reputation, and
-  no jobs that actually produce their goods (a Farmer's sand exists because the
-  roster says so, not because a field was farmed). Mobs have no breeding,
-  hunger or taming.
+* **Villagers work and trade, but there is no dialogue** — no conversation
+  tree, no reputation, and no job *animation* beyond a generic work clip: a
+  Farmer does not visibly till a field, they stand at a spot holding a tool.
+  Production is a timer gated on a resource being nearby, not a simulation.
+  Mobs have no breeding, hunger or taming.
+* **The crafting grid is a single screen** — one 3x3 recipe at a time, with no
+  furnace, no smelting, no tool tiers, no durability and no recipe book to
+  scroll. The 12-recipe book is a placeholder.
 * Kenney's Impact Sounds and RPG Audio packs (the ones that would suit a voxel
   game best) are 404 at every mirror, so the interface pack is doubling as the
   effects bank.

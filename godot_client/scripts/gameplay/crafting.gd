@@ -176,17 +176,17 @@ static func _matches_shapeless(grid: Array, inputs: Array) -> bool:
 ## Trim the empty border off the grid, then compare the remaining cells with
 ## the pattern row by row. Trimming is what lets a 2x2 recipe be crafted in
 ## any corner of a 3x3 grid.
-static func _trimmed(grid: Array) -> Array:
+static func _trimmed(grid: Array, rows: int, width: int) -> Array:
 	var cells: Array = []
 	for v in grid:
 		cells.append(int(v))
-	var min_x := GRID_SIZE
+	var min_x := width
 	var max_x := -1
-	var min_y := GRID_SIZE
+	var min_y := rows
 	var max_y := -1
-	for y in GRID_SIZE:
-		for x in GRID_SIZE:
-			if cells[y * GRID_SIZE + x] == EMPTY:
+	for y in rows:
+		for x in width:
+			if cells[y * width + x] == EMPTY:
 				continue
 			min_x = mini(min_x, x)
 			max_x = maxi(max_x, x)
@@ -197,23 +197,38 @@ static func _trimmed(grid: Array) -> Array:
 	var out: Array = []
 	for y in range(min_y, max_y + 1):
 		for x in range(min_x, max_x + 1):
-			out.append(cells[y * GRID_SIZE + x])
+			out.append(cells[y * width + x])
 	return out
 
 
+## Flatten the pattern and trim its own empty border, so a recipe written as
+## ["XX.", "XX."] compares equal to a 2x2 grid instead of a 2x3 one. Without
+## this, trailing "." cells in a pattern can never match a trimmed grid.
 static func _pattern_cells(recipe: Dictionary) -> Array:
-	var out: Array = []
+	var rows: Array = []
 	for row in recipe["pattern"]:
+		var cells: Array = []
 		for ch in String(row):
 			if ch == DOT:
-				out.append(EMPTY)
+				cells.append(EMPTY)
 			else:
-				out.append(int(recipe["keys"].get(ch, 0)))
-	return out
+				cells.append(int(recipe["keys"].get(ch, 0)))
+		rows.append(cells)
+	var width := 0
+	for r in rows:
+		width = maxi(width, (r as Array).size())
+	# Pad every row to a rectangle so the grid is well formed, then flatten it
+	# -- _trimmed() works on a flat array, not a list of rows.
+	var flat: Array = []
+	for r in rows:
+		var line: Array = (r as Array).duplicate()
+		line.resize(width)
+		flat.append_array(line)
+	return _trimmed(flat, rows.size(), width)
 
 
 static func _matches_shaped(grid: Array, recipe: Dictionary) -> bool:
-	var have := _trimmed(grid)
+	var have := _trimmed(grid, GRID_SIZE, GRID_SIZE)
 	var want := _pattern_cells(recipe)
 	if have.size() != want.size():
 		return false

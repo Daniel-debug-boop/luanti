@@ -53,8 +53,25 @@ var time_of_day := 0.4
 ## The block a villager will trade for, and the price, set by the roster.
 var trade_block := ContentDB.SAND
 var trade_price := 2
-## How many of trade_block the villager will accept before running out.
-var trade_stock := 8
+## How many of trade_block the villager currently holds.
+var trade_stock := 0
+## Stock ceiling: a villager stops working once their store is full.
+@export var max_stock := 8
+## Where this villager works. Standing here during the Work phase is what
+## actually produces trade_stock.
+var work_site := Vector3.ZERO
+## The block that must be within RESOURCE_RADIUS of the work site for this
+## job to produce anything. -1 means the job needs no local resource.
+var resource_block := -1
+## Seconds of work per unit produced.
+@export var produce_interval := 6.0
+## Radius searched for resource_block.
+const RESOURCE_RADIUS := 3
+
+var _produce_timer := 0.0
+## Cached so the resource scan runs on an interval, not every frame.
+var _has_resource := false
+var _resource_timer := 0.0
 
 
 ## Daily routine. Villagers work their job during the day, stand about near
@@ -73,6 +90,50 @@ func update_schedule(tod: float) -> void:
 ## True when the villager is off shift and should stay near home.
 func is_resting() -> bool:
 	return activity == "Sleep" or activity == "Rest"
+
+
+## True when this villager is standing at their work site on shift.
+func is_working() -> bool:
+	return activity == "Work" \
+		and Vector2(_world_pos().x - work_site.x,
+			_world_pos().z - work_site.z).length() < 2.0
+
+
+## World position that also works before the node is in the tree.
+func _world_pos() -> Vector3:
+	return global_position if is_inside_tree() else position
+
+
+## Scan the ground around the work site for the block this job needs.
+## A Woodcutter standing on bare stone produces nothing, which is what makes
+## siting the district matter rather than being decoration.
+func refresh_resource() -> bool:
+	_has_resource = false
+	if resource_block < 0:
+		_has_resource = true
+		return true
+	if world == null or not is_instance_valid(world):
+		return false
+	var base := Vector3i(floori(work_site.x), floori(work_site.y), floori(work_site.z))
+	for dx in range(-RESOURCE_RADIUS, RESOURCE_RADIUS + 1):
+		for dz in range(-RESOURCE_RADIUS, RESOURCE_RADIUS + 1):
+			for dy in range(-2, 3):
+				if world.get_content_at(base + Vector3i(dx, dy, dz)) == resource_block:
+					_has_resource = true
+					return true
+	return _has_resource
+
+
+func has_resource() -> bool:
+	return _has_resource
+
+
+## Add one unit of produce, up to max_stock. Returns true when it was stored.
+func produce_one() -> bool:
+	if trade_stock >= max_stock:
+		return false
+	trade_stock += 1
+	return true
 
 
 func _ready() -> void:
@@ -149,6 +210,7 @@ func _add_box(parent: Node3D, pos: Vector3, size: Vector3,
 
 func _process(delta: float) -> void:
 	_greeting_time = maxf(0.0, _greeting_time - delta)
+	_work(delta)
 	_wait -= delta
 	if _wait <= 0.0:
 		_pick_target()
@@ -183,6 +245,30 @@ func _update_animation(delta: float) -> void:
 	elif speed <= 0.05 and activity == "Work" and randf() < 0.01:
 		_animator.play_once(CreatureAnimator.WORK_CLIPS)
 	_animator.update(delta, speed, SPEED, SPEED * 1.6)
+
+
+## Job production. Only accrues while the villager is actually at their work
+## site, on shift, with the job's resource nearby, and with room to store it.
+func _work(delta: float) -> void:
+	_resource_timer = maxf(0.0, _resource_timer - delta)
+	if _resource_timer <= 0.0:
+		_resource_timer = 2.0
+		refresh_resource()
+	if trade_stock >= max_stock or not _has_resource or not is_working():
+		_produce_timer = 0.0
+		return
+	_produce_timer += delta
+	# A while loop, not a single check: a long tick (or a test that calls
+	# _work() with a big delta) should bank every unit that elapsed, not just
+	# one. Bounded so a huge delta cannot spin.
+	var guard := 0
+	while _produce_timer >= produce_interval and guard < 64:
+		_produce_timer -= produce_interval
+		guard += 1
+		if not produce_one():
+			break
+	if guard > 0 and audio != null:
+		audio.play_at("pickup", _world_pos())
 
 
 func _face(want: float, delta: float) -> void:
@@ -223,6 +309,11 @@ func _pick_target() -> void:
 		return
 	# Resting villagers stay close to home: a short walk, not a field trip.
 	var reach := roam_radius * (0.3 if is_resting() else 1.0)
+	if activity == "Work" and work_site != Vector3.ZERO:
+		# On shift a villager heads for its work site rather than ambling.
+		_target = work_site
+		_wait = randf_range(2.0, 5.0)
+		return
 	var a := randf() * TAU
 	var r := randf() * reach
 	_target = home + Vector3(sin(a) * r, 0.0, cos(a) * r)

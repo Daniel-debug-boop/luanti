@@ -35,6 +35,15 @@ signal block_placed(pos: Vector3i, id: int)
 var audio: AudioDirector = null
 ## Where mined blocks drop. Null falls back to the interaction node itself.
 var drops_parent: Node = null
+## While true, mining and placing are suppressed (a menu has the cursor).
+var crafting_open := false
+
+
+## Suppress world interaction while a panel owns the mouse.
+func set_crafting_open(open: bool) -> void:
+	crafting_open = open
+	if open:
+		_stop_break()
 
 ## Blocks the player has mined, for the HUD statistic.
 var mined := 0
@@ -127,6 +136,9 @@ func break_time_left() -> float:
 
 ## Left mouse held: start or continue mining the targeted block.
 func start_break() -> void:
+	if crafting_open:
+		_stop_break()
+		return
 	if not has_target:
 		_stop_break()
 		return
@@ -144,6 +156,8 @@ func stop_breaking() -> void:
 
 ## Right mouse: place the selected hotbar block against the hit face.
 func place() -> bool:
+	if crafting_open:
+		return false
 	if not has_target:
 		return false
 	var hit := VoxelPick.raycast(world, player.get_eye_position(),

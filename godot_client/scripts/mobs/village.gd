@@ -191,6 +191,38 @@ func _rebuild(district: Vector3i) -> void:
 		add_child(v)
 		v.place_on_ground(world)
 		v.roam_radius = 7.0
+		# Give the job somewhere to actually happen, and say what it needs
+		# underfoot. A Woodcutter whose work site has no trees nearby will
+		# stand there all day producing nothing.
+		var site := _scatter_point(rng, origin, 5.0)
+		if site == Vector3i.ZERO:
+			site = spot
+		v.work_site = Vector3(site.x + 0.5, float(site.y), site.z + 0.5)
+		v.max_stock = 4 + rng.randi() % 5
+		match String(who["job"]):
+			"Farmer":
+				v.resource_block = ContentDB.GRASS
+				v.produce_interval = 5.0
+			"Baker":
+				v.resource_block = ContentDB.SAND
+				v.produce_interval = 6.0
+			"Miner":
+				v.resource_block = ContentDB.STONE
+				v.produce_interval = 7.0
+			"Woodcutter":
+				v.resource_block = ContentDB.WOOD
+				v.produce_interval = 8.0
+			"Blacksmith":
+				v.resource_block = ContentDB.STONE
+				v.produce_interval = 9.0
+			"Healer":
+				# The Healer's reagent is glowstone in the Deeps, which a
+				# surface village never has -- so they work slowly instead of
+				# never, rather than being a dead villager.
+				v.resource_block = ContentDB.GLOWSTONE
+				v.produce_interval = 12.0
+			_:
+				v.resource_block = -1
 		_villager_count += 1
 
 	print("[Village] district %s: %d props, %d villagers"
