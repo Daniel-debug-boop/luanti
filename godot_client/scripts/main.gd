@@ -212,6 +212,7 @@ func _process(delta: float) -> void:
 	# can no longer see.
 	_follow_volumes()
 	_collect_drops()
+	_update_villager_schedule()
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
@@ -269,6 +270,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Greet the closest villager within reach; also swings at a mob instead.
+## Tell nearby villagers what time it is, so they can run a day.
+func _update_villager_schedule() -> void:
+	if day_night == null:
+		return
+	var tod := day_night.time_of_day
+	for node in get_tree().get_nodes_in_group("villagers"):
+		var v := node as Villager
+		if v != null and is_instance_valid(v):
+			v.update_schedule(tod)
+
+
 func _talk_nearby() -> void:
 	for node in get_tree().get_nodes_in_group("villagers"):
 		var v := node as Villager
@@ -276,6 +288,16 @@ func _talk_nearby() -> void:
 				and v.global_position.distance_to(player.global_position) < 4.0:
 			print("[main] ", v.greet("Traveller"))
 			audio.play_at("mob_idle", v.global_position)
+			# Talking also offers a trade: stone for the villager's produce.
+			var got := v.trade(inventory)
+			if got != "":
+				print("[main] traded with %s: +%s" % [v.villager_name, got])
+				audio.play("craft")
+				interaction.refresh_hotbar()
+			else:
+				print("[main] %s has nothing to trade right now"
+					% v.villager_name)
+				audio.play("craft_fail")
 			return
 	for node in get_tree().get_nodes_in_group("mobs"):
 		var m := node as Mob

@@ -177,6 +177,16 @@ func _rebuild(district: Vector3i) -> void:
 		v.tunic = who["tunic"]
 		v.world = world
 		v.audio = audio
+		# Each trade gives back what the job produces, so a village is worth
+		# raiding politely rather than being decorative.
+		match String(who["job"]):
+			"Farmer": v.trade_block = ContentDB.SAND
+			"Baker": v.trade_block = ContentDB.SNOW
+			"Miner": v.trade_block = ContentDB.GRAVEL
+			"Woodcutter": v.trade_block = ContentDB.WOOD
+			"Blacksmith": v.trade_block = ContentDB.STONE
+			"Healer": v.trade_block = ContentDB.GLOWSTONE
+			_: v.trade_block = ContentDB.DIRT
 		v.position = Vector3(spot.x + 0.5, float(spot.y), spot.z + 0.5)
 		add_child(v)
 		v.place_on_ground(world)

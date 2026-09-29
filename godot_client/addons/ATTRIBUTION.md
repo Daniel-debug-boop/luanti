@@ -157,6 +157,17 @@ Two unused GLBs (Rogue, Rogue_Hooded, Skeleton_Mage, Skeleton_Rogue) were
 game only needed five. `scripts/mobs/creature_models.gd` only rescales and
 tints them.
 
+**The animations came with the models.** No animation asset was downloaded or
+added: each GLB already contains 76-95 clips (76 for the adventurers, 95 for
+the skeletons) — Idle, Walking_A/B/C, Running_A/B/C, melee and ranged attacks,
+Hit_A/B, Death_A/B, Jump_*, Dodge_*, Sit_*, Lie_*, Cheer, Taunt, Interact,
+Throw, Use_Item and the Spellcasting set. `scripts/mobs/creature_animator.gd`
+drives the `AnimationPlayer` already present in each model.
+
+Measured clip counts are asserted in `tools/creature_test.gd`, so deleting
+these models would fail the suite rather than silently stop the creatures
+moving.
+
 ## Kenney audio (CC0) — USED
 
 * Upstream: <https://kenney.nl> — Kenney

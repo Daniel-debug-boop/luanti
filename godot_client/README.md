@@ -38,6 +38,31 @@ instead of into them, and **block drops** — mining leaves a physical item that
 falls, settles, bobs and is collected by walking over it, and mobs drop loot
 when killed.
 
+### Animation
+
+**No animation files were downloaded.** Every KayKit character GLB already
+contains 76–95 clips (Idle, Walking_A, Running_A, attacks, Hit_A, Death_A,
+Jump_*, Cheer, Taunt, Sit_*, Spellcasting). `scripts/mobs/creature_animator.gd`
+finds the `AnimationPlayer` in an instantiated model and drives it: the caller
+states intent (`IDLE`, `MOVE`, `RUN`, `ATTACK`, `HURT`, `DEATH`), the animator
+picks a clip, crossfades, and scales the walk cycle to the mob's real speed.
+One-shot states (`ATTACK`, `HURT`) release back to locomotion; `DEATH` is
+terminal.
+
+### Smarter mobs and villagers
+
+Mobs now: sense ledges and turn around instead of walking off cliffs, keep
+hunting across decision re-rolls (this was a bug — they used to forget their
+target every few seconds), flee below 30% health, swing at the player in
+melee range on a cooldown, turn on whoever hit them, and never chase if they
+are passive. Mobs come in hostile and passive flavours.
+
+Villagers now run a **daily schedule** — work by day, rest in the late
+afternoon, sleep at night, with a shorter wander radius when off shift — and
+**trade**: each villager's job determines what they sell (Farmer → sand, Miner
+→ gravel, Woodcutter → wood, Blacksmith → stone, Healer → glowstone) for
+stone, from limited stock.
+
 Note on miniaudio: Godot's own `AudioDriver` *is* miniaudio, which is why these
 files decode and mix at all. GDScript cannot call miniaudio's C API directly, so
 the scripting surface is Godot's `AudioStreamPlayer`, which sits on top of it.
@@ -281,7 +306,7 @@ Ten suites run headless:
 |---|---|
 | `zylann_test` | Voxel Tools presence, graceful degradation on stock Godot, streaming + GDScript generation + voxel read/write on the custom build |
 | `gameplay_test` | GLoot protoset/stacking/hotbar/serialization, shaped + shapeless recipe matching, craft consumes-and-produces, save/load round-trip including world edits, malformed-payload rejection |
-| `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
+| `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, the 76+ shipped clips drive every animator state, mobs flee/attack/avoid ledges, villager schedules and trading, A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
 | `interaction_test` | DDA raycast hit/normal/place cell, break/place, bedrock immunity, edit replay across reload, mining to completion, HDRI set + clock, village props and villagers |
@@ -310,17 +335,17 @@ Ten suites run headless:
   is 12 placeholder recipes, there is no furnace/smelting, no item durability,
   and only the GDScript backend's edit log is saved — a converted Luanti world
   is read but never written back.
-* **Mobs have A\* pathfinding but no real animation** — they slide along a path
-  with a KayKit model attached; there are no skeletal animations, so the models
-  do not walk, only translate. Kenney's Impact Sounds and RPG Audio packs (the
-  ones that would suit a voxel game best) are 404 at every mirror, so the
-  interface pack is doubling as the effects bank.
-* **No villagers' schedules or dialogue** — villagers pace a loop and greet you,
-  but there is no day-job behaviour, no trading, and no name/jobs beyond the
-  generated roster. miniaudio is vendored
-  (`addons/thirdparty/miniaudio/`, public domain / MIT-0) but **not compiled**
-  — GDScript cannot call C. Godot's own `AudioDriver` already *is* miniaudio;
-  it is just not exposed to scripting.
+* **Villagers have a schedule and a trade, but no dialogue** — they work, rest,
+  sleep, greet and trade, but there is no conversation tree, no reputation, and
+  no jobs that actually produce their goods (a Farmer's sand exists because the
+  roster says so, not because a field was farmed). Mobs have no breeding,
+  hunger or taming.
+* Kenney's Impact Sounds and RPG Audio packs (the ones that would suit a voxel
+  game best) are 404 at every mirror, so the interface pack is doubling as the
+  effects bank.
+* miniaudio is vendored (`addons/thirdparty/miniaudio/`, public domain / MIT-0)
+  but **not compiled** — GDScript cannot call C. Godot's own `AudioDriver`
+  already *is* miniaudio; it is just not exposed to scripting.
 * **The Voxel Tools backend is new and only partly wired up.** Streaming,
   generation, voxel read/write, LOD terrain, the instancer and the stream
   objects are constructed and verified, and `F8` builds it at runtime. But

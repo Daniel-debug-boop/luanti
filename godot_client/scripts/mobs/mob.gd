@@ -18,6 +18,16 @@ enum State { IDLE, WANDER, CHASE, FLEE }
 @export var world: VoxelWorld
 @export var mob_color := Color(0.85, 0.3, 0.25)
 @export var max_health := 6.0
+## Hostile mobs close to melee range and hit; passive ones only flee.
+@export var hostile := true
+## Fraction of max_health below which a mob gives up and runs.
+@export var flee_threshold := 0.3
+## Seconds between melee swings.
+@export var attack_cooldown := 1.2
+## Damage per swing.
+@export var attack_damage := 2.0
+## Reach for a melee swing, in blocks.
+@export var attack_reach := 1.6
 ## Optional AudioDirector for hurt/death sounds. Not required, so tests can
 ## build a mob without one.
 var audio: AudioDirector = null
@@ -26,11 +36,19 @@ var audio: AudioDirector = null
 
 ## Body model from the CC0 KayKit skeleton pack. Null falls back to the box.
 var _model: Node3D = null
+var _animator: CreatureAnimator = null
 ## Recomputed at most this often, because A* over a busy grid is not free.
 const REPATH_INTERVAL := 0.6
 var _repath_timer := 0.0
 var _path: Array[Vector3i] = []
 var _path_index := 0
+## Plays the CC0 KayKit clips that ship inside the model.
+var animator: CreatureAnimator = null
+## When the mob will next be allowed to swing.
+var _attack_timer := 0.0
+var _ready_done := false
+## How far a mob will look before it gives up on a ledge.
+const LEDGE_LOOK := 2
 
 var state: int = State.IDLE
 var velocity := Vector3.ZERO
@@ -46,11 +64,26 @@ var _hurt_flash := 0.0
 
 
 func _ready() -> void:
+	ensure_ready()
+
+
+## Build the body and join the mobs group. Idempotent.
+##
+## Called from _ready() and available to callers, because a node added from
+## SceneTree._init (how the tests assemble a scene) does not get _ready() until
+## the first frame, which would leave a mob with no group membership and no
+## model.
+func ensure_ready() -> void:
+	if _ready_done:
+		return
+	_ready_done = true
 	add_to_group("mobs")
 	health = max_health
 	if model_seed == 0:
 		model_seed = randi()
 	_build_body()
+	_animator = CreatureAnimator.new()
+	_animator.attach(_model)
 	_mesh = MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(WIDTH, HEIGHT, WIDTH)
@@ -88,6 +121,7 @@ func _build_body() -> void:
 func _physics_process(delta: float) -> void:
 	_state_timer -= delta
 	_jump_cooldown -= delta
+	_attack_timer = maxf(0.0, _attack_timer - delta)
 	_hurt_flash = maxf(0.0, _hurt_flash - delta)
 	_repath_timer = maxf(0.0, _repath_timer - delta)
 	var target := _model if _model != null else _mesh
@@ -98,6 +132,37 @@ func _physics_process(delta: float) -> void:
 	_apply_gravity(delta)
 	_integrate(delta)
 	_update_visuals()
+	_update_animation(delta)
+	_try_attack()
+
+
+## Keep the walk cycle in step with how fast the mob is actually moving.
+func _update_animation(delta: float) -> void:
+	if _animator == null or not _animator.attached():
+		return
+	var planar := Vector2(velocity.x, velocity.z).length()
+	_animator.update(delta, planar, SPEED_WANDER, SPEED_CHASE)
+
+
+func _try_attack() -> void:
+	if not hostile or _target == null or not is_instance_valid(_target):
+		return
+	if _attack_timer > 0.0:
+		return
+	if world_position().distance_to(_world_pos(_target)) > attack_reach:
+		return
+	_attack_timer = attack_cooldown
+	if _animator != null:
+		_animator.set_state(CreatureAnimator.State.ATTACK)
+	if audio != null:
+		audio.play_at("mob_idle", world_position())
+	if _target.has_method("damage"):
+		_target.damage(attack_damage, "a wanderer")
+
+
+## Tree-safe world position of another node.
+static func _world_pos(node: Node3D) -> Vector3:
+	return node.global_position if node.is_inside_tree() else node.position
 
 
 func _think(delta: float) -> void:
@@ -112,6 +177,9 @@ func _think(delta: float) -> void:
 
 	match state:
 		State.WANDER:
+			# Steer away from an edge rather than walking off it.
+			if _ledge_ahead():
+				_wander_dir = -_wander_dir
 			velocity.x = _wander_dir.x * SPEED_WANDER
 			velocity.z = _wander_dir.z * SPEED_WANDER
 		State.CHASE:
@@ -164,23 +232,65 @@ func _follow_path(delta: float, goal_pos: Vector3) -> Vector3:
 
 func _pick_state() -> void:
 	_state_timer = _rng().randf_range(1.5, 4.0)
+
+	# Hurt and running out of health beats every other consideration: a mob
+	# at 10% health should not calmly go back to wandering.
+	if _target != null and is_instance_valid(_target) \
+			and health < max_health * flee_threshold:
+		state = State.FLEE
+		return
+	# A passive mob that has been hit also runs, whether or not it is healthy.
+	if not hostile and _target != null and is_instance_valid(_target):
+		state = State.FLEE
+		return
+	# Otherwise a mob with a live target keeps hunting. Re-rolling to IDLE or
+	# WANDER here would make a chase give up every few seconds for no reason.
+	if _target != null and is_instance_valid(_target):
+		state = State.CHASE
+		return
+
 	var r := _rng().randf()
 	if r < 0.35:
 		state = State.IDLE
 		velocity.x = 0.0
 		velocity.z = 0.0
-	elif r < 0.9:
+	else:
 		state = State.WANDER
 		var a := _rng().randf_range(0.0, TAU)
 		_wander_dir = Vector3(sin(a), 0.0, cos(a))
-	else:
-		state = State.WANDER
+
+
+## True when the ground ends within LEDGE_LOOK blocks ahead, so a mob steering
+## into empty air turns around instead of marching off a cliff.
+func _ledge_ahead() -> bool:
+	if world == null or not is_instance_valid(world):
+		return false
+	var dir := Vector3(velocity.x, 0.0, velocity.z)
+	if dir.length() < 0.05:
+		dir = _wander_dir
+	if dir.length() < 0.05:
+		return false
+	dir = dir.normalized()
+	var here := world_position()
+	for step in range(1, LEDGE_LOOK + 1):
+		var p := here + dir * (float(step) * 0.7)
+		var col := Vector3i(floori(p.x), floori(here.y), floori(p.z))
+		if not world.solid_at(col - Vector3i(0, 1, 0)):
+			return true
+	return false
+
+
+## World position that also works before the node is in the tree.
+func world_position() -> Vector3:
+	return global_position if is_inside_tree() else position
 
 
 ## Called by the player interacting with the mob.
 func set_target(t: Node3D, chase := true) -> void:
 	_target = t
-	state = State.CHASE if chase else State.FLEE
+	# A passive mob never switches to chasing just because it was hit.
+	var want_chase := chase and hostile and health > max_health * flee_threshold
+	state = State.CHASE if want_chase else State.FLEE
 	_state_timer = 4.0
 
 
@@ -286,6 +396,19 @@ func apply_damage(n: float) -> void:
 	var body := _model if _model != null else _mesh
 	if body != null:
 		body.scale = Vector3.ONE * 1.12
+	if _animator != null and _animator.attached():
+		_animator.set_state(CreatureAnimator.State.DEATH if health <= 0.0
+			else CreatureAnimator.State.HURT)
+	# Getting hit is enough to turn a mob on whoever did it, if it is still
+	# standing -- that is what makes a fight escalate instead of ending.
+	if health > 0.0 and _target == null:
+		var tree := get_tree()
+		if tree != null:
+			var players := tree.get_nodes_in_group("players")
+			if not players.is_empty():
+				_target = players[0] as Node3D
+				state = State.CHASE if hostile else State.FLEE
+				_state_timer = 6.0
 	if audio != null:
 		audio.play_at("mob_hurt" if is_alive() else "pickup", global_position)
 	if health <= 0.0:

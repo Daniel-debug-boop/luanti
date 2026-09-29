@@ -38,16 +38,60 @@ var _greeting := ""
 var _greeting_time := 0.0
 var _body: Node3D
 var _on_ground := false
+## Previous position, used to derive actual travel speed for the walk cycle.
+var _last_pos := Vector3.ZERO
+var _ready_done := false
 ## The KayKit model, or null when the fallback body is in use.
 var _model: Node3D = null
 var audio: AudioDirector = null
+## Plays the CC0 KayKit clips that ship inside the model.
+var _animator: CreatureAnimator = null
+## Current daily activity, set by update_schedule().
+var activity := "Idle"
+## 0..1 clock reading; below 0.25 is night, above 0.75 is late afternoon.
+var time_of_day := 0.4
+## The block a villager will trade for, and the price, set by the roster.
+var trade_block := ContentDB.SAND
+var trade_price := 2
+## How many of trade_block the villager will accept before running out.
+var trade_stock := 8
+
+
+## Daily routine. Villagers work their job during the day, stand about near
+## home in the evening, and go to bed at night -- so a village looks like it
+## has a day rather than a permanent idle loop.
+func update_schedule(tod: float) -> void:
+	time_of_day = tod
+	if tod < 0.25 or tod > 0.85:
+		activity = "Sleep"
+	elif tod > 0.75:
+		activity = "Rest"
+	else:
+		activity = "Work"
+
+
+## True when the villager is off shift and should stay near home.
+func is_resting() -> bool:
+	return activity == "Sleep" or activity == "Rest"
 
 
 func _ready() -> void:
+	ensure_ready()
+
+
+## Idempotent setup, callable by tests that assemble a scene from
+## SceneTree._init (where _ready() is deferred to the first frame).
+func ensure_ready() -> void:
+	if _ready_done:
+		return
+	_ready_done = true
 	add_to_group("villagers")
 	home = global_position
+	_last_pos = global_position
 	_target = home
 	_build_visual()
+	_animator = CreatureAnimator.new()
+	_animator.attach(_model)
 
 
 ## Assemble the villager from boxes: legs, torso, arms, head, and a nose so the
@@ -122,6 +166,23 @@ func _process(delta: float) -> void:
 	else:
 		_move_towards(_target, delta)
 	_face(want, delta)
+	_update_animation(delta)
+
+
+## Drive the walk cycle from actual travel speed, and play a work clip while
+## the villager is on shift.
+func _update_animation(delta: float) -> void:
+	if _animator == null or not _animator.attached():
+		return
+	var moved := absf(global_position.x - _last_pos.x) \
+		+ absf(global_position.z - _last_pos.z)
+	_last_pos = global_position
+	var speed := moved / maxf(delta, 0.0001)
+	if _greeting_time > 0.0:
+		_animator.play_once(CreatureAnimator.GREET_CLIPS)
+	elif speed <= 0.05 and activity == "Work" and randf() < 0.01:
+		_animator.play_once(CreatureAnimator.WORK_CLIPS)
+	_animator.update(delta, speed, SPEED, SPEED * 1.6)
 
 
 func _face(want: float, delta: float) -> void:
@@ -129,6 +190,8 @@ func _face(want: float, delta: float) -> void:
 	_facing += diff * minf(1.0, TURN_SPEED * delta)
 	if _body != null:
 		_body.rotation.y = _facing
+	if _model != null:
+		_model.rotation.y = _facing
 
 
 func _move_towards(target: Vector3, delta: float) -> void:
@@ -158,8 +221,10 @@ func _pick_target() -> void:
 	if randf() < 0.34:
 		_wait = randf_range(1.5, 4.0)
 		return
+	# Resting villagers stay close to home: a short walk, not a field trip.
+	var reach := roam_radius * (0.3 if is_resting() else 1.0)
 	var a := randf() * TAU
-	var r := randf() * roam_radius
+	var r := randf() * reach
 	_target = home + Vector3(sin(a) * r, 0.0, cos(a) * r)
 	_wait = randf_range(2.0, 5.0)
 
@@ -207,6 +272,24 @@ func greet(player_name: String) -> String:
 	_greeting = "%s the %s tips their hat." % [villager_name, job]
 	_greeting_time = 4.0
 	return _greeting
+
+
+## Villagers trade their job's produce for stone. Returns what was traded, or
+## "" when the villager is out of stock or the player cannot afford it.
+func trade(inv: PlayerInventory) -> String:
+	if inv == null or not is_instance_valid(inv):
+		return ""
+	if trade_stock <= 0:
+		return ""
+	# Never take more stone than there is produce to pay for, or the last trade
+	# would silently overcharge the player.
+	var want := mini(trade_price, trade_stock)
+	var have := inv.consume_block(ContentDB.STONE, want)
+	if have <= 0:
+		return ""
+	trade_stock -= have
+	inv.give_block(trade_block)
+	return "%s x%d" % [ContentDB.name_of(trade_block), have]
 
 
 func greeting() -> String:
