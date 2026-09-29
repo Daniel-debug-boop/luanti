@@ -367,8 +367,9 @@ func _update_vitals() -> void:
 
 
 ## Paint each slot with its block's palette colour and mark the selected one.
-## With an inventory attached this reads the GLoot hotbar, so the display
-## follows what the player has actually mined and crafted.
+## Reads the GLoot hotbar, so the display follows what the player has actually
+## mined and crafted. There is no second, fixed block list to fall back to:
+## what is on screen is what the player is carrying, or the slot is empty.
 func _update_hotbar() -> void:
 	var bar: Array = []
 	var sel := -1
@@ -378,12 +379,11 @@ func _update_hotbar() -> void:
 			var held := inventory.hotbar[i].get_item()
 			bar.append(-1 if held == null
 				else PlayerInventory.block_id_of(held.get_prototype().get_id()))
-	elif interaction != null:
-		bar = interaction.hotbar
-		sel = interaction.selected
 	for i in _hotbar_slots.size():
 		var slot := _hotbar_slots[i]
-		var swatch := slot.get_meta("swatch") as ColorRect
+		var swatch := slot.get_meta("swatch", null) as ColorRect
+		if swatch == null:
+			continue
 		if i < bar.size() and int(bar[i]) >= 0:
 			var id := int(bar[i])
 			swatch.color = ContentDB.color_of(id)

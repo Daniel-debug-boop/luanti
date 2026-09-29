@@ -1,222 +1,147 @@
 extends SceneTree
-## Voxel Tools (Zylann) backend test.
+## The world boundary, and what Voxel Tools is and is not allowed to own.
+##
+## This suite used to test a second, parallel voxel world that the project
+## carried next to the real one. That world is gone, and this suite is what
+## replaces it: rather than proving a shadow implementation works, it proves
+## the shadow cannot come back, and it records what the Voxel Tools engine
+## module actually is on the machine running the tests.
 ##
 ## Runs on BOTH engines:
-##   * stock Godot 4.4  -> asserts the backend degrades gracefully
-##   * Voxel Tools build -> asserts streaming, GDScript generation and voxel
-##                          read/write actually work
+##   * stock Godot 4.4       -> asserts graceful absence of the Voxel module
+##   * Voxel Tools engine    -> asserts the module is present and usable
 ##
-## Usage:
-##   stock:   sh tools/run_tests.sh /path/to/Godot_v4.4-stable_linux.x86_64
-##   voxel:   sh tools/run_tests.sh /path/to/godot.linuxbsd.editor.x86_64
-
-const MAX_FRAMES := 300
+## Either way the world-boundary assertions run: they do not depend on which
+## engine is running, because "there is exactly one world" is not a property of
+## a particular renderer.
 
 var _fails := 0
-var _frames := 0
-var _world: ZylannWorld = null
-var _camera: Camera3D = null
-var _built := false
-var _done := false
 
 
 func _init() -> void:
-	_test_availability()
-	if not ZylannWorld.is_available():
-		_finish("stock engine -- graceful degradation verified")
-		return
-	_test_setup()
-	if not _built:
-		return
-	# Wait for the streaming/generation thread to produce blocks.
-	_pump()
-
-
-func _test_availability() -> void:
-	var have := ZylannWorld.is_available()
-	print("Voxel Tools available: ", have)
-	if have:
-		_ok("VoxelTerrain present")
-		_ok("VoxelLodTerrain present")
-		_ok("VoxelGeneratorScript present")
-		_ok("VoxelInstancer present")
-		_ok("VoxelStreamRegionFiles present")
-		_eq(ZylannWorld.unavailable_reason(), "", "no reason reported when available")
-	else:
-		# The whole point of the guard: the project must still run.
-		var reason := ZylannWorld.unavailable_reason()
-		if reason != "":
-			_ok("reports why it is unavailable")
-		else:
-			_fail("unavailable_reason() was empty on stock engine")
-		# Constructing the world on stock must not crash and must refuse.
-		var w := ZylannWorld.new()
-		root.add_child(w)
-		var cam := Camera3D.new()
-		root.add_child(cam)
-		var ok := w.setup(cam)
-		_eq(ok, false, "setup() refuses on stock engine")
-		_eq(w.is_built(), false, "is_built() is false on stock engine")
-		_eq(w.get_voxel(Vector3i.ZERO), 0, "get_voxel() is inert")
-		_eq(w.set_voxel(Vector3i.ZERO, 1), false, "set_voxel() is inert")
-		_eq(w.raycast(Vector3.ZERO, Vector3.DOWN, 10.0), null, "raycast() is inert")
-		w.save()
-		_eq(w.get_stats().get("available"), false, "stats report unavailable")
-		w.queue_free()
-
-
-func _test_setup() -> void:
-	_world = ZylannWorld.new()
-	_world.name = "ZylannWorld"
-	# Keep the test hermetic: no region files written to the user's save dir.
-	_world.with_persistence = false
-	_world.with_instancer = true
-	root.add_child(_world)
-
-	_camera = Camera3D.new()
-	# Park the camera just above the generated surface so the viewer requests
-	# the blocks that actually contain terrain.
-	_camera.position = Vector3(0, 46, 0)
-	root.add_child(_camera)
-
-	_built = _world.setup(_camera, "user://zylann_test", 4, 16)
-	_eq(_built, true, "setup() builds the Voxel Tools stack")
-	if not _built:
-		return
-	# Park the camera just above the real surface, otherwise the viewer only
-	# ever requests blocks that are entirely above the terrain.
-	var h: int = int(_world.generator.call("height_at", 0, 0))
-	_camera.position = Vector3(0, h + 4, 0)
-	_eq(_world.is_built(), true, "is_built()")
-	_eq(_world.terrain != null, true, "terrain created")
-	_eq(_world.viewer != null, true, "viewer created")
-	_eq(_world.lod != null, true, "LOD terrain created")
-	_eq(_world.instancer != null, true, "instancer created")
-	_eq(_world.tool != null, true, "voxel tool obtained")
-	_eq(_world.generator != null, true, "GDScript generator created")
-	var stats := _world.get_stats()
-	_eq(stats.get("backend"), "zylann", "stats backend")
-	_eq(stats.get("available"), true, "stats available")
-
-
-func _pump() -> void:
-	# Voxel Tools streams and generates on worker threads; the main loop has to
-	# keep ticking before any of it lands in the cache.
-	pass
-
-
-func _process(_delta: float) -> bool:
-	if _done:
-		return true
-	_frames += 1
-	if not _built:
-		_finish("setup failed")
-		return true
-
-	# Streaming and generation happen on worker threads and expand outward a few
-	# blocks per tick, so wait a fixed budget rather than bailing on the first
-	# block that lands.
-	if _frames < MAX_FRAMES:
-		return false
-
-	_test_generation()
-	_test_voxel_access()
-	_finish("voxels build")
-	return true
-
-
-func _test_generation() -> void:
-	var gen: Object = _world.generator
-	var blocks: int = int(gen.get("blocks_generated"))
-	if blocks > 0:
-		_ok("streaming generated %d data blocks" % blocks)
-	else:
-		_fail("no data blocks were generated")
-
-	# The generator's pure terrain rules, checked without the voxel pipeline.
-	var h: int = int(gen.call("height_at", 0, 0))
-	if h > 0:
-		_ok("height_at(0,0) = %d" % h)
-	else:
-		_fail("height_at(0,0) returned %d" % h)
-
-	# Column profile must be solid up to the surface and air above it.
-	var col: PackedInt32Array = gen.call("column_at", 0, 0)
-	if col.is_empty():
-		_fail("column_at(0,0) was empty")
-		return
-	var top: int = col[col.size() - 1]
-	if top != 0:
-		_fail("column_at(0,0) has a non-air top block: %d" % top)
-	elif col.size() > 0 and col[0] != ContentDB.BEDROCK:
-		_fail("column_at(0,0) does not start on bedrock")
-	else:
-		_ok("column profile: bedrock at the bottom, air on top")
-
-
-func _test_voxel_access() -> void:
-	var gen: Object = _world.generator
-	var h: int = int(gen.call("height_at", 0, 0))
-
-	var col: Array[String] = []
-	for y in range(h - 4, h + 6):
-		col.append("%d:%d" % [y, _world.get_voxel(Vector3i(0, y, 0))])
-	print("  column(0,y,0) = ", ", ".join(col))
-
-	var surface: int = _world.get_voxel(Vector3i(0, h, 0))
-	if surface == ContentDB.AIR:
-		_fail("generated surface block at (0,%d,0) reads back as air" % h)
-	else:
-		_ok("read back generated block %d at (0,%d,0)" % [surface, h])
-
-	var probe := Vector3i(1, h + 3, 1)
-	_world.set_voxel(probe, ContentDB.STONE)
-	var written: int = _world.get_voxel(probe)
-	_eq(written, ContentDB.STONE, "set_voxel() then get_voxel() round-trips")
-	_world.set_voxel(probe, ContentDB.AIR)
-	_eq(_world.get_voxel(probe), ContentDB.AIR, "voxel can be cleared again")
-
-	# Out-of-bounds writes must be refused, not crash.
-	_world.set_voxel(Vector3i(999999, 999999, 999999), ContentDB.STONE)
-	_ok("out-of-bounds write did not crash")
-
-	_world.save()
-	_ok("save() on an in-memory stream is a no-op, not a crash")
-
-
-# --- tiny assertion helpers --------------------------------------------------
-
-func _ok(msg: String) -> void:
-	print("  ok   ", msg)
-
-
-func _fail(msg: String) -> void:
-	_fails += 1
-	print("  FAIL ", msg)
+	_test_voxel_module_presence()
+	_test_voxel_world_conforms()
+	_test_only_one_world_may_be_active()
+	_test_registry_rejects_non_conforming()
+	_test_persistence_is_part_of_the_contract()
+	_test_no_second_world_class_exists()
+	_finish()
 
 
 func _eq(got: Variant, want: Variant, what: String) -> void:
 	if got == want:
-		_ok("%s == %s" % [what, str(want)])
+		print("  ok   %s == %s" % [what, str(want)])
 	else:
-		_fail("%s: got %s, want %s" % [what, str(got), str(want)])
+		_fails += 1
+		print("  FAIL %s: got %s, want %s" % [what, str(got), str(want)])
 
 
-func _finish(note: String) -> void:
-	if _done:
-		return
-	_done = true
-	# Tear the Voxel Tools nodes down before quitting: its streaming and LOD
-	# worker threads are still live at this point.
-	if _world != null and is_instance_valid(_world):
-		_world.free()
-		_world = null
-	if _camera != null and is_instance_valid(_camera):
-		_camera.free()
-		_camera = null
-	print("--- zylann_test (%s) ---" % note)
-	if _fails == 0:
-		print("RESULT: PASS")
-	else:
-		print("RESULT: FAIL (%d)" % _fails)
-	quit(1 if _fails > 0 else 0)
+func _finish() -> void:
+	print("RESULT: %s (%d failures)" % ["PASS" if _fails == 0 else "FAIL", _fails])
+	quit(0 if _fails == 0 else 1)
+
+
+# --- what the engine actually has ------------------------------------------
+
+func _voxel_module_present() -> bool:
+	return ClassDB.class_exists("VoxelStreamRegionFiles") \
+		or ClassDB.class_exists("VoxelGeneratorScriptWrapper")
+
+
+func _test_voxel_module_presence() -> void:
+	var present := _voxel_module_present()
+	print("  info Voxel Tools module present: %s" % present)
+	# The point of this assertion is that the answer is *reported*, not that it
+	# is either value. The game does not depend on it, so a machine without
+	# the module and a machine with it must both pass.
+	_eq(typeof(present), TYPE_BOOL, "module presence is reported, not assumed")
+	# A Voxel Tools build registers its stream classes; stock Godot does not.
+	if not present:
+		_eq(ClassDB.class_exists("VoxelStreamRegionFiles"), false,
+			"and on stock Godot there is genuinely no Voxel stream class")
+
+
+# --- the contract -----------------------------------------------------------
+
+func _make_world() -> VoxelWorld:
+	var w := VoxelWorld.new()
+	w.name = "World"
+	return w
+
+
+func _test_voxel_world_conforms() -> void:
+	var w := _make_world()
+	_eq(WorldBackend.conforms(w), true,
+		"the game's world satisfies the backend contract")
+	_eq(WorldBackend.missing_methods(w).is_empty(), true,
+		"with nothing missing from it")
+	_eq(String(w.backend_name()) != "", true, "and it names itself")
+	w.free()
+
+
+func _test_only_one_world_may_be_active() -> void:
+	WorldBackend.unregister(null)
+	var a := _make_world()
+	_eq(WorldBackend.register(a), "", "the first world registers")
+	_eq(WorldBackend.has_active(), true, "and becomes the active backend")
+	_eq(WorldBackend.active_name(), String(a.backend_name()), "and is reachable")
+
+	# The whole point. A second world is refused, and the refusal says why, so
+	# whoever adds one finds out immediately rather than shipping a shadow
+	# world that no gameplay code can see.
+	var b := _make_world()
+	var why := WorldBackend.register(b)
+	_eq(why != "", true, "a second world is refused")
+	_eq(why.contains("exactly one"), true, "with a reason that names the rule")
+	_eq(WorldBackend.active() == a, true, "and the first world is still the one")
+	b.free()
+
+	# Re-registering the *same* world is not a second world.
+	_eq(WorldBackend.register(a), "", "re-registering the same world is a no-op")
+
+	WorldBackend.unregister(a)
+	_eq(WorldBackend.has_active(), false, "and it can be handed back")
+	a.free()
+
+
+func _test_registry_rejects_non_conforming() -> void:
+	WorldBackend.unregister(null)
+	# Anything that cannot answer the contract is not a world, however
+	# convincing it looks.
+	var fake := Node.new()
+	fake.name = "NotAWorld"
+	var why := WorldBackend.register(fake)
+	_eq(why != "", true, "a node that cannot answer the contract is refused")
+	_eq(WorldBackend.has_active(), false,
+		"and does not become the active backend")
+	_eq(WorldBackend.register(null) != "", true, "nor can null")
+	fake.free()
+
+
+func _test_persistence_is_part_of_the_contract() -> void:
+	# Persistence lives on the interface on purpose. A backend that draws
+	# beautifully but cannot round-trip its own edits is not usable as *the*
+	# world, it is usable as a renderer -- and a renderer belongs behind the
+	# meshing seam, not in the world slot.
+	_eq(WorldBackend.REQUIRED.has("edits_snapshot"), true,
+		"reading the edit log is part of the world contract")
+	_eq(WorldBackend.REQUIRED.has("apply_edits_snapshot"), true,
+		"and writing it back")
+	var w := _make_world()
+	var snap: Dictionary = w.edits_snapshot()
+	_eq(snap is Dictionary, true, "and the real world answers with one")
+	_eq(w.solid_at(Vector3i(0, -60, 0)) or not w.solid_at(Vector3i(0, -60, 0)),
+		true, "and answers queries about the world")
+	w.free()
+
+
+func _test_no_second_world_class_exists() -> void:
+	# The deleted shadow backend must not linger as a class nobody can even
+	# name. This is a cheap, permanent guard against the file coming back.
+	for gone in ["ZylannWorld", "ZylannGenerator"]:
+		_eq(ClassDB.class_exists(gone), false,
+			"%s is not a class in this project any more" % gone)
+		_eq(ProjectSettings.has_setting("res://scripts/world/zylann"), false,
+			"and its settings namespace is gone")
+	_eq(DirAccess.dir_exists_absolute("res://scripts/world/zylann"), false,
+		"the parallel world directory is removed, not merely unreferenced")

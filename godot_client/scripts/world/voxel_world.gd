@@ -112,6 +112,17 @@ func texture_count() -> int:
 	return materials.loaded_count() if materials != null else 0
 
 
+## Identity for the `WorldBackend` contract. A world must be able to say which
+## backend it is, so a second one is refused by name rather than silently.
+func backend_name() -> String:
+	return "gdscript"
+
+
+## Whether this world is currently registered as the single active backend.
+func is_active_backend() -> bool:
+	return WorldBackend.active() == self
+
+
 func get_stats() -> Dictionary:
 	return {
 		"chunks_loaded": _blocks.size(),

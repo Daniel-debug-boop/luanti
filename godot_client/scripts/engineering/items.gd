@@ -153,10 +153,78 @@ static func can_build(inventory: PlayerInventory, component_id: String) -> Dicti
 	if inventory != null:
 		for item in bill.keys():
 			var need := int(bill[item])
-			var have := inventory.count_bill_item(String(item))
+			var have := count_bill_item(inventory, String(item))
 			if have < need:
 				missing[String(item)] = need - have
 	return {"ok": missing.is_empty(), "missing": missing, "bill": bill}
+
+
+# --- bills -------------------------------------------------------------------
+#
+# A bill mixes world blocks ("copper", which the player smelted) and
+# engineering components ("shaft"). Resolving one into the other is
+# engineering's job, not the container's: `PlayerInventory` knows how to count
+# and consume a block and how to count and consume an engineering item, and
+# nothing about which of the two a given name refers to. That knowledge lives
+# here, so the inventory stays below the engineering layer instead of reaching
+# up into it to find out what exists.
+
+
+## How many of a bill entry the player is carrying, counting both kinds.
+static func count_bill_item(inventory: PlayerInventory, item: String) -> int:
+	if has(item):
+		return inventory.count_eng(item)
+	var bid := block_id_for(item)
+	if bid < 0:
+		bid = inventory.block_id_by_name(item)
+	return 0 if bid < 0 else inventory.count_of(bid)
+
+
+## Take `n` of a bill entry, whichever kind it is.
+static func consume_bill_item(inventory: PlayerInventory, item: String, n: int = 1) -> int:
+	if has(item):
+		return inventory.consume_eng(item, n)
+	var bid := block_id_for(item)
+	if bid < 0:
+		bid = inventory.block_id_by_name(item)
+	return 0 if bid < 0 else inventory.consume_block(bid, n)
+
+
+## Can the player afford a whole bill, counting both kinds?
+static func can_afford_bill(inventory: PlayerInventory, bill: Dictionary) -> bool:
+	for item in bill.keys():
+		if count_bill_item(inventory, String(item)) < int(bill[item]):
+			return false
+	return true
+
+
+## Pay a whole bill, or nothing at all. A partial payment would eat a
+## player's copper and then fail to make the motor.
+static func pay_bill(inventory: PlayerInventory, bill: Dictionary) -> bool:
+	if not can_afford_bill(inventory, bill):
+		return false
+	for item in bill.keys():
+		consume_bill_item(inventory, String(item), int(bill[item]))
+	return true
+
+
+# --- protoset ----------------------------------------------------------------
+
+## GLoot prototype entries for every engineering item, ready for
+## `PlayerInventory.register_prototypes()`. The inventory is told what to hold
+## by the composition root; it never asks the engineering system itself.
+static func prototype_entries() -> Dictionary:
+	_ensure()
+	var out := {}
+	for item in all_item_ids():
+		var info := info(item)
+		var c: Color = info.get("color", Color.GRAY)
+		out[PlayerInventory.eng_prototype_id(item)] = {
+			"display_name": String(info.get("name", item)),
+			"color": "Color(%f, %f, %f, %f)" % [c.r, c.g, c.b, c.a],
+			"max_stack": str(PlayerInventory.MAX_STACK),
+		}
+	return out
 
 
 ## The refined stock a material name corresponds to as a world block, or "".

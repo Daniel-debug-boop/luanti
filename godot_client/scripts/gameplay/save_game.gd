@@ -13,6 +13,13 @@ extends RefCounted
 ##
 ## Format: one JSON file per slot under `user://saves/slot_N.json`, written
 ## atomically (temp file + rename) so a crash mid-write cannot corrupt a save.
+##
+## Subsystems are persisted through a duck-typed `Object` that answers
+## `serialize()` / `deserialize()`, not through their concrete classes.
+## Persistence is below the gameplay layer and must not know what it is
+## persisting -- naming `EngEngineering` here made the save system depend
+## upward on a system it has no business knowing about, and would have made
+## every future subsystem an edit to this file.
 
 const SAVE_DIR := "user://saves"
 const SLOT_PREFIX := "slot_"
@@ -81,7 +88,7 @@ static func describe_slot(slot: int) -> String:
 
 ## Gather the live game state into a saveable Dictionary.
 static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
-		dimension: int, engineering: EngEngineering = null) -> Dictionary:
+		dimension: int, engineering: Object = null) -> Dictionary:
 	var state := {
 		"version": SAVE_VERSION,
 		"dimension": dimension,
@@ -144,7 +151,7 @@ static func write_slot(slot: int, state: Dictionary) -> bool:
 ## Capture and write in one step.
 static func save_game(slot: int, player: Player, inv: PlayerInventory,
 		world: VoxelWorld, dimension: int,
-		engineering: EngEngineering = null) -> bool:
+		engineering: Object = null) -> bool:
 	return write_slot(slot, capture(player, inv, world, dimension, engineering))
 
 
@@ -180,7 +187,7 @@ static func load_slot(slot: int) -> Dictionary:
 ## are skipped rather than aborting the whole load, so one bad subsystem cannot
 ## cost the player everything else.
 static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
-		world: VoxelWorld, engineering: EngEngineering = null) -> bool:
+		world: VoxelWorld, engineering: Object = null) -> bool:
 	last_error = ""
 	if data.is_empty():
 		last_error = "nothing to load"
@@ -224,7 +231,7 @@ static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
 
 ## Load a slot and apply it.
 static func load_game(slot: int, player: Player, inv: PlayerInventory,
-		world: VoxelWorld, engineering: EngEngineering = null) -> bool:
+		world: VoxelWorld, engineering: Object = null) -> bool:
 	var data := load_slot(slot)
 	if data.is_empty():
 		return false

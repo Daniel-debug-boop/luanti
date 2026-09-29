@@ -19,17 +19,15 @@ signal block_placed(pos: Vector3i, id: int)
 @export var reach := 6.0
 ## Seconds of continuous mining to break a hardness-1 block.
 @export var base_break_time := 0.45
-## Blocks the player can carry, selected with the number keys.
-@export var hotbar := [
-	ContentDB.GRASS, ContentDB.DIRT, ContentDB.STONE,
-	ContentDB.SAND, ContentDB.WOOD, ContentDB.SNOW,
-]
 
 @export var world: VoxelWorld
 @export var player: Player
-## When set, mining yields items into it and placing consumes from it. When
-## null, the legacy fixed `hotbar` list is used instead, so the old tests and
-## the fixed-block behaviour still work.
+## The one source of what the player is holding. There is no second,
+## fixed-list hotbar: an earlier version kept one "so the old tests and the
+## fixed-block behaviour still work", which meant two answers to "what does the
+## player have selected" and no way to tell which one the player saw. Now the
+## inventory is the only answer, and a test that wants a block asks the
+## inventory for it.
 @export var inventory: PlayerInventory
 ## Optional: break/place/step sounds. Null in tests that do not care.
 var audio: AudioDirector = null
@@ -181,12 +179,15 @@ func place() -> bool:
 
 
 ## Block id the player would place right now, or -1 when they hold nothing.
+##
+## -1 rather than a free stone when there is no inventory: a caller that has
+## not given this node a backpack has not been told what the player is holding,
+## and guessing "stone" would let a half-wired interaction node place blocks
+## the player never picked up.
 func selected_block() -> int:
 	if inventory != null and is_instance_valid(inventory):
 		return inventory.selected_block_id()
-	if hotbar.is_empty():
-		return ContentDB.STONE
-	return int(hotbar[clampi(selected, 0, hotbar.size() - 1)])
+	return -1
 
 
 func select_slot(i: int) -> void:
@@ -195,11 +196,9 @@ func select_slot(i: int) -> void:
 		selected = inventory.selected
 		if audio != null:
 			audio.play("ui_select")
-		return
-	selected = clampi(i, 0, hotbar.size() - 1)
 
 
-## Re-read the hotbar after the inventory changed (craft, load, stow).
+## Re-read the selection after the inventory changed (craft, load, stow).
 func refresh_hotbar() -> void:
 	if inventory != null and is_instance_valid(inventory):
 		selected = inventory.selected

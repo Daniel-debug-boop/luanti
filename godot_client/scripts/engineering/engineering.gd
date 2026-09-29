@@ -41,8 +41,11 @@ const MAX_VISUALS := 2048
 
 ## Simulation runs at a fixed rate, decoupled from the frame rate, so a slow
 ## machine does not change how fast the factory behaves.
-const SIM_HZ := 10.0
-const SIM_DT := 1.0 / SIM_HZ
+## Fixed step, and the per-frame catch-up ceiling, are the determinism contract
+## rather than local constants: one definition, so the simulation and the tests
+## that assert on it cannot drift apart.
+const SIM_HZ := Determinism.SIM_HZ
+const SIM_DT := Determinism.SIM_DT
 
 var _acc := 0.0
 var _sim_ticks := 0
@@ -86,6 +89,12 @@ func build() -> void:
 func attach(p_world: VoxelWorld, p_inventory: PlayerInventory) -> void:
 	world = p_world
 	inventory = p_inventory
+	# The backpack does not know what exists -- it knows the shape of a
+	# prototype. Wiring the two together is attaching's job, not the
+	# composition root's, because otherwise every caller that forgets gets a
+	# player who cannot pick up a motor. One door, and it is here.
+	if inventory != null and is_instance_valid(inventory):
+		inventory.register_prototypes(EngItems.prototype_entries())
 
 
 # --- time ------------------------------------------------------------------
@@ -93,11 +102,14 @@ func attach(p_world: VoxelWorld, p_inventory: PlayerInventory) -> void:
 ## Advance the simulation. Called every frame; the fixed-rate accumulator
 ## inside is what keeps factory behaviour independent of frame rate.
 func tick(delta: float, player_positions: Array = [], villagers: Array = []) -> void:
-	_acc += delta
-	var steps := 0
-	while _acc >= SIM_DT and steps < 4:
-		_acc -= SIM_DT
-		steps += 1
+	# The world is main-thread state. Anything that reaches the scene tree or
+	# the graph from a worker is a bug the guard reports rather than a crash
+	# the player pays for.
+	Threading.guard("EngEngineering.tick")
+	var plan := Determinism.steps_from(_acc, delta)
+	_acc = float(plan["remainder"])
+	var steps := int(plan["steps"])
+	for i in steps:
 		_sim_ticks += 1
 		sim.step(player_positions)
 	if graph.dirty:
@@ -337,10 +349,10 @@ func manufacture(component_id: String, at := Vector3.INF) -> Dictionary:
 	if inventory == null:
 		return {"ok": false, "reason": "no pack", "node": 0}
 	var bill := EngItems.bill_for(component_id)
-	if not inventory.can_afford_bill(bill):
+	if not EngItems.can_afford_bill(inventory, bill):
 		var missing := {}
 		for item in bill.keys():
-			var need := int(bill[item]) - inventory.count_bill_item(String(item))
+			var need := int(bill[item]) - EngItems.count_bill_item(inventory, String(item))
 			if need > 0:
 				missing[String(item)] = need
 		return {"ok": false, "reason": "missing %s" % str(missing), "node": 0}
@@ -350,7 +362,7 @@ func manufacture(component_id: String, at := Vector3.INF) -> Dictionary:
 	# The part is made, not just the item: it gets a shape, a material and a
 	# starting quality derived from how well the station can work it.
 	var part := _manufactured_part(component_id)
-	if not inventory.pay_bill(bill):
+	if not EngItems.pay_bill(inventory, bill):
 		return {"ok": false, "reason": "could not pay for it", "node": 0}
 	var pos: Vector3 = at if at != Vector3.INF else _nearest_station_position()
 	inventory.give_eng(component_id, 1)

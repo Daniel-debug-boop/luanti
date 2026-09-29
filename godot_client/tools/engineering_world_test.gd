@@ -258,6 +258,11 @@ func _test_fastening() -> void:
 func _test_inventory_integration() -> void:
 	var inv := PlayerInventory.new()
 	root.add_child(inv)
+	# The backpack does not know what exists; attaching the engineering system
+	# is what tells it. Wiring it the way main.gd does is the point of the
+	# test, so a bare inventory with no subsystem attached has no prototypes.
+	var eng := _make_engineering()
+	eng.attach(null, inv)
 	inv.give_eng("shaft", 2)
 
 	# Engineering items live in the same GLoot backpack as blocks. One
@@ -278,9 +283,9 @@ func _test_inventory_integration() -> void:
 	# A bill mixes blocks and components, and is paid all or nothing.
 	inv.give_block(ContentDB.COPPER_BLOCK)
 	var bill := {"copper": 1, "shaft": 1}
-	_eq(inv.can_afford_bill(bill), true, "an affordable bill is affordable")
+	_eq(EngItems.can_afford_bill(inv, bill), true, "an affordable bill is affordable")
 	inv.consume_block(ContentDB.COPPER_BLOCK)
-	_eq(inv.can_afford_bill(bill), false, "a short bill is not")
+	_eq(EngItems.can_afford_bill(inv, bill), false, "a short bill is not")
 	_eq(inv.pay_bill(bill), false, "and paying it fails")
 	_eq(inv.count_eng("shaft"), 2, "without eating the part the player does have")
 	inv.give_block(ContentDB.COPPER_BLOCK)

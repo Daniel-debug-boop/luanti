@@ -42,6 +42,11 @@ var hotbar: Array[ItemSlot] = []
 var protoset: JSON = null
 
 var selected := 0
+## Prototypes injected by the composition root, keyed by prototype id. Added
+## after construction; each addition rebuilds the protoset and reapplies it to
+## every slot, because GLoot compares protoset identity when deciding what an
+## existing stack holds.
+var _extra_protos := {}
 ## Emitted with the new index whenever the hotbar selection moves.
 signal selection_changed(index: int)
 ## Emitted with (block_id, new_total) whenever the player gains blocks.
@@ -72,6 +77,34 @@ func _init() -> void:
 		slot.protoset = protoset
 		add_child(slot)
 		hotbar.append(slot)
+
+
+## Register additional prototypes, keyed by prototype id, each a GLoot protoset
+## entry (`display_name`, `color`, `max_stack`, ...). Called by `main.gd` at
+## startup; safe to call again later, which is what a mod registering a new
+## component at runtime needs.
+##
+## Rebuilds the protoset and re-applies it to every existing slot, because
+## GLoot decides whether a slot can hold an item by comparing protosets, and a
+## rebuilt-but-unapplied protoset would make every existing stack look like a
+## different item.
+func register_prototypes(entries: Dictionary) -> void:
+	var changed := false
+	for id in entries:
+		if String(_extra_protos.get(id, "")) != JSON.stringify(entries[id]):
+			_extra_protos[id] = entries[id]
+			changed = true
+	if not changed:
+		return
+	protoset = _build_protoset()
+	inventory.protoset = protoset
+	for slot in hotbar:
+		slot.protoset = protoset
+
+
+## The prototypes registered from outside, for tests and for the save file.
+func extra_prototypes() -> Dictionary:
+	return _extra_protos.duplicate()
 
 
 ## "block_3" for ContentDB id 3.
@@ -116,20 +149,14 @@ func _build_protoset() -> JSON:
 			"hardness": "%.3f" % entry.hardness,
 			"max_stack": str(MAX_STACK),
 		}
-	# Engineering items are registered into the SAME protoset, so components
-	# and tools stack, drop and save exactly like blocks do. The full set is
-	# known at construction time because the component and tool tables are
-	# static; a mod that registers later gets a clear warning instead of a
-	# silently unusable item.
-	for item in EngItems.all_item_ids():
-		var info := EngItems.info(item)
-		data[eng_prototype_id(item)] = {
-			"display_name": String(info.get("name", item)),
-			"color": "Color(%f, %f, %f, %f)" % [info.get("color", Color.GRAY).r,
-				info.get("color", Color.GRAY).g, info.get("color", Color.GRAY).b,
-				info.get("color", Color.GRAY).a],
-			"max_stack": str(MAX_STACK),
-		}
+	# Extra prototypes registered by the composition root. The inventory knows
+	# nothing about *what* can go in it -- it knows the shape of a prototype.
+	# `main.gd` hands it the engineering items, so a components, a tool and a
+	# block all land in one GLoot protoset and stack, drop and save identically,
+	# without this file depending upward on the engineering system to find out
+	# what exists.
+	for id in _extra_protos:
+		data[String(id)] = _extra_protos[id]
 	var j := JSON.new()
 	j.data = data
 	return j
@@ -391,45 +418,6 @@ static func block_id_by_name(block_name: String) -> int:
 		if ContentDB.get_entry(id) != null and ContentDB.get_entry(id).name == block_name:
 			return id
 	return -1
-
-
-## Count a bill entry that resolves to a block rather than an engineering
-## item. Bills mix both -- a motor wants copper (a block) and a shaft (a
-## component) -- so the resolution has to happen at the point of use.
-func count_bill_item(item: String) -> int:
-	if EngItems.has(item):
-		return count_eng(item)
-	var bid := EngItems.block_id_for(item)
-	if bid < 0:
-		bid = block_id_by_name(item)
-	return 0 if bid < 0 else count_of(bid)
-
-
-func consume_bill_item(item: String, n: int = 1) -> int:
-	if EngItems.has(item):
-		return consume_eng(item, n)
-	var bid := EngItems.block_id_for(item)
-	if bid < 0:
-		bid = block_id_by_name(item)
-	return 0 if bid < 0 else consume_block(bid, n)
-
-
-## Can the player afford a whole bill, counting both blocks and components?
-func can_afford_bill(bill: Dictionary) -> bool:
-	for item in bill.keys():
-		if count_bill_item(String(item)) < int(bill[item]):
-			return false
-	return true
-
-
-## Pay a whole bill, or nothing at all. A partial payment would eat a
-## player's copper and then fail to make the motor.
-func pay_bill(bill: Dictionary) -> bool:
-	if not can_afford_bill(bill):
-		return false
-	for item in bill.keys():
-		consume_bill_item(String(item), int(bill[item]))
-	return true
 
 
 # --- hotbar -----------------------------------------------------------------

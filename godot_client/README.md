@@ -1,5 +1,12 @@
 # LuantiVoxel — Godot 4 migration
 
+> **Architecture lives in [ARCHITECTURE.md](ARCHITECTURE.md).** It says what
+> Luanti owns, what Godot owns, what Voxel Tools owns (nothing at runtime, and
+> the promotion path if that changes), which layers may use which, where the
+> server boundary is, and what is deterministic. It is not just prose: the same
+> contract is data in `scripts/core/architecture.gd`, asserted by
+> `architecture_test`, and runnable in game with **F11**.
+
 A voxel sandbox client written in **Godot 4.4 / GDScript**, migrated from the
 Luanti (Minetest) C++ codebase. It can load real Luanti worlds through an
 offline converter, and it also generates its own procedural terrain with six
@@ -369,7 +376,7 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Eleven suites run headless (seventeen, counting the engineering ones below):
+Eighteen suites run headless:
 
 | Suite | Covers |
 |---|---|
@@ -390,6 +397,7 @@ Eleven suites run headless (seventeen, counting the engineering ones below):
 | `diagnostics_test` | profiler sections and percentiles, JSON report, watchdog sampling, leak vs burst vs pressure classification, village power coupling on/off, wage payout, sleeping networks supply nobody |
 | `multiplayer_test` | every exploit: unknown op, missing field, unjoined peer, rate-limit flood, out-of-reach build, ownership violation, forged economy, teleport, mid-session revoke, distance-filtered replication, audit log |
 | `robustness_test` | save migration chain and forward-refusal, checksum integrity, backup recovery from a truncated file, complex factory round trip byte-identical, anti-duplication invariants, 12 000-tick soak for determinism / no growth / LOD sleeping / 60 successive autosaves |
+| `architecture_test` | layer and visibility rules over the whole source tree, **tests of the checker itself** (a checker that never rejects anything is not a checker), exactly one world / inventory / profiler / player in `main.tscn`, the message envelope and direction rules, sequence ordering, determinism hashing and the fixed step, the threading rule, and the absence of the removed dead architecture |
 
 ## Honest limitations
 
@@ -408,6 +416,12 @@ Eleven suites run headless (seventeen, counting the engineering ones below):
   `MultiplayerAPI` peer transport, because a loopback host/client pair cannot
   be stood up in a headless sandbox to prove the handshake. Everything above
   the transport is done; the socket layer is not.
+* **The HUD/crafting swatch metadata logs an error headless.** `get_meta` on a
+  slot prints `The object does not have any 'meta' values with the key
+  'swatch'` nine times while the main scene starts. It is pre-existing (it
+  reproduces identically on `fcf77a1` and on this branch), cosmetic, and does
+  not fail any suite — but it is a real error message being printed, not a
+  clean start-up.
 * **Nothing has ever been rendered.** This environment has no GPU, no X11 and
   no Wayland. Every check is structural — properties exist and are enabled,
   shaders compile, voxels read back the right ids. No frame has been displayed,

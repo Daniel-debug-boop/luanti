@@ -47,9 +47,6 @@ var engineering_hud: EngHud
 var profiler: GameProfiler
 var watchdog: StabilityWatchdog
 var authority: NetAuthority
-## Optional Voxel Tools backend. Null unless F8 successfully builds it, which
-## only happens on the Voxel Tools engine build.
-var zylann: ZylannWorld = null
 ## Which save slot F5 writes / F9 reads.
 var save_slot := 1
 var _env_over: Environment
@@ -92,6 +89,13 @@ func _ready() -> void:
 	engineering_hud.name = "EngineeringHud"
 	add_child(engineering_hud)
 	engineering_hud.attach(engineering)
+
+	# Claim the single world slot, then check the structural invariants. A
+	# startup that assembles the wrong number of anything is a bug worth
+	# hearing about before the player reaches a save, not after.
+	var why := WorldBackend.register(world)
+	if why != "":
+		push_warning("[main] world backend refused: ", why)
 
 	# One profiler, one watchdog, one authority for the whole process. This is
 	# the anti-duplication rule made concrete: there is no second place a
@@ -170,6 +174,10 @@ func _ready() -> void:
 	hud.spawner = spawner
 	hud.village = village
 	hud.interaction = interaction
+	# The hotbar displays what the player is carrying, so it reads the same
+	# GLoot slots the interaction node does. There is no second, fixed block
+	# list for it to fall back to.
+	hud.inventory = inventory
 	hud.day_night = day_night
 	hud.settings = settings
 	hud.inventory = inventory
@@ -196,6 +204,9 @@ func _ready() -> void:
 	print("[main] ready in ", world.biome_name_at(
 		Vector3i(int(spawn.x), int(spawn.y), int(spawn.z))), " biome")
 	print("[main] render: ", settings.describe())
+	# Last, once every singleton exists: the structural invariants describe
+	# the tree that was actually built, not the one we intended to build.
+	_check_architecture()
 
 
 func _place_on_surface() -> void:
@@ -304,8 +315,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_B:
 			if engineering_hud != null:
 				engineering_hud.toggle_workshop()
-		elif key == KEY_F8:
-			_toggle_zylann()
 		elif key == KEY_F1:
 			set_render_quality(0)
 		elif key == KEY_F2:
@@ -320,6 +329,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_texture_mapping(2)
 		elif key == KEY_F7:
 			set_texture_mapping(3)
+		elif key == KEY_F11:
+			# The full architecture check, including the source scan.
+			print("[arch] ", verify_architecture())
 		elif key == KEY_F10:
 			# The profiler is how the game gets measured on hardware this
 			# development environment is not.
@@ -606,6 +618,30 @@ func print_stability_report() -> void:
 	print(watchdog.report())
 
 
+## Structural invariants, checked against the tree that actually exists rather
+## than against what this file intended to build. Cheap enough for startup: one
+## recursive walk, no file I/O. The expensive check -- scanning the source tree
+## for layering and visibility violations -- is `EngArch.violations()` and runs
+## from the test suite, not from the frame.
+func _check_architecture() -> void:
+	if not OS.is_debug_build():
+		return
+	var problems := EngArch.verify_runtime(self)
+	if problems.is_empty():
+		print("[arch] ", EngArch.MODULES.size(), " modules, ",
+			EngArch.LAYER_ORDER.size(), " layers, runtime invariants hold; world = ",
+			WorldBackend.active_name())
+	else:
+		for p in problems:
+			push_warning("[arch] ", p)
+
+
+## The full check, including the source scan. Bound to a key so it is available
+## in a running game without being on the startup path.
+func verify_architecture() -> String:
+	return EngArch.report()
+
+
 ## Restore from `save_slot`, including which dimension the player was in.
 func _do_load() -> void:
 	# The resilient reader falls back to the previous save when the current
@@ -650,33 +686,6 @@ func _toggle_crafting() -> void:
 
 
 ## Close the crafting panel before a save, so the cursor is not left free.
-
-
-## Build (or tear down) the Voxel Tools backend. Only the official Voxel Tools
-## engine build has the module, so this reports why and does nothing otherwise.
-func _toggle_zylann() -> void:
-	if zylann != null and is_instance_valid(zylann):
-		zylann.save()
-		zylann.queue_free()
-		zylann = null
-		audio.play("ui_back")
-		print("[main] Voxel Tools backend off")
-		return
-	if not ZylannWorld.is_available():
-		audio.play("craft_fail")
-		print("[main] ", ZylannWorld.unavailable_reason())
-		return
-	var z := ZylannWorld.new()
-	z.name = "ZylannWorld"
-	add_child(z)
-	var cam := get_node_or_null("Player/Camera") as Camera3D
-	if cam == null or not z.setup(cam):
-		z.queue_free()
-		print("[main] ", ZylannWorld.unavailable_reason())
-		return
-	zylann = z
-	audio.play("level_up")
-	print("[main] Voxel Tools backend on: ", z.get_stats())
 
 
 ## Jump straight to a dimension without toggling.
