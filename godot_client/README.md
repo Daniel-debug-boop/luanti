@@ -14,7 +14,8 @@ godot --path godot_client           # or open godot_client/ in the Godot editor
 
 Controls: `WASD` move · `Space` jump/up · `Shift` sprint · `F` toggle fly ·
 `G` switch dimension · `LMB` mine · `RMB` place · `1`–`8`/scroll select block ·
-`E` talk · `Esc` release mouse.
+`E` talk · `F1`–`F3` render quality · `F4`–`F7` texture mapping · `Esc` release
+mouse.
 
 ## Loading a real Luanti world
 
@@ -67,12 +68,75 @@ headlessly), so no manual import step is needed.
   player and populates the site with named villagers who walk around, turn to
   face you, and greet you when you press `E`.
 
+## Rendering
+
+Everything here is stock Godot. No hand-written shader is required for the
+default look.
+
+**Texture projection** (`F4`–`F7`, or `MaterialLibrary.Mapping`). Godot cannot
+apply triplanar mapping and parallax occlusion to the same material — it
+prints *"Height mapping is not supported on triplanar materials"* and silently
+discards the heightmap — so exactly one is active at a time:
+
+| Mode | What it does |
+|---|---|
+| `plain` | box UVs, cheapest |
+| `triplanar` | projects on X/Y/Z, blends by normal; fixes stretching on sloped faces |
+| `parallax` (default) | Godot 4's POM, via the `heightmap_*` family, ray-marching each set's `disp` map |
+| `stochastic` | vendored Acegiak triplanar shader with per-cell hash sampling, which also breaks up the repeating tile pattern |
+
+**Environment effects** (`F1`–`F3` for the quality tier):
+
+* **SSAO** — sub-voxel contact darkening on top of the mesher's baked
+  per-vertex occlusion, so corners read as separate blocks.
+* **SSIL** — one bounce of screen-space indirect light.
+* **SDFGI** — the engine's ray-traced global illumination. See the caveat
+  below; bounce light is currently supplied by reflection probes.
+* **Volumetric fog** — with `volumetric_fog_gi_inject` and temporal
+  reprojection, plus a `FogVolume` that follows the camera.
+* **Glow** — bloom around emissive blocks.
+* **Bounce probes** — a ring of four `ReflectionProbe`s around the player
+  supplies the colour bleed (green grass onto neighbouring stone) that
+  probe-based GI gives you.
+
+### Two honest caveats
+
+**SDFGI needs an editor-authored probe volume.** Godot 4.4 exposes
+`sdfgi_enabled` and the full `sdfgi_*` settings on `Environment`, and
+`RenderSettings` configures all of them, but the signed distance field itself
+comes from an `SDFGIProbeVolume3D` node — and that class is *not exposed to
+script* in this build (`ClassDB.class_exists("SDFGIProbeVolume3D")` is
+`false`). It can only be added in the Godot editor and saved into the scene.
+So SDFGI settings are written and the HUD reports it as `sdfgi*`, but the
+ray-traced path stays off until such a volume exists. The reflection probes
+cover the same visual goal meanwhile.
+
+**Triplanar and POM are mutually exclusive**, as described above. If you want
+both the anti-stretching of triplanar *and* the relief of POM, use the
+`stochastic` mode: it is a hand-authored shader, so it can do triplanar
+projection and still sample normal/ARM maps itself.
+
+## Third-party shaders
+
+`addons/` contains two vendored projects, unmodified, with their licences and
+an `ATTRIBUTION.md` explaining what each is and how it differs from what this
+project uses:
+
+* `terrain-shader/` — [acegiak/Godot4TerrainShader](https://github.com/acegiak/Godot4TerrainShader), Apache-2.0. The stochastic triplanar sampling.
+* `voxel/` — [viktor-ferenczi/godot-voxel](https://github.com/viktor-ferenczi/godot-voxel), MIT. A 100%-GPU DDA raymarching voxel renderer. Vendored as the alternative architecture, **not** wired into the default path: it renders the whole volume as one box mesh and needs the voxel data uploaded as a cube map plus a `Texture2DArray`, which is a different pipeline from this project's CPU greedy mesher.
+
+Zylann's `godot_voxel` is **not** vendored. It is a C++ GDExtension module
+requiring a custom Godot build (its releases target a specific branch), so the
+stock 4.4 binary this project targets cannot load it, and it would replace the
+voxel renderer rather than provide a shader.
+
 ## Architecture
 
 ```
 godot_client/
 ├── scenes/main.tscn           entry point
 ├── assets/raw/                downloaded Poly Haven HDRIs, textures, models
+├── addons/                    vendored third-party shaders (see ATTRIBUTION.md)
 ├── scripts/
 │   ├── main.gd                assembly: world, player, mobs, village, sky, HUD
 │   ├── player.gd              walk/fly controller, swept-AABB voxel collision
@@ -91,22 +155,25 @@ godot_client/
 │       ├── voxel_world.gd     chunk streaming, meshing budget, dimensions, edits
 │       ├── voxelblock.gd      16³ container: content, light, param2
 │       ├── chunk_files.gd     reader for converted .chunk files
-│       ├── greedy_mesher.gd   greedy meshing, per-id surfaces, AO, translucency
-│       ├── material_library.gd  Poly Haven PBR materials, id -> texture set
+│       ├── greedy_mesher.gd   greedy meshing, per-id surfaces, AO, UV1+UV2
+│       ├── material_library.gd  PBR materials, triplanar/POM/detail, id -> set
+│       ├── voxel_stochastic.gdshader  vendored stochastic triplanar (derived)
+│       ├── render_settings.gd SSAO, SSIL, SDFGI config, volumetric fog, probes
 │       ├── day_night.gd       HDRI sky, sun arc, 24h clock
 │       └── mapnode.gd         voxel indexing and content-id semantics
 └── tools/                     converter, worldgen, asset fetcher, test scripts
 ```
 
-### Rendering
+### Meshing
 
 Chunks mesh only when all 26 neighbours exist, so border faces cull against
 real data. Each block id becomes its own mesh surface with its own PBR
 material. Face brightness combines directional shading (top bright, bottom
 dark), stored daylight, emissive block light (glowstone), and per-vertex
-ambient occlusion sampled from the voxel neighbourhood. Water and ice render
-in a separate translucent pass. An all-air block skips meshing entirely,
-which keeps streaming cheap across open sky.
+ambient occlusion sampled from the voxel neighbourhood. The mesher also emits
+a second UV set, tiled `DETAIL_UV_SCALE` times per block, which feeds the
+detail layer. Water and ice render in a separate translucent pass. An all-air
+block skips meshing entirely, which keeps streaming cheap across open sky.
 
 ### Editing and survival
 
@@ -134,19 +201,27 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Six suites run headless:
+Seven suites run headless:
 
 | Suite | Covers |
 |---|---|
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
 | `interaction_test` | DDA raycast hit/normal/place cell, break/place, bedrock immunity, edit replay across reload, mining to completion, HDRI set + clock, village props and villagers |
+| `render_settings_test` | triplanar/POM mutual exclusion, all four mapping modes, stochastic shader compiles and samples in world space, SSAO/SSIL/volumetric fog/glow on, quality tiers, live scene surfaces |
 | `e2e_test` | real scene streams chunks, textured surfaces bound in the scene graph, collision reads terrain |
 | `features_test` | village + clock + HDRI sky, dimension switch both ways, glowstone in loaded chunks, mobs spawn, mining through the scene |
 | `render_test` | textured and vertex-coloured surfaces, world-space bounds, camera present, HDRI panorama bound |
 
 ## Honest limitations
 
+* **SDFGI is configured but not running** — it needs an `SDFGIProbeVolume3D`
+  node, which cannot be created from script in Godot 4.4. Add one in the
+  editor and the settings already in `RenderSettings` take effect. Bounce
+  light currently comes from reflection probes.
+* **SDFGI and SSIL and volumetric fog were not visually verified** — this
+  environment has no GPU or display server, so every check is structural
+  (the properties are real and enabled), not visual.
 * **No inventory or crafting** — the hotbar is a fixed block list, not a
   container, and there is no recipe system.
 * **No saving to disk** — edits live in memory for the session. A converted

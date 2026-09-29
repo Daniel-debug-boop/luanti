@@ -22,6 +22,9 @@ const HEARTS := 10
 @export var village: Village
 @export var interaction: PlayerInteraction
 @export var day_night: DayNight
+## Not @export: RenderSettings is a RefCounted, not a Resource, so the editor
+## cannot serialise it as a node property.
+var settings: RenderSettings
 
 var _panel: PanelContainer
 var _stats: Label
@@ -233,7 +236,7 @@ func _build_bottom() -> void:
 	# --- Hint line ---
 	var hint := _label(
 		"WASD move · Space jump · Shift sprint · F fly · G dimension · "
-		+ "LMB mine · RMB place · 1-8 select · Esc mouse",
+		+ "LMB mine · RMB place · 1-8 select · E talk · F1-3 quality · F4-6 mapping",
 		12, Color(0.75, 0.8, 0.9))
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(12, -28)
@@ -299,6 +302,7 @@ func _update_world() -> void:
 		"block %s" % ContentDB.name_of(world.get_content_at(bp)),
 		"chunks %d loaded · %d meshed · %d dirty"
 			% [s.chunks_loaded, s.chunks_visible, s.dirty],
+		"tex    %d sets · %s" % [s.textures, s.mapping],
 		"mobs   %d" % (spawner.mob_count() if spawner != null else 0),
 	]
 	if village != null:
@@ -307,6 +311,20 @@ func _update_world() -> void:
 	if interaction != null:
 		lines.append("dug %d · built %d" % [interaction.mined,
 			interaction.placed])
+	if settings != null:
+		var fx := settings.active_effects()
+		var on := PackedStringArray()
+		if fx.ssao:
+			on.append("ssao")
+		if fx.ssil:
+			on.append("ssil")
+		if fx.volumetric_fog:
+			on.append("fog")
+		on.append("glow")
+		on.append("probes")
+		if fx.sdfgi_configured:
+			on.append("sdfgi*")
+		lines.append("light  %s" % " ".join(on))
 	_stats.text = "\n".join(lines)
 
 

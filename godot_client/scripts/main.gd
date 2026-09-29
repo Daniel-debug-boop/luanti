@@ -10,6 +10,13 @@ extends Node3D
 @export var spawn := Vector3(8.5, 40.0, 8.5)
 ## Turn the day/night clock off to hold the sun still.
 @export var day_night_enabled := true
+## RenderSettings.Quality: 0 low, 1 medium, 2 high (SSIL, SDFGI, volumetric fog).
+@export_enum("Low", "Medium", "High") var render_quality := 2
+## How block textures are projected. Godot cannot combine triplanar mapping
+## with parallax occlusion, so this picks one:
+##   0 plain (box UVs) · 1 triplanar · 2 parallax occlusion (POM)
+##   3 stochastic triplanar (vendored shader, breaks up texture tiling)
+@export_enum("Plain", "Triplanar", "Parallax", "Stochastic") var texture_mapping := 2
 
 var world: VoxelWorld
 var player: Player
@@ -18,22 +25,28 @@ var spawner: MobSpawner
 var village: Village
 var interaction: PlayerInteraction
 var day_night: DayNight
+var settings: RenderSettings
 var _env_over: Environment
 var _env_deeps: Environment
 var _we: WorldEnvironment
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
 var _deeps_ambience: DirectionalLight3D
+var _fog_volume: FogVolume
+var _probes: Array[ReflectionProbe] = []
 var _current_dim := 0
 
 
 func _ready() -> void:
+	settings = RenderSettings.new()
+	settings.quality = render_quality
 	_setup_environment()
 
 	world = VoxelWorld.new()
 	world.name = "VoxelWorld"
 	world.world_dir = world_dir
 	world.view_radius = view_radius
+	world.texture_mapping = texture_mapping
 	add_child(world)
 
 	player = Player.new()
@@ -85,7 +98,17 @@ func _ready() -> void:
 	hud.village = village
 	hud.interaction = interaction
 	hud.day_night = day_night
+	hud.settings = settings
 	add_child(hud)
+
+	# --- Bounce probes and fog volume ---
+	# A ring of reflection probes around the player supplies indirect bounce
+	# light; the fog volume keeps the volumetric layer dense near the camera.
+	_fog_volume = settings.make_fog_volume()
+	add_child(_fog_volume)
+	for p in settings.make_probes(4):
+		add_child(p)
+		_probes.append(p)
 
 	# Drop the player onto the terrain surface once the spawn chunk exists.
 	_place_on_surface()
@@ -94,6 +117,7 @@ func _ready() -> void:
 	village.update(player.position)
 	print("[main] ready in ", world.biome_name_at(
 		Vector3i(int(spawn.x), int(spawn.y), int(spawn.z))), " biome")
+	print("[main] render: ", settings.describe())
 
 
 func _place_on_surface() -> void:
@@ -107,40 +131,11 @@ func _place_on_surface() -> void:
 
 
 func _setup_environment() -> void:
-	# --- Overworld: the DayNight node installs the HDRI sky onto this. ---
-	_env_over = Environment.new()
-	_env_over.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	sky.sky_material = ProceduralSkyMaterial.new()
-	_env_over.sky = sky
-	_env_over.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	_env_over.ambient_light_energy = 1.0
-	_env_over.fog_enabled = true
-	_env_over.fog_density = 0.0012
-	_env_over.fog_light_color = Color(0.65, 0.75, 0.88)
-	_env_over.tonemap_mode = Environment.TONE_MAPPER_ACES
-	_env_over.tonemap_white = 6.0
-	_env_over.glow_enabled = true
-	_env_over.glow_intensity = 0.35
-	# SSAO makes the baked per-vertex occlusion read at chunk borders.
-	_env_over.ssao_enabled = true
-	_env_over.ssao_radius = 1.4
-	_env_over.ssao_intensity = 1.6
-
-	# --- The Deeps: dark cavern ambience ---
-	_env_deeps = Environment.new()
-	_env_deeps.background_mode = Environment.BG_COLOR
-	_env_deeps.background_color = Color(0.02, 0.015, 0.03)
-	_env_deeps.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	_env_deeps.ambient_light_color = Color(0.25, 0.2, 0.4)
-	_env_deeps.ambient_light_energy = 0.5
-	_env_deeps.fog_enabled = true
-	_env_deeps.fog_density = 0.006
-	_env_deeps.fog_light_color = Color(0.08, 0.05, 0.12)
-	_env_deeps.tonemap_mode = Environment.TONE_MAPPER_ACES
-	_env_deeps.glow_enabled = true
-	_env_deeps.glow_intensity = 0.9
-	_env_deeps.glow_bloom = 0.1
+	# Both environments get the full stock effect set from RenderSettings:
+	# SSAO, SSIL, SDFGI, volumetric fog and glow, all configured through
+	# built-in Environment properties.
+	_env_over = settings.build_overworld_environment()
+	_env_deeps = settings.build_deeps_environment()
 
 	_we = WorldEnvironment.new()
 	_we.name = "WorldEnvironment"
@@ -176,6 +171,10 @@ func _process(delta: float) -> void:
 	if world == null or player == null:
 		return
 	world.update_around(_player_chunk())
+	# Keep the probe and fog volumes on the player: SDFGI traces through the
+	# volume, so a volume left behind would bake probes for terrain the player
+	# can no longer see.
+	_follow_volumes()
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
@@ -195,6 +194,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			interaction.select_slot(key - KEY_1)
 		elif key == KEY_E:
 			_talk_nearby()
+		elif key == KEY_F1:
+			set_render_quality(0)
+		elif key == KEY_F2:
+			set_render_quality(1)
+		elif key == KEY_F3:
+			set_render_quality(2)
+		elif key == KEY_F4:
+			set_texture_mapping(0)
+		elif key == KEY_F5:
+			set_texture_mapping(1)
+		elif key == KEY_F6:
+			set_texture_mapping(2)
+		elif key == KEY_F7:
+			set_texture_mapping(3)
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -268,6 +281,35 @@ func _carve_arrival() -> void:
 					# Floor to stand on.
 					block.content[idx] = ContentDB.DEEPSLATE
 					block.light[idx] = 12 | (12 << 4)
+
+
+## Move the fog volume and bounce probes with the player. The fog layer is
+## densest around the camera, and a probe left behind would keep baking light
+## for terrain the player can no longer see.
+func _follow_volumes() -> void:
+	var p := player.global_position
+	if _fog_volume != null:
+		_fog_volume.position = p
+	settings.place_probes(p)
+
+
+## Switch the render tier at runtime (0 low, 1 medium, 2 high).
+func set_render_quality(q: int) -> void:
+	render_quality = q
+	settings.set_quality(q, world.materials,
+		[_env_over, _env_deeps] as Array[Environment])
+	world.rebind_materials()
+	print("[main] render: ", settings.describe())
+
+
+## Switch between plain box UVs, triplanar projection, and parallax occlusion.
+## Godot silently discards the heightmap when triplanar is on, so the two
+## cannot be combined; this replaces one with the other.
+func set_texture_mapping(m: int) -> void:
+	texture_mapping = m
+	world.set_texture_mapping(m)
+	print("[main] texture mapping: ",
+		MaterialLibrary.mapping_name()[clampi(m, 0, 3)])
 
 
 func _player_chunk() -> Vector3i:

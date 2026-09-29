@@ -3,5 +3,6 @@
 .godot/
 *.translation
 
-# Converted worlds produced by tools/convert_world.py
-world/
+# Converted worlds produced by tools/convert_world.py. Anchored to the project
+# root so it does not also swallow scripts/world/, which is source.
+/world/
