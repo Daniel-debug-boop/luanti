@@ -28,6 +28,10 @@ var day_night: DayNight
 var settings: RenderSettings
 ## GLoot-backed inventory and hotbar. Filled with a starting kit on boot.
 var inventory: PlayerInventory
+## All game audio, playing CC0 Kenney samples.
+var audio: AudioDirector
+## Where BlockDrop entities are parented.
+var _drops: Node3D
 ## Optional Voxel Tools backend. Null unless F8 successfully builds it, which
 ## only happens on the Voxel Tools engine build.
 var zylann: ZylannWorld = null
@@ -60,6 +64,14 @@ func _ready() -> void:
 	inventory.name = "Inventory"
 	add_child(inventory)
 
+	audio = AudioDirector.new()
+	audio.name = "Audio"
+	add_child(audio)
+
+	_drops = Node3D.new()
+	_drops.name = "Drops"
+	add_child(_drops)
+
 	player = Player.new()
 	player.name = "Player"
 	player.world = world
@@ -72,11 +84,14 @@ func _ready() -> void:
 	cam.fov = 78.0
 	cam.far = 640.0
 	player.add_child(cam)
+	audio.set_listener(player)
 
 	spawner = MobSpawner.new()
 	spawner.name = "MobSpawner"
 	spawner.world = world
 	spawner.player = player
+	spawner.audio = audio
+	spawner.drops_parent = _drops
 	add_child(spawner)
 
 	interaction = PlayerInteraction.new()
@@ -84,6 +99,8 @@ func _ready() -> void:
 	interaction.world = world
 	interaction.player = player
 	interaction.inventory = inventory
+	interaction.audio = audio
+	interaction.drops_parent = _drops
 	add_child(interaction)
 
 	# Mining and placing now move real items rather than picking from a fixed
@@ -95,6 +112,7 @@ func _ready() -> void:
 	village.name = "Village"
 	village.world = world
 	village.player = player
+	village.audio = audio
 	add_child(village)
 
 	day_night = DayNight.new()
@@ -193,6 +211,7 @@ func _process(delta: float) -> void:
 	# volume, so a volume left behind would bake probes for terrain the player
 	# can no longer see.
 	_follow_volumes()
+	_collect_drops()
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
@@ -256,6 +275,7 @@ func _talk_nearby() -> void:
 		if v != null and is_instance_valid(v) \
 				and v.global_position.distance_to(player.global_position) < 4.0:
 			print("[main] ", v.greet("Traveller"))
+			audio.play_at("mob_idle", v.global_position)
 			return
 	for node in get_tree().get_nodes_in_group("mobs"):
 		var m := node as Mob
@@ -338,9 +358,22 @@ func set_texture_mapping(m: int) -> void:
 		MaterialLibrary.mapping_name()[clampi(m, 0, 3)])
 
 
+## Walk over loose blocks and pick them up.
+func _collect_drops() -> void:
+	if inventory == null or player == null:
+		return
+	for node in get_tree().get_nodes_in_group("drops"):
+		var d := node as BlockDrop
+		if d == null or not is_instance_valid(d):
+			continue
+		if d.try_collect(player.global_position, inventory):
+			audio.play_at("pickup", d.global_position)
+
+
 ## Write the whole player state to `save_slot`.
 func _do_save() -> void:
 	if SaveGame.save_game(save_slot, player, inventory, world, _current_dim):
+		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
 			SaveGame.describe_slot(save_slot)])
 	else:
@@ -360,6 +393,7 @@ func _do_load() -> void:
 		print("[main] load incomplete: ", SaveGame.last_error)
 		return
 	interaction.refresh_hotbar()
+	audio.play("load")
 	print("[main] loaded slot %d: %s" % [save_slot, SaveGame.describe_slot(save_slot)])
 
 
@@ -369,13 +403,17 @@ func _do_load() -> void:
 func _do_craft() -> void:
 	var doable := Crafting.available(inventory)
 	if doable.is_empty():
+		audio.play("craft_fail")
 		print("[main] nothing craftable")
 		return
 	var recipe: Dictionary = doable[0]
 	if Crafting.craft(inventory, recipe):
+		audio.play("craft")
 		interaction.refresh_hotbar()
 		print("[main] crafted %s x%d" % [recipe["id"],
 			int(recipe.get("count", 1))])
+	else:
+		audio.play("craft_fail")
 
 
 ## Build (or tear down) the Voxel Tools backend. Only the official Voxel Tools
@@ -385,9 +423,11 @@ func _toggle_zylann() -> void:
 		zylann.save()
 		zylann.queue_free()
 		zylann = null
+		audio.play("ui_back")
 		print("[main] Voxel Tools backend off")
 		return
 	if not ZylannWorld.is_available():
+		audio.play("craft_fail")
 		print("[main] ", ZylannWorld.unavailable_reason())
 		return
 	var z := ZylannWorld.new()
@@ -399,6 +439,7 @@ func _toggle_zylann() -> void:
 		print("[main] ", ZylannWorld.unavailable_reason())
 		return
 	zylann = z
+	audio.play("level_up")
 	print("[main] Voxel Tools backend on: ", z.get_stats())
 
 

@@ -135,6 +135,50 @@ source rather than guessed:
 
 ---
 
+## KayKit character models (CC0) — USED
+
+* Upstream: <https://github.com/KayKit-Game-Assets> — Kay Lousberg
+* Licence: **CC0** (public domain dedication)
+* Packs: Character Pack Adventures (`2129`), Character Pack Skeletons (`2566`)
+
+Mobs and villagers are now real character models instead of coloured boxes.
+Kept, unmodified:
+
+| File | Used for |
+|---|---|
+| `kaykit_character_pack_adventures/.../Knight.glb` | villager body |
+| `.../Mage.glb` | villager body |
+| `.../Barbarian.glb` | villager body |
+| `kaykit_character_pack_skeletons/.../Skeleton_Warrior.glb` | mob body |
+| `.../Skeleton_Minion.glb` | mob body |
+
+Two unused GLBs (Rogue, Rogue_Hooded, Skeleton_Mage, Skeleton_Rogue) were
+**deleted**: each is 3.5 MB because KayKit embeds a 1024x1024 PNG, and the
+game only needed five. `scripts/mobs/creature_models.gd` only rescales and
+tints them.
+
+## Kenney audio (CC0) — USED
+
+* Upstream: <https://kenney.nl> — Kenney
+* Licence: **CC0**
+* Packs: Interface Sounds (`794`), UI Audio (`796`)
+
+151 CC0 `.wav` files, used unmodified, driving every sound in the game through
+`scripts/audio/audio_director.gd`.
+
+The packs that would have fit better -- Kenney's Impact Sounds and RPG Audio --
+are **404 at every mirror** the Asset Library points at, and kenney.nl serves
+its download links in a way that does not appear in the page HTML. The
+interface pack stands in: `bong`, `glass`, `pluck`, `scratch` and `drop` read
+convincingly as block breaking and placing once pitch-shifted, which is what
+`AudioDirector` does.
+
+Note the two packs do not agree on file naming -- the interface pack is
+`click_001.wav`, the UI pack is `click1.wav` -- so the director carries a
+per-event `fmt` override.
+
+---
+
 ## Searched for and NOT found: crafting
 
 The Asset Library was queried for Godot 4.4 crafting addons

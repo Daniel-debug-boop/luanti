@@ -12,6 +12,9 @@ const MOB_SCENE := preload("res://scripts/mobs/mob.gd")
 @export var player: Player
 @export var max_mobs := 10
 @export var spawn_interval := 2.5
+## Optional: gives new mobs their sounds and a place to drop loot.
+var audio: AudioDirector = null
+var drops_parent: Node = null
 
 var _timer := 0.0
 var _mobs: Array[Mob] = []
@@ -79,6 +82,10 @@ func _try_spawn() -> void:
 		mob.mob_color = palette[rng.randi() % palette.size()]
 		mob.max_health = 6.0
 	mob.position = Vector3(bx + 0.5, y + 1.05, bz + 0.5)
+	mob.audio = audio
+	mob.model_seed = rng.randi()
+	if drops_parent != null:
+		mob.set_meta("drops_parent", drops_parent)
 	add_child(mob)
 	_mobs.append(mob)
 

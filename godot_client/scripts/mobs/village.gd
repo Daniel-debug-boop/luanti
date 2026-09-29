@@ -53,6 +53,8 @@ const ROSTER := [
 ]
 
 @export var world: VoxelWorld
+## Optional: villager greeting sounds. Null is fine.
+var audio: AudioDirector = null
 @export var player: Player
 ## How many props to place in a district.
 @export var props_per_district := 26
@@ -174,6 +176,7 @@ func _rebuild(district: Vector3i) -> void:
 		v.skin = who["skin"]
 		v.tunic = who["tunic"]
 		v.world = world
+		v.audio = audio
 		v.position = Vector3(spot.x + 0.5, float(spot.y), spot.z + 0.5)
 		add_child(v)
 		v.place_on_ground(world)

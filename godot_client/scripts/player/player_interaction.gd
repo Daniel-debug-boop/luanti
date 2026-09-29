@@ -31,6 +31,10 @@ signal block_placed(pos: Vector3i, id: int)
 ## null, the legacy fixed `hotbar` list is used instead, so the old tests and
 ## the fixed-block behaviour still work.
 @export var inventory: PlayerInventory
+## Optional: break/place/step sounds. Null in tests that do not care.
+var audio: AudioDirector = null
+## Where mined blocks drop. Null falls back to the interaction node itself.
+var drops_parent: Node = null
 
 ## Blocks the player has mined, for the HUD statistic.
 var mined := 0
@@ -92,8 +96,20 @@ func _advance_break(id: int, delta: float) -> void:
 			# Mining now produces an item rather than vanishing.
 			if inventory != null and is_instance_valid(inventory):
 				inventory.give_block(id)
+			# ...and also a physical drop to walk over, so mining is worth
+			# walking to rather than free.
+			BlockDrop.spawn(_drops_node(), world, id,
+				Vector3(_mine_pos) + Vector3(0.5, 0.3, 0.5))
+			if audio != null:
+				audio.play_break(id, Vector3(_mine_pos) + Vector3(0.5, 0.5, 0.5))
 			block_broken.emit(_mine_pos, id)
 		_stop_break()
+
+
+func _drops_node() -> Node:
+	if drops_parent != null and is_instance_valid(drops_parent):
+		return drops_parent
+	return self
 
 
 func _stop_break() -> void:
@@ -143,6 +159,8 @@ func place() -> bool:
 		placed += 1
 		if inventory != null and is_instance_valid(inventory):
 			inventory.consume_selected()
+		if audio != null:
+			audio.play_at("place", Vector3(hit.place) + Vector3(0.5, 0.5, 0.5))
 		block_placed.emit(hit.place, block_id)
 		return true
 	return false
@@ -161,6 +179,8 @@ func select_slot(i: int) -> void:
 	if inventory != null and is_instance_valid(inventory):
 		inventory.select_slot(i)
 		selected = inventory.selected
+		if audio != null:
+			audio.play("ui_select")
 		return
 	selected = clampi(i, 0, hotbar.size() - 1)
 
@@ -241,6 +261,8 @@ func _mob_melee() -> void:
 		_melee_cooldown = 1.1
 		damage(2.5, "a %s" % ("wanderer" if world.dimension
 			== WorldGenerator.DIM_OVERWORLD else "deep lurker"))
+		if audio != null:
+			audio.play_at("mob_hurt", mob.global_position)
 		mob.set_target(player)
 		return
 
@@ -253,6 +275,8 @@ func damage(amount: float, _cause: String) -> void:
 	player.health = maxf(0.0, player.health - amount)
 	_hurt_flash = 0.35
 	_regen_delay = 5.0
+	if audio != null and player != null and is_instance_valid(player):
+		audio.play("hurt")
 
 
 func breath() -> float:

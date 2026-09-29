@@ -18,6 +18,19 @@ enum State { IDLE, WANDER, CHASE, FLEE }
 @export var world: VoxelWorld
 @export var mob_color := Color(0.85, 0.3, 0.25)
 @export var max_health := 6.0
+## Optional AudioDirector for hurt/death sounds. Not required, so tests can
+## build a mob without one.
+var audio: AudioDirector = null
+## Stable seed so a mob keeps the same model between frames and across saves.
+@export var model_seed := 0
+
+## Body model from the CC0 KayKit skeleton pack. Null falls back to the box.
+var _model: Node3D = null
+## Recomputed at most this often, because A* over a busy grid is not free.
+const REPATH_INTERVAL := 0.6
+var _repath_timer := 0.0
+var _path: Array[Vector3i] = []
+var _path_index := 0
 
 var state: int = State.IDLE
 var velocity := Vector3.ZERO
@@ -35,6 +48,9 @@ var _hurt_flash := 0.0
 func _ready() -> void:
 	add_to_group("mobs")
 	health = max_health
+	if model_seed == 0:
+		model_seed = randi()
+	_build_body()
 	_mesh = MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(WIDTH, HEIGHT, WIDTH)
@@ -56,15 +72,27 @@ func _ready() -> void:
 	em.albedo_color = Color(0.05, 0.05, 0.05)
 	em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	eye_mesh.material_override = em
+	eye_mesh.visible = _model == null
 	add_child(eye_mesh)
+
+
+## Attach a CC0 KayKit skeleton. Falls back to the primitive box body when the
+## model is missing, so the mob is never invisible.
+func _build_body() -> void:
+	var path := CreatureModels.pick(CreatureModels.MOB_MODELS, model_seed)
+	_model = CreatureModels.spawn(path, HEIGHT * 1.15, mob_color)
+	if _model != null:
+		add_child(_model)
 
 
 func _physics_process(delta: float) -> void:
 	_state_timer -= delta
 	_jump_cooldown -= delta
 	_hurt_flash = maxf(0.0, _hurt_flash - delta)
-	if _mesh != null and _hurt_flash > 0.0:
-		_mesh.scale = Vector3.ONE * (1.0 + _hurt_flash * 0.4)
+	_repath_timer = maxf(0.0, _repath_timer - delta)
+	var target := _model if _model != null else _mesh
+	if target != null and _hurt_flash > 0.0:
+		target.scale = Vector3.ONE * (1.0 + _hurt_flash * 0.4)
 
 	_think(delta)
 	_apply_gravity(delta)
@@ -88,9 +116,9 @@ func _think(delta: float) -> void:
 			velocity.z = _wander_dir.z * SPEED_WANDER
 		State.CHASE:
 			if _target != null and is_instance_valid(_target):
-				var d := _target.global_position - global_position
-				velocity.x = d.normalized().x * SPEED_CHASE
-				velocity.z = d.normalized().z * SPEED_CHASE
+				var d := _follow_path(delta, _target.global_position)
+				velocity.x = d.x * SPEED_CHASE
+				velocity.z = d.z * SPEED_CHASE
 			else:
 				state = State.IDLE
 		State.FLEE:
@@ -103,6 +131,35 @@ func _think(delta: float) -> void:
 		_:
 			velocity.x = 0.0
 			velocity.z = 0.0
+
+
+## Steer toward `goal_pos` using A* when possible, and fall back to a straight
+## line when no route is found. Returns a unit XZ direction.
+func _follow_path(delta: float, goal_pos: Vector3) -> Vector3:
+	var here := Vector3i(floori(global_position.x), floori(global_position.y),
+		floori(global_position.z))
+	var goal := Vector3i(floori(goal_pos.x), floori(goal_pos.y), floori(goal_pos.z))
+
+	if _repath_timer <= 0.0 or _path.is_empty():
+		_repath_timer = REPATH_INTERVAL
+		_path = Pathfinder.find_path(world, here, goal, 2)
+		_path_index = 0
+
+	var direct := Vector3(goal_pos.x - global_position.x, 0.0,
+		goal_pos.z - global_position.z)
+	# Close enough to just walk at it; repathing every frame would be wasteful.
+	if direct.length() < 2.0:
+		return direct.normalized() if direct.length() > 0.001 else Vector3.ZERO
+
+	if _path_index < _path.size():
+		var node := _path[_path_index]
+		var to_node := Vector3(float(node.x) + 0.5 - global_position.x, 0.0,
+			float(node.z) + 0.5 - global_position.z)
+		if to_node.length() < 0.6:
+			_path_index += 1
+		elif to_node.length() > 0.001:
+			return to_node.normalized()
+	return direct.normalized() if direct.length() > 0.001 else Vector3.ZERO
 
 
 func _pick_state() -> void:
@@ -226,10 +283,40 @@ func set_body_size(size: Vector3, col: Color) -> void:
 func apply_damage(n: float) -> void:
 	health -= n
 	_hurt_flash = 0.3
-	if _mesh != null:
-		_mesh.scale = Vector3.ONE * 1.12
+	var body := _model if _model != null else _mesh
+	if body != null:
+		body.scale = Vector3.ONE * 1.12
+	if audio != null:
+		audio.play_at("mob_hurt" if is_alive() else "pickup", global_position)
 	if health <= 0.0:
+		_drop_loot()
 		queue_free()
+
+
+## Drop a couple of blocks where the mob died, so killing something is worth
+## something. Deterministic per mob, so a mob always drops the same thing.
+func _drop_loot() -> void:
+	if world == null or not is_instance_valid(world):
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = model_seed
+	var block_id := ContentDB.get_entry(
+		1 + rng.randi_range(0, 3)).id
+	for _i in 2:
+		BlockDrop.spawn(_drops_parent(), world, block_id,
+			global_position + Vector3(rng.randf_range(-0.4, 0.4), 0.4,
+				rng.randf_range(-0.4, 0.4)))
+
+
+## Where BlockDrops should be parented. The spawner passes a dedicated node so
+## drops do not inherit the mob's transform; without one, fall back to the
+## mob's own parent.
+func _drops_parent() -> Node:
+	if has_meta("drops_parent"):
+		var p = get_meta("drops_parent")
+		if p != null and is_instance_valid(p):
+			return p
+	return get_parent()
 
 
 func is_alive() -> bool:

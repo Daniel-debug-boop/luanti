@@ -1,8 +1,12 @@
 class_name Villager
 extends Node3D
 ## A humanoid townsperson that paces a small home area and reacts to the
-## player. Built from primitives rather than a downloaded model, because the
-## Poly Haven props in assets/raw are furniture, not people.
+## player.
+##
+## The body is a CC0 KayKit adventurer (Knight / Mage / Barbarian), picked
+## deterministically from the villager's name so a given villager always looks
+## the same. The box-and-sphere body below is kept as a fallback, so a missing
+## model degrades to the old look rather than an invisible villager.
 ##
 ## Villagers share the Mob voxel-collision rules but never chase: they walk a
 ## bounded loop inside their village, turn to face a nearby player, and show a
@@ -34,6 +38,9 @@ var _greeting := ""
 var _greeting_time := 0.0
 var _body: Node3D
 var _on_ground := false
+## The KayKit model, or null when the fallback body is in use.
+var _model: Node3D = null
+var audio: AudioDirector = null
 
 
 func _ready() -> void:
@@ -46,6 +53,14 @@ func _ready() -> void:
 ## Assemble the villager from boxes: legs, torso, arms, head, and a nose so the
 ## facing direction is readable at a distance.
 func _build_visual() -> void:
+	# Deterministic per-name so villagers keep their appearance across saves.
+	var path := CreatureModels.pick(CreatureModels.VILLAGER_MODELS,
+		hash(villager_name + job))
+	_model = CreatureModels.spawn(path, HEIGHT, tunic)
+	if _model != null:
+		add_child(_model)
+		return
+
 	_body = Node3D.new()
 	add_child(_body)
 
