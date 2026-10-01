@@ -81,12 +81,23 @@ ARCHIVE="luantivoxel-$VERSION-linux-x86_64.tar.gz"
 STAGE="$(mktemp -d)"
 STAGE_DIR="$STAGE/luantivoxel-$VERSION"
 mkdir -p "$STAGE_DIR"
-cp "$OUT/luantivoxel.x86_64" "$OUT/luantivoxel.pck" "$OUT/README.txt" \
-  "$STAGE_DIR/"
+cp "$OUT/luantivoxel.x86_64" "$OUT/luantivoxel.pck" \
+  "$DIR/PLAY_README.txt" "$STAGE_DIR/"
+mv "$STAGE_DIR/PLAY_README.txt" "$STAGE_DIR/README.txt"
 # A player who unzips and double-clicks needs the executable bit to survive.
 chmod +x "$STAGE_DIR/luantivoxel.x86_64"
 ( cd "$STAGE" && tar czf "$OUT/$ARCHIVE" "luantivoxel-$VERSION" )
 rm -rf "$STAGE"
+# Prove the archive is real rather than assuming the tar succeeded: it must
+# contain the executable, the data and the instructions.
+MISSING=""
+for want in luantivoxel.x86_64 luantivoxel.pck README.txt; do
+  tar tzf "$OUT/$ARCHIVE" | grep -q "/$want$" || MISSING="$MISSING $want"
+done
+if [ -n "$MISSING" ]; then
+  echo "error: archive is missing:$MISSING" >&2
+  exit 1
+fi
 ( cd "$OUT" && sha256sum "$ARCHIVE" > "$ARCHIVE.sha256" )
 
 echo
