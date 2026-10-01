@@ -14,6 +14,9 @@ func check(cond: bool, msg: String) -> void:
 
 func _init() -> void:
 	_test_winding_matches_normal()
+	_test_faces_land_on_their_own_voxel()
+	_test_ao_colour_stays_with_its_corner()
+	_test_geometry_invariants()
 	# --- Isolated block: exactly 12 triangles (6 faces x 2) ---
 	var solo := VoxelBlock.new()
 	solo.is_loaded = true
@@ -259,6 +262,309 @@ func _test_winding_matches_normal() -> void:
 		check(int(dirs[axis_name]) == 2,
 			"direction %s should have 2 triangles, got %d"
 			% [axis_name, int(dirs[axis_name])])
+
+
+## A face must sit on the boundary of ITS OWN voxel, not on the chunk edge.
+##
+## This was the single worst bug in the renderer. The sweep passed one shared
+## `plane` value (0 or 16) to every face, so every face in every chunk was
+## placed on that chunk's boundary: a block at (8,8,8) emitted its six faces
+## at x=0 and x=16 rather than x=8 and x=9. The whole world collapsed into
+## thin sheets at chunk edges -- haze and floating fragments with no ground.
+##
+## It survived because every previous assertion was about counts (twelve
+## triangles, six faces, one surface) or about orientation (does the normal
+## match the winding). Both were true. Nobody asked WHERE the geometry was.
+func _test_faces_land_on_their_own_voxel() -> void:
+	# A single block, far from any boundary, so there is no ambiguity.
+	var b := _block_with([[8, 8, 8]], ContentDB.STONE)
+
+	# Every face plane must be 8 or 9: the two boundaries of voxel 8.
+	var got := _face_planes(GreedyMesher.build(b, {})[0])
+	var expected := ["0@8.0", "0@9.0", "1@8.0", "1@9.0", "2@8.0", "2@9.0"]
+	var want := {}
+	for e in expected:
+		want[e] = true
+	var unexpected := PackedStringArray()
+	for g in got:
+		if not want.has(g):
+			unexpected.append(g)
+	check(unexpected.is_empty(),
+		"faces of a block at (8,8,8) must lie on planes 8 and 9 of each "
+		+ "axis; found unexpected planes %s (all: %s)"
+		% [unexpected, got])
+	check(got.size() == 6,
+		"an isolated block has 6 face planes, got %d" % got.size())
+
+	# And a block in a corner, to catch an off-by-one at 0 and 15.
+	var c := _block_with([[0, 0, 0]], ContentDB.STONE)
+	var got2 := _face_planes(GreedyMesher.build(c, {})[0])
+	var want2 := {}
+	for e in ["0@0.0", "0@1.0", "1@0.0", "1@1.0", "2@0.0", "2@1.0"]:
+		want2[e] = true
+	var unexpected2 := PackedStringArray()
+	for g in got2:
+		if not want2.has(g):
+			unexpected2.append(g)
+	check(unexpected2.is_empty(),
+		"faces of a block at (0,0,0) must lie on planes 0 and 1 of each "
+		+ "axis; found unexpected planes %s (all: %s)"
+		% [unexpected2, got2])
+
+	# A whole slab spanning the block in x and z sits at y=3, so its top and
+	# bottom faces are at y=3 and y=4 while its sides are on the block's own
+	# edges at x=0/16 and z=0/16.
+	var slab := VoxelBlock.new()
+	slab.is_loaded = true
+	slab.is_generated = true
+	slab.fill(MapNode.LIGHT_SUN | (MapNode.LIGHT_SUN << 4))
+	for x in 16:
+		for z in 16:
+			slab.content[MapNode.index(x, 3, z)] = ContentDB.STONE
+	var slab_planes := _face_planes(GreedyMesher.build(slab, {})[0])
+	for p in ["1@3.0", "1@4.0", "0@0.0", "0@16.0", "2@0.0", "2@16.0"]:
+		check(slab_planes.has(p),
+			"a slab at y=3 is missing face plane %s (got %s)" % [p, slab_planes])
+	check(slab_planes.size() == 6,
+		"a slab at y=3 must have exactly 6 face planes, got %d: %s"
+		% [slab_planes.size(), slab_planes])
+
+
+## The set of distinct face planes in a mesh, as "axis@coordinate" strings.
+static func _face_planes(mesh: ArrayMesh) -> PackedStringArray:
+	var out := {}
+	if mesh == null:
+		return PackedStringArray()
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		for t in range(0, idx.size(), 3):
+			for k in 3:
+				var i: int = idx[t + k]
+				var n: Vector3 = norms[i]
+				var axis := 0
+				if absf(n.y) > 0.5:
+					axis = 1
+				elif absf(n.z) > 0.5:
+					axis = 2
+				var v: Vector3 = verts[i]
+				var c := v.x
+				if axis == 1:
+					c = v.y
+				elif axis == 2:
+					c = v.z
+				out["%d@%s" % [axis, str(c)]] = true
+	var keys := out.keys()
+	keys.sort()
+	return PackedStringArray(keys)
+
+
+func _block_with(cells: Array, id: int) -> VoxelBlock:
+	var b := VoxelBlock.new()
+	for i in b.content.size():
+		b.content[i] = ContentDB.AIR
+	for cell in cells:
+		b.content[MapNode.index(cell[0], cell[1], cell[2])] = id
+	b.is_loaded = true
+	b.is_generated = true
+	b.fill(MapNode.LIGHT_SUN | (MapNode.LIGHT_SUN << 4))
+	return b
+
+
+## Each vertex's ambient-occlusion colour must describe ITS OWN corner.
+##
+## Flipping the winding to face a -axis direction also permutes the corners,
+## so the colours have to be permuted to match. Rotating them instead pairs
+## every corner with its neighbour's occlusion, which is wrong shading on
+## every block corner in the world and completely invisible to a count-based
+## test.
+func _test_ao_colour_stays_with_its_corner() -> void:
+	# A flat stone floor with a single deepslate block standing on one corner of
+	# it. The occluder is a DIFFERENT block id on purpose: quads are grouped
+	# per id into one surface, and a same-id occluder would contribute its
+	# own faces to the same surface and blur the audit.
+	#
+	# The assertion is mapping-agnostic on purpose: rather than hard-coding
+	# which axis is u and which is v for the surface being audited, the
+	# nearest vertex to the occluder must simply be darker than the farthest.
+	var b := _block_with([], ContentDB.AIR)
+	for x in 16:
+		for z in 16:
+			b.content[MapNode.index(x, 4, z)] = ContentDB.STONE
+	b.content[MapNode.index(2, 5, 2)] = ContentDB.DEEPSLATE
+	var mesh: ArrayMesh = GreedyMesher.build(b, {})[0]
+
+	# Audit only upward-facing stone at the floor's top plane.
+	var occluder := Vector3(2.5, 5.0, 2.5)
+	var nearest := -1.0
+	var nearest_d := INF
+	var farthest := -1.0
+	var farthest_d := -INF
+	var audited := 0
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		if mesh.surface_get_name(s) != str(ContentDB.STONE):
+			continue
+		for t in range(0, idx.size(), 3):
+			for k in 3:
+				var i: int = idx[t + k]
+				if not (norms[i].y > 0.5 and verts[i].y > 4.5 \
+						and verts[i].y < 5.5):
+					continue
+				audited += 1
+				var l := cols[i].get_luminance()
+				var d := Vector2(verts[i].x - occluder.x,
+						verts[i].z - occluder.z).length()
+				if d < nearest_d:
+					nearest_d = d
+					nearest = l
+				if d > farthest_d:
+					farthest_d = d
+					farthest = l
+	check(audited > 0, "the floor's top face produced no vertices to audit")
+	if audited > 0 and nearest >= 0.0 and farthest >= 0.0:
+		check(nearest < farthest,
+			"the vertex nearest the occluder (%.4f at distance %.2f) must be "
+			% [nearest, nearest_d]
+			+ "darker than the farthest (%.4f at distance %.2f); if AO "
+			% [farthest, farthest_d]
+			+ "colours were rotated instead of permuted, every corner would "
+			+ "carry its neighbour's occlusion")
+		# And the far corner must sit at the unoccluded level: palette tint
+		# x +Y face shade x full daylight.
+		var expect := ContentDB.color_of(ContentDB.STONE).get_luminance() \
+			* GreedyMesher.FACE_SHADE[2]
+		check(absf(farthest - expect) < 0.02,
+			"an unoccluded top-face vertex should be at %.4f, got %.4f"
+			% [expect, farthest])
+
+	# Repeat on the -Y direction. This is the half of the world that takes
+	# the reversed winding, and therefore the half where a mis-permuted AO
+	# colour would actually show. Testing only the top face would leave the
+	# bug completely invisible, which is exactly how it got there.
+	var under := _block_with([], ContentDB.AIR)
+	for x in 16:
+		for z in 16:
+			under.content[MapNode.index(x, 4, z)] = ContentDB.STONE
+	under.content[MapNode.index(2, 3, 2)] = ContentDB.DEEPSLATE
+	var um: ArrayMesh = GreedyMesher.build(under, {})[0]
+	var u_near := -1.0
+	var u_near_d := INF
+	var u_far := -1.0
+	var u_far_d := -INF
+	var u_audited := 0
+	for s in um.get_surface_count():
+		if um.surface_get_name(s) != str(ContentDB.STONE):
+			continue
+		var arrays := um.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		for t in range(0, idx.size(), 3):
+			for k in 3:
+				var i: int = idx[t + k]
+				if not (norms[i].y < -0.5 and verts[i].y > 3.5 \
+						and verts[i].y < 4.5):
+					continue
+				u_audited += 1
+				var l := cols[i].get_luminance()
+				var d := Vector2(verts[i].x - occluder.x,
+						verts[i].z - occluder.z).length()
+				if d < u_near_d:
+					u_near_d = d
+					u_near = l
+				if d > u_far_d:
+					u_far_d = d
+					u_far = l
+	check(u_audited > 0, "the floor's underside produced no vertices to audit")
+	if u_audited > 0 and u_near >= 0.0 and u_far >= 0.0:
+		check(u_near < u_far,
+			"on the reversed-winding (-Y) face the vertex nearest the "
+			+ "occluder (%.4f) must be darker than the farthest (%.4f)"
+			% [u_near, u_far])
+		var expect_u := ContentDB.color_of(ContentDB.STONE).get_luminance() \
+			* GreedyMesher.FACE_SHADE[3]
+		check(absf(u_far - expect_u) < 0.02,
+			"an unoccluded underside vertex should be at %.4f, got %.4f"
+			% [expect_u, u_far])
+
+
+## Invariants every emitted mesh must satisfy, checked over a real generated
+## world rather than a hand-built fixture: indices in range, finite vertex
+## data, unit normals, non-degenerate triangles, and winding that agrees with
+## the stored normal.
+func _test_geometry_invariants() -> void:
+	var gen := WorldGenerator.new(4242)
+	for cx in 2:
+		for cz in 2:
+			var block := VoxelBlock.new()
+			block.is_loaded = true
+			block.is_generated = true
+			for y in 24:
+				for x in 16:
+					for z in 16:
+						block.content[MapNode.index(x, y, z)] = \
+							gen.generate_node(Vector3i(cx * 16 + x, y, cz * 16 + z))
+			var meshes := GreedyMesher.build(block, {})
+			for pass_i in 2:
+				var m: ArrayMesh = meshes[pass_i]
+				if m == null:
+					continue
+				for s in m.get_surface_count():
+					var arrays := m.surface_get_arrays(s)
+					var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+					var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+					var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+					var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+					var where := "chunk(%d,%d) pass%d surface%d" \
+						% [cx, cz, pass_i, s]
+					check(idx.size() % 3 == 0,
+						"%s: index count %d is not a multiple of 3"
+						% [where, idx.size()])
+					check(verts.size() == norms.size() and verts.size() == uvs.size(),
+						"%s: array sizes disagree (v=%d n=%d uv=%d)"
+						% [where, verts.size(), norms.size(), uvs.size()])
+					var bad_idx := 0
+					var non_finite := 0
+					var bad_normal := 0
+					var degenerate := 0
+					var backwards := 0
+					for i in idx:
+						if i < 0 or i >= verts.size():
+							bad_idx += 1
+					for i in verts.size():
+						if not is_finite(verts[i].x) or not is_finite(verts[i].y) \
+								or not is_finite(verts[i].z):
+							non_finite += 1
+						if absf(norms[i].length() - 1.0) > 0.001:
+							bad_normal += 1
+					for t in range(0, idx.size(), 3):
+						var a: Vector3 = verts[idx[t]]
+						var b: Vector3 = verts[idx[t + 1]]
+						var c: Vector3 = verts[idx[t + 2]]
+						var cross := (b - a).cross(c - a)
+						if cross.length() < 0.000001:
+							degenerate += 1
+						elif cross.normalized().dot(norms[idx[t]]) < 0.0:
+							backwards += 1
+					check(bad_idx == 0, "%s: %d index/indices out of range"
+						% [where, bad_idx])
+					check(non_finite == 0, "%s: %d non-finite position(s)"
+						% [where, non_finite])
+					check(bad_normal == 0, "%s: %d normal(s) not unit length"
+						% [where, bad_normal])
+					check(degenerate == 0, "%s: %d degenerate triangle(s)"
+						% [where, degenerate])
+					check(backwards == 0,
+						"%s: %d triangle(s) wound against their own normal"
+						% [where, backwards])
 
 
 func _tris(mesh: ArrayMesh) -> int:
