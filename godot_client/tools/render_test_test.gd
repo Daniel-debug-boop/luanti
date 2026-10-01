@@ -176,11 +176,36 @@ func _test_camera_presets() -> void:
 	# screenshots would be the same picture.
 	var seen := {}
 	for n in names:
-		var off: Vector3 = RenderTest.CAMERA_PRESETS[n]["offset"]
+		var off := RenderTest.preset_offset(RenderTest.CAMERA_PRESETS[n])
 		_eq(off.length() > 4.0, true,
 			"'%s' stands off from its subject" % n)
 		_eq(seen.has(off), false, "'%s' is a distinct viewpoint" % n)
 		seen[off] = true
+	# Lighting geometry. A directional light travels along its local -Z, so
+	# the camera must not be placed where it looks straight into the sun:
+	# every surface it can see would then be the shadowed side, and the
+	# capture would be technically correct and nearly black. This is not
+	# hypothetical -- three of the four original presets were backlit.
+	var sun := RenderTest.sun_direction()
+	for n in names:
+		var off2 := RenderTest.preset_offset(RenderTest.CAMERA_PRESETS[n])
+		# Mirror the aim rule the render test uses, so the test judges the
+		# view the camera actually gets rather than a straight line back to
+		# the focus point.
+		var aim_y: float = clampf(off2.y, 4.0, 16.0) * 0.45
+		var look := (Vector3(0.0, aim_y, 0.0) - off2).normalized()
+		var dot := sun.dot(look)
+		check(dot < 0.25,
+			"preset '%s' looks into the sun (dot %.2f); its capture would be "
+			% [n, dot] + "almost entirely shadow")
+	# And the elevations must still differ, or every preset is a ground-level
+	# shot from a different angle and none of them shows the terrain shape.
+	var heights := {}
+	for n in names:
+		heights[RenderTest.CAMERA_PRESETS[n]["height"]] = true
+	check(heights.size() >= 3,
+		"presets should span several heights, got %d distinct"
+		% heights.size())
 	# Order is stable, so two runs produce the same files in the same order.
 	_eq(RenderTest.preset_names(), names, "preset order is deterministic")
 

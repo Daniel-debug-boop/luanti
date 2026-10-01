@@ -383,24 +383,72 @@ static func parse_args(argv: PackedStringArray) -> Dictionary:
 ## Each one is chosen to point at world content from outside it: a preset
 ## whose camera ends up inside stone produces a black rectangle that looks
 ## like a renderer bug and is not one.
+## The presets are placed relative to the SUN, not to world axes.
+##
+## This matters more than it looks. DirectionalLight3D travels along its
+## local -Z, so with the sun at (-55, -35) it shines towards roughly
+## (+0.33, -0.82, -0.47). A camera sitting at +Z therefore looks *into* the
+## sun and sees nothing but the shadowed side of every surface: the render
+## is technically correct and almost entirely black. Three of the four old
+## presets were placed there, which is why a full-quality capture came back
+## looking broken while the unlit geometry capture of the same view looked
+## perfect.
+##
+## A benchmark picture exists to be judged, so each preset is derived from
+## the sun's azimuth by `SUN_AZIMUTH_DEG`, which puts it off to one side:
+## surfaces are lit at a grazing angle, so form reads, shadows are visible
+## rather than absolute, and no face is fully in shadow. The elevation of
+## each preset is independent, so `elevated` still looks down.
+const SUN_ROTATION := Vector3(-55.0, -35.0, 0.0)
+## Angle away from the sun's azimuth. 40 degrees: enough for the form to
+## read, not enough to flatten it.
+const SUN_AZIMUTH_DEG := 40.0
+
 const CAMERA_PRESETS := {
 	"front": {
-		"offset": Vector3(0.0, 14.0, 34.0),
+		"azimuth": 0.0, "height": 14.0, "distance": 34.0,
 		"label": "front",
 	},
 	"side": {
-		"offset": Vector3(38.0, 16.0, 6.0),
+		"azimuth": -70.0, "height": 16.0, "distance": 38.0,
 		"label": "side",
 	},
 	"elevated": {
-		"offset": Vector3(18.0, 46.0, 30.0),
+		"azimuth": -35.0, "height": 46.0, "distance": 34.0,
 		"label": "elevated",
 	},
 	"environment": {
-		"offset": Vector3(-26.0, 8.0, 26.0),
+		"azimuth": -50.0, "height": 8.0, "distance": 30.0,
 		"label": "environment",
 	},
 }
+
+
+## The direction sunlight travels, from the sun's rotation.
+static func sun_direction() -> Vector3:
+	var rx := deg_to_rad(SUN_ROTATION.x)
+	var ry := deg_to_rad(SUN_ROTATION.y)
+	return Vector3(-sin(ry) * cos(rx), sin(rx), -cos(ry) * cos(rx)).normalized()
+
+
+## World-space offset for a preset: the sun's azimuth rotated by the
+## preset's own, at the preset's height and distance.
+##
+## `sun_dir` is the direction the sunlight travels, so the camera is put at
+## `sun_dir` rotated *away* from the view axis by SUN_AZIMUTH_DEG.
+static func preset_offset(preset: Dictionary) -> Vector3:
+	var sun := sun_direction()
+	var horiz := Vector3(sun.x, 0.0, sun.z)
+	if horiz.length() < 0.001:
+		horiz = Vector3(0.0, 0.0, -1.0)
+	horiz = horiz.normalized()
+	# Rotation about Y, positive toward +X.
+	var a := deg_to_rad(SUN_AZIMUTH_DEG + float(preset.get("azimuth", 0.0)))
+	var dir := Vector3(
+		horiz.x * cos(a) - horiz.z * sin(a), 0.0,
+		horiz.x * sin(a) + horiz.z * cos(a))
+	return dir * float(preset.get("distance", 30.0)) \
+		+ Vector3(0.0, float(preset.get("height", 12.0)), 0.0)
 
 ## The preset names in a stable order, so a run produces the same files in
 ## the same order every time.
@@ -613,10 +661,15 @@ func _run() -> void:
 func _shoot(shot: String) -> void:
 	var preset: Dictionary = CAMERA_PRESETS[shot]
 	var focus := _focus_point()
-	_camera.global_position = focus + Vector3(preset["offset"])
+	_camera.global_position = focus + preset_offset(preset)
 	# Look at the terrain, a little above it, so the horizon sits in frame
 	# rather than the camera staring at its own feet.
-	_camera.look_at(focus + Vector3(0.0, 4.0, 0.0), Vector3.UP)
+	# Aim proportionally to the camera's height. Looking at a fixed 4 m above
+	# the focus point means a 46 m camera stares almost straight down at the
+	# ground, which shows nothing of the terrain's shape and puts the whole
+	# frame in a single flat lighting condition.
+	var aim_y := clampf(_camera.global_position.y - focus.y, 4.0, 16.0) * 0.45
+	_camera.look_at(focus + Vector3(0.0, aim_y, 0.0), Vector3.UP)
 
 	# Keep the volumes with the camera. The fog layer and the bounce probes
 	# are placed relative to the player in normal play, and the benchmark
