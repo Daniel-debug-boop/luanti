@@ -26,7 +26,7 @@ if [ ! -d /tmp/testchunks ]; then
   fi
 fi
 FAIL=0
-for t in mesher_test world_test interaction_test render_settings_test \
+for t in mesher_test seam_test world_test interaction_test render_settings_test \
     e2e_test features_test render_test zylann_test gameplay_test creature_test \
     crafting_ui_test engineering_test engineering_sim_test \
     engineering_world_test diagnostics_test multiplayer_test \

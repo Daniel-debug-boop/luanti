@@ -104,9 +104,20 @@ static func _sample(block: VoxelBlock, neighbours: Dictionary,
 			int(floor(float(c.y) / BS)),
 			int(floor(float(c.z) / BS)))
 		c = c - bo * BS
+		# Only a block that is BOTH generated and loaded may be sampled.
+		# VoxelWorld populates its block table as generation completes, so a
+		# neighbour can be present but not yet filled in; trusting it would
+		# read zeroed content, cull every face against it, and leave a hole
+		# that pops in once the data actually lands. An untrusted neighbour
+		# is treated as air, which draws the faces -- the safe direction,
+		# since a redundant face is hidden by the neighbour when it arrives
+		# and a missing face is a hole in the world.
 		if not neighbours.has(bo):
 			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
-		b = neighbours[bo]
+		var cand: VoxelBlock = neighbours[bo]
+		if cand == null or not cand.is_complete():
+			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
+		b = cand
 	var idx := MapNode.index(c.x, c.y, c.z)
 	if want_light:
 		return b.light[idx] & 0x0F

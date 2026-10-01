@@ -14,7 +14,7 @@ const BLOCK_VOLUME := 4096
 ## Node ids that carry no mesh. Mirrors CONTENT_AIR / CONTENT_IGNORE /
 ## CONTENT_IGNORE2 in Luanti's mapnode.h. These are the *only* ids that mean
 ## "no geometry": real registered content ids are small positive numbers
-## (stone=3, dirt=2, grass=1, water=9), so no numeric threshold can be used
+## (stone=3, dirt=2, grass=1, water=4), so no numeric threshold can be used
 ## to detect them.
 const CONTENT_AIR := 0
 const CONTENT_IGNORE := 126
@@ -24,12 +24,6 @@ const CONTENT_IGNORE2 := 127
 const LIGHT_SUN := 15
 const LIGHT_MAX := 14
 
-## Voxel behaviour is data-driven in Luanti (loaded from mods), so until a
-## content database is wired up we treat every solid id as opaque. The
-## threshold is set above any real content id, which means the transparent
-## pass stays empty until a content database is loaded.
-const TRANSLUCENT_THRESHOLD := 0x7FFF
-
 
 ## Linear index of a voxel inside a block. Luanti uses this ordering in
 ## serialized node arrays: `(z*16*16 + y*16 + x)`.
@@ -38,39 +32,54 @@ static func index(x: int, y: int, z: int) -> int:
 
 
 ## Inverse of `index()`: linear position -> Vector3i local voxel coords.
+##
+## Given `index = z*256 + y*16 + x`, the correct inverse reads x from the low
+## bits, not the high ones. This previously did the reverse and returned
+## Vector3i(z, y, x), which happened to agree with `index` only on the eight
+## corners of the block -- x==z -- so a roundtrip test over all 4096 voxels
+## caught what casual use could not.
 static func unindex(idx: int) -> Vector3i:
-	var y := idx % MAP_BLOCKSIZE
+	var x := idx % MAP_BLOCKSIZE
 	var rest := idx / MAP_BLOCKSIZE
-	var z := rest % MAP_BLOCKSIZE
-	var x := rest / MAP_BLOCKSIZE
+	var y := rest % MAP_BLOCKSIZE
+	var z := rest / MAP_BLOCKSIZE
 	return Vector3i(x, y, z)
 
 
 ## True when a content id should be treated as solid geometry.
-## Only air and the two "ignore" sentinels are empty; every other id is a
-## registered content block and renders.
+##
+## Delegates to ContentDB so there is exactly one definition of "solid".
+## MapNode previously carried its own copy keyed on the ignore sentinels,
+## and the two disagreed: ContentDB knows that water is translucent and
+## leaves are cutouts, while a sentinel-only test cannot. Two definitions of
+## opacity in a voxel renderer is not a latent risk, it is a live bug waiting
+## for whichever call site happens to use the wrong one.
 static func is_solid(content: int) -> bool:
-	return content != CONTENT_AIR and content != CONTENT_IGNORE \
-		and content != CONTENT_IGNORE2
+	if content == CONTENT_IGNORE or content == CONTENT_IGNORE2:
+		return false
+	return ContentDB.is_solid(content)
 
 
-## True when a content id occludes neighbouring faces / blocks light.
+## True when a content id fully occludes its neighbours' faces and blocks
+## light. Opaque = solid, translucent, and not a cutout.
 static func is_opaque(content: int) -> bool:
-	return is_solid(content)
+	return is_solid(content) and ContentDB.is_opaque(content)
 
 
 ## True when faces of this content belong in the transparent pass.
 static func is_translucent(content: int) -> bool:
-	return is_solid(content) and content >= TRANSLUCENT_THRESHOLD
+	return is_solid(content) and ContentDB.is_translucent(content)
 
 
-## Is the surface texture fully opaque (used to decide face culling)?
+## Should the face between `own_content` and `neighbour` be culled?
+##
+## An opaque neighbour always hides the face. Two translucent blocks of the
+## same id hide each other's faces, so a body of water has no internal seams;
+## translucent against anything else still draws, which is what lets you see
+## the shoreline and the block under the water.
 static func blocks_face(neighbour: int, own_content: int) -> bool:
-	# An opaque neighbour always hides this face. A translucent neighbour only
-	# hides the face of another translucent block, so glass against glass
-	# still draws a seam and water against glass is culled.
 	if is_opaque(neighbour):
 		return true
-	if is_translucent(neighbour) and is_translucent(own_content):
+	if neighbour == own_content and is_translucent(own_content):
 		return true
 	return false
