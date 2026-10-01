@@ -88,7 +88,8 @@ static func describe_slot(slot: int) -> String:
 
 ## Gather the live game state into a saveable Dictionary.
 static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
-		dimension: int, engineering: Object = null) -> Dictionary:
+		dimension: int, engineering: Object = null,
+		emergent: Object = null) -> Dictionary:
 	var state := {
 		"version": SAVE_VERSION,
 		"dimension": dimension,
@@ -96,6 +97,7 @@ static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
 		"inventory": {},
 		"edits": {},
 		"engineering": {},
+		"emergent": {},
 	}
 	if player != null and is_instance_valid(player):
 		state["player"] = {
@@ -114,6 +116,12 @@ static func capture(player: Player, inv: PlayerInventory, world: VoxelWorld,
 	# change never invalidates a factory, or the other way round.
 	if engineering != null and is_instance_valid(engineering):
 		state["engineering"] = engineering.serialize()
+	# Same contract for the emergent layer: optional, additive, separately
+	# versioned. Entities and rules only -- everything derived is recomputed
+	# on load, so a pattern added next release changes what an old save means
+	# rather than being contradicted by it.
+	if emergent != null and is_instance_valid(emergent):
+		state["emergent"] = emergent.serialize()
 	return state
 
 
@@ -151,8 +159,9 @@ static func write_slot(slot: int, state: Dictionary) -> bool:
 ## Capture and write in one step.
 static func save_game(slot: int, player: Player, inv: PlayerInventory,
 		world: VoxelWorld, dimension: int,
-		engineering: Object = null) -> bool:
-	return write_slot(slot, capture(player, inv, world, dimension, engineering))
+		engineering: Object = null, emergent: Object = null) -> bool:
+	return write_slot(slot, capture(player, inv, world, dimension, engineering,
+			emergent))
 
 
 # --- reading ----------------------------------------------------------------
@@ -187,7 +196,8 @@ static func load_slot(slot: int) -> Dictionary:
 ## are skipped rather than aborting the whole load, so one bad subsystem cannot
 ## cost the player everything else.
 static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
-		world: VoxelWorld, engineering: Object = null) -> bool:
+		world: VoxelWorld, engineering: Object = null,
+		emergent: Object = null) -> bool:
 	last_error = ""
 	if data.is_empty():
 		last_error = "nothing to load"
@@ -223,6 +233,19 @@ static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
 		engineering.deserialize(data["engineering"])
 		applied += 1
 
+	# The emergent layer, for the same reason and under the same rules. It is
+	# restored AFTER engineering because the entity relationships are derived
+	# from the machine graph, and a player who loads a factory and its zones
+	# in the other order would briefly see a zone that contains nothing.
+	if emergent != null and is_instance_valid(emergent) \
+			and typeof(data.get("emergent")) == TYPE_DICTIONARY \
+			and not (data["emergent"] as Dictionary).is_empty():
+		var ereport: Dictionary = emergent.deserialize(data["emergent"])
+		applied += 1
+		if String(ereport.get("reason", "")) != "":
+			last_error += "emergent layer not restored (%s); " \
+				% String(ereport["reason"])
+
 	if applied == 0:
 		last_error += "no section could be applied"
 		return false
@@ -231,11 +254,12 @@ static func apply(data: Dictionary, player: Player, inv: PlayerInventory,
 
 ## Load a slot and apply it.
 static func load_game(slot: int, player: Player, inv: PlayerInventory,
-		world: VoxelWorld, engineering: Object = null) -> bool:
+		world: VoxelWorld, engineering: Object = null,
+		emergent: Object = null) -> bool:
 	var data := load_slot(slot)
 	if data.is_empty():
 		return false
-	return apply(data, player, inv, world, engineering)
+	return apply(data, player, inv, world, engineering, emergent)
 
 
 static func dimension_of(data: Dictionary) -> int:
