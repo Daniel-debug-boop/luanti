@@ -155,6 +155,44 @@ func _run() -> void:
 				grounded += 1
 	print("mobs standing on terrain: ", grounded, "/", n)
 
+	# --- Clicking a hotbar slot selects it ---
+	# This path used to be dead: `_input` did `for slot in _hotbar` over an
+	# HBoxContainer, and a Node is not iterable, so the function failed to
+	# COMPILE. Every test above still passed while the game could not select
+	# a slot with the mouse, because none of them clicked anything.
+	var hud: Node = main.get("hud")
+	check(hud != null, "no HUD on the main scene")
+	if hud != null:
+		var slots: Array = hud.get("_hotbar_slots")
+		check(slots.size() > 0, "the hotbar built no slots")
+		if slots.size() > 1:
+			# Container layout never runs headless: without a display server
+			# all eight slots keep position (0,0) inside an unsized HBox, so
+			# every rect is identical and a click cannot be aimed at one slot.
+			# Lay them out by hand so the click has a real target. This is the
+			# game's own hit-test path being exercised -- only the positions
+			# are synthetic.
+			for i in slots.size():
+				(slots[i] as Control).position = Vector2(i * 52.0, 0.0)
+			var target: Control = slots[2]
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = true
+			click.position = target.get_global_rect().get_center()
+			hud.call("_input", click)
+			var picked: int = interaction.selected
+			check(picked == 2,
+				"clicking hotbar slot 3 selected slot %d" % (picked + 1))
+			# A click on empty space must change nothing.
+			var before: int = interaction.selected
+			var away := InputEventMouseButton.new()
+			away.button_index = MOUSE_BUTTON_LEFT
+			away.pressed = true
+			away.position = Vector2(-500, -500)
+			hud.call("_input", away)
+			check(interaction.selected == before,
+				"a click off the hotbar changes the selection")
+
 	print("\nfeatures: %s" % ("PASS" if failures == 0
 		else "%d FAILURES" % failures))
 	quit(1 if failures > 0 else 0)

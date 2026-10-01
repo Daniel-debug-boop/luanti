@@ -381,7 +381,13 @@ func _update_hotbar() -> void:
 				else PlayerInventory.block_id_of(held.get_prototype().get_id()))
 	for i in _hotbar_slots.size():
 		var slot := _hotbar_slots[i]
-		var swatch := slot.get_meta("swatch", null) as ColorRect
+		# `has_meta` first, not `get_meta(name, default)`: Godot 4.4 logs
+		# "The object does not have any 'meta' values with the key ..." even
+		# when a default is supplied and the call is perfectly correct, so the
+		# default-argument form prints an error on every empty hotbar slot.
+		var swatch: ColorRect = null
+		if slot.has_meta("swatch"):
+			swatch = slot.get_meta("swatch") as ColorRect
 		if swatch == null:
 			continue
 		if i < bar.size() and int(bar[i]) >= 0:
@@ -402,9 +408,14 @@ func _update_hotbar() -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
-		for slot in _hotbar:
-			if slot.get_global_rect().has_point(mb.position) \
-					and slot.has_meta("index"):
+		# Iterate the hotbar's CHILDREN. `_hotbar` is an HBoxContainer, and a
+		# Node is not iterable in GDScript -- `for slot in _hotbar` is a
+		# compile error ("Unable to iterate on object of type
+		# HBoxContainer"), not a silent no-op, so this whole function failed
+		# to compile and mouse hotbar selection did nothing.
+		for slot in _hotbar.get_children():
+			if slot is Control and (slot as Control).get_global_rect() \
+					.has_point(mb.position) and slot.has_meta("index"):
 				select_slot(int(slot.get_meta("index")))
 				return
 
