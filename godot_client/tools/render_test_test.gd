@@ -20,6 +20,8 @@ func _init() -> void:
 	_test_bad_arguments_fail()
 	_test_camera_presets()
 	_test_probe_reports_something()
+	_test_effects_preset()
+	_test_content_validation()
 	_finish()
 
 
@@ -98,6 +100,8 @@ func _test_defaults() -> void:
 	_eq(cfg.get("allow_software"), false,
 		"software rendering is refused unless explicitly allowed")
 	_eq(cfg.get("seed"), RenderTest.SEED, "the seed is fixed and recorded")
+	_eq(cfg.get("effects"), "baseline",
+		"captures default to the baseline preset, not the shipping effects")
 
 	# Not our mode at all: an empty error and no "enabled" key.
 	var none := RenderTest.parse_args(PackedStringArray(["--quality", "high"]))
@@ -141,6 +145,8 @@ func _test_bad_arguments_fail() -> void:
 		["--render-test", "--capture-every", "-5"],
 		["--render-test", "--nonsense", "1"],
 		["--render-test", "--frames"],
+		["--render-test", "--effects", "ultra"],
+		["--render-test", "--effects"],
 	]
 	for argv in bad:
 		var r := RenderTest.parse_args(PackedStringArray(argv))
@@ -217,7 +223,119 @@ func _test_probe_reports_something() -> void:
 			+ "cross-check")
 
 
+# --- effect presets ---------------------------------------------------------
+
+func _test_effects_preset() -> void:
+	var base := RenderTest.parse_args(PackedStringArray(["--render-test"]))
+	_eq(str(base.get("effects")), "baseline", "default is baseline")
+	var game := RenderTest.parse_args(PackedStringArray(
+		["--render-test", "--effects", "game"]))
+	_eq(str(game.get("effects")), "game", "--effects game is accepted")
+	for bad in ["ultra", "high", ""]:
+		var r := RenderTest.parse_args(PackedStringArray(
+			["--render-test", "--effects", bad]))
+		_eq(r.has("enabled"), false, "--effects '%s' is rejected" % bad)
+
+
+# --- content validation -----------------------------------------------------
+
+## Build a synthetic frame so the validator can be shown a real blank and a
+## real gradient without needing a GPU. The point of these tests is the
+## negative case: a validator that has only ever seen good input is
+## indistinguishable from one that always passes.
+func _test_content_validation() -> void:
+	# 1. A real-looking frame: a vertical sky-to-ground gradient with a few
+	#    distinct terrain tones. This must be accepted.
+	var good := Image.create(128, 128, false, Image.FORMAT_RGB8)
+	for y in 128:
+		for x in 128:
+			var sky := y / 128.0
+			var c := Color(0.45 + 0.1 * sky, 0.62 + 0.2 * sky, 0.85 + 0.1 * sky)
+			# A blocky hillside: hard tonal steps between neighbouring
+			# voxels, which is what gives a real voxel frame its variance.
+			if y > 74 + int(14.0 * sin(float(x) * 0.13)):
+				var step := float((x / 8 + y / 8) % 4) * 0.08
+				c = Color(0.22 + step, 0.38 + step, 0.17 + step * 0.5)
+			good.set_pixel(x, y, c)
+	var gs := RenderTest.analyze_image(good)
+	_ok("gradient frame: %d colours, luma %.3f +/- %.3f"
+		% [int(gs.get("distinct_colours", 0)), float(gs.get("mean_luma", 0.0)),
+			float(gs.get("stddev_luma", 0.0))])
+	_eq(RenderTest.judge_capture(gs), "", "a shaded gradient is accepted")
+
+	# 2. A single flat colour. This is what a fully culled world looks like
+	#    behind a fog volume: a file that exists, at the right size, showing
+	#    nothing.
+	var flat := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	flat.fill(Color(0.85, 0.88, 0.92))
+	var fs := RenderTest.analyze_image(flat)
+	_eq(int(fs.get("distinct_colours", 99)), 1, "a flat fill has 1 colour")
+	check(RenderTest.judge_capture(fs) != "",
+		"a flat fill is rejected, not passed because the PNG exists")
+
+	# 3. Blown out: bright, low contrast, almost entirely near-white. This is
+	#    the shape of the real failure -- fog and glow over geometry whose
+	#    faces all point away from the camera.
+	var blown := Image.create(96, 96, false, Image.FORMAT_RGB8)
+	for y in 96:
+		for x in 96:
+			var v := 0.90 + 0.02 * sin(float(x) * 0.3)
+			blown.set_pixel(x, y, Color(v, v, v))
+	var bs := RenderTest.analyze_image(blown)
+	_ok("blown-out frame: mean %.3f, stddev %.3f, %.1f%% near-white"
+		% [float(bs.get("mean_luma", 0.0)), float(bs.get("stddev_luma", 0.0)),
+			float(bs.get("near_white_fraction", 0.0)) * 100.0])
+	check(RenderTest.judge_capture(bs) != "",
+		"a blown-out, low-contrast frame is rejected")
+
+	# 4. A handful of colours with real structure: this must be ACCEPTED. It
+	#    is the guard against the colour-count bar being set so high that a
+	#    legitimate but low-variety frame gets thrown away.
+	var few := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	for y in 64:
+		for x in 64:
+			var c := Color(0.25, 0.40, 0.20)
+			if (x / 8 + y / 8) % 3 == 0:
+				c = Color(0.32, 0.48, 0.24)
+			elif y < 24:
+				# A sky gradient, which is what a real frame always has and
+				# what contributes most of its colour variety once the sky
+				# shader has run.
+				var t := float(y) / 24.0
+				c = Color(0.50 + 0.15 * t, 0.66 + 0.12 * t, 0.88 - 0.05 * t)
+			few.set_pixel(x, y, c)
+	_eq(RenderTest.judge_capture(RenderTest.analyze_image(few)), "",
+		"a blocky low-variety frame with real structure is accepted")
+
+	# 5. Two flat bands. Maximum contrast, so it passes the stddev check --
+	#    but it is still not a landscape, and the colour-count check is what
+	#    catches it. Asserted as a rejection for exactly that reason.
+	var duo := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	for y in 64:
+		for x in 64:
+			duo.set_pixel(x, y, Color.BLACK if y < 32 else Color.WHITE)
+	var ds := RenderTest.analyze_image(duo)
+	check(RenderTest.judge_capture(ds) != "",
+		"two flat bands are rejected: contrast is not the same as content")
+
+	# 6. An empty result must be rejected rather than divided by.
+	_eq(RenderTest.judge_capture({"samples": 0}) != "", true,
+		"a frame with no samples is rejected")
+
+	# 7. Statistics must reflect the image, not a constant.
+	_eq(int(gs.get("distinct_colours", 0)) > int(fs.get("distinct_colours", 0)),
+		true, "statistics discriminate between frames")
+
+
 # --- harness ----------------------------------------------------------------
+
+func check(cond: bool, msg: String) -> void:
+	if cond:
+		print("  ok   %s" % msg)
+	else:
+		_fails += 1
+		print("  FAIL %s" % msg)
+
 
 func _eq(got: Variant, want: Variant, what: String) -> void:
 	if got == want:

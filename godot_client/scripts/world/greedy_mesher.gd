@@ -264,7 +264,24 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 		cols.append(Color(pal.r * bright, pal.g * bright, pal.b * bright,
 			pal.a))
 
-	buf.add_quad(p0, p1, p2, p3, nrm, float(w), float(h),
+	# Winding. `du x dv` is the POSITIVE axis direction for all three axes,
+	# because u=(axis+1)%3 and v=(axis+2)%3 form a right-handed pair with the
+	# axis. So the quad as built above always faces +axis, which is correct
+	# for dir==0 and exactly backwards for dir==1: the -X, -Y and -Z faces
+	# were emitted inside out and silently back-face culled. The mesher tests
+	# only counted triangles, so nothing caught it -- the symptom was a
+	# world with holes in it and a camera that could see through the ground.
+	#
+	# Reversing the corner order flips the triangle winding. The per-corner
+	# colours (ambient occlusion) travel with their corners, so they are
+	# reversed too; reversing only the positions would attach each corner's
+	# shading to the diagonally opposite one.
+	var pts := [p0, p1, p2, p3]
+	if dir == 1:
+		pts = [p0, p3, p2, p1]
+		cols = PackedColorArray([cols[3], cols[2], cols[1], cols[0]])
+
+	buf.add_quad(pts[0], pts[1], pts[2], pts[3], nrm, float(w), float(h),
 		MaterialLibrary.DETAIL_UV_SCALE, cols)
 
 

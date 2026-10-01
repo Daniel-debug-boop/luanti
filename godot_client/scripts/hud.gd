@@ -287,7 +287,11 @@ func _update_prompt() -> void:
 		_prompt.visible = false
 		_update_progress(progress)
 		return
-	_progress_bg.visible = false
+	# `_progress_bg` is built lazily on the first mining action, so it is
+	# legitimately null on every frame before the player breaks anything.
+	# Clearing it unconditionally threw on each of those frames.
+	if _progress_bg != null:
+		_progress_bg.visible = false
 	if not interaction.has_target:
 		_prompt.visible = false
 		return

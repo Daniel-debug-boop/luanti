@@ -32,6 +32,7 @@ const ERR_SOFTWARE := 4
 const ERR_RENDERER := 5
 const ERR_CAPTURE := 6
 const ERR_SCENE := 7
+const ERR_CONTENT := 8
 
 ## Adapter names that mean "a CPU drew this". Matched case-insensitively as
 ## substrings because vendors word it differently: Mesa says "llvmpipe",
@@ -50,6 +51,19 @@ const BOOLEAN_OPTIONS := [
 	"--render-test", "--all-cameras", "--no-ui", "--allow-software",
 	"--no-gpu-validation",
 ]
+
+## Effect presets for the capture.
+##
+## "baseline" is the default and deliberately NOT what a player sees. The
+## shipping tier runs parallax occlusion, the stochastic triplanar shader,
+## SSIL, volumetric fog and glow, and when geometry itself is broken every
+## one of them amplifies the damage: POM ray-marches through surfaces that
+## should not be there, fog fills every hole in the world, and the result is
+## a washed-out picture where the actual fault is invisible. A baseline
+## capture answers "is the geometry right"; a shipping capture answers "is
+## the game pretty". Both are worth having, so both are available, but the
+## one you diagnose in must be the one with the fewest variables.
+const EFFECT_PRESETS := ["baseline", "game"]
 
 
 # --- adapter classification --------------------------------------------------
@@ -135,6 +149,109 @@ static func probe_adapter() -> Dictionary:
 	return out
 
 
+# --- image content analysis -------------------------------------------------
+
+## Statistics for one captured frame, computed from the real framebuffer.
+##
+## Kept pure and static so it can be tested without a GPU and without a
+## renderer: `judge_capture` has to be able to reject a frame that exists at
+## the right resolution but shows nothing, because "the file is there" is
+## exactly the check that let a corrupt render report PASS.
+static func analyze_image(img: Image) -> Dictionary:
+	var w := img.get_width()
+	var h := img.get_height()
+	var step: int = maxi(1, int(sqrt(float(w * h) / 20000.0)))
+	var n := 0
+	var sum := 0.0
+	var sum2 := 0.0
+	var buckets := {}
+	var black := 0
+	var white := 0
+	var y := 0
+	while y < h:
+		var x := 0
+		while x < w:
+			var c := img.get_pixel(x, y)
+			# Rec.601 luma. The exact weights do not matter here; what matters
+			# is that the number is a number the engine computed, not a guess.
+			var l := 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+			sum += l
+			sum2 += l * l
+			if l < 0.02:
+				black += 1
+			elif l > 0.98:
+				white += 1
+			# 5 bits per channel is plenty to tell "a shaded landscape" from
+			# "one flat colour", and keeps the bucket count bounded.
+			var key := (int(c.r * 31.0) << 10) | (int(c.g * 31.0) << 5) \
+				| int(c.b * 31.0)
+			buckets[key] = int(buckets.get(key, 0)) + 1
+			n += 1
+			x += step
+		y += step
+	if n == 0:
+		return {"samples": 0}
+	var mean := sum / float(n)
+	var variance: float = maxf(0.0, sum2 / float(n) - mean * mean)
+	var top := 0
+	for k in buckets:
+		top = maxi(top, int(buckets[k]))
+	return {
+		"samples": n,
+		"distinct_colours": buckets.size(),
+		"mean_luma": mean,
+		"stddev_luma": sqrt(variance),
+		"dominant_fraction": float(top) / float(n),
+		"near_black_fraction": float(black) / float(n),
+		"near_white_fraction": float(white) / float(n),
+	}
+
+
+## Decide whether a capture is usable evidence. Returns "" when it is, or a
+## reason when it is not.
+##
+## A correctly rendered voxel landscape is never a single colour and never
+## perfectly flat, so these thresholds are not close to the boundary. They
+## are here to catch the failure that actually happens: a frame that is
+## genuinely blank, or so blown out by fog and bloom that the geometry is no
+## longer readable in it.
+static func judge_capture(stats: Dictionary) -> String:
+	if int(stats.get("samples", 0)) == 0:
+		return "the capture contained no pixels"
+	# The colour count is quantised to 5 bits per channel, so a real 1920x1080
+	# capture lands in the thousands and even a nearly flat one clears this
+	# comfortably; only a genuine single-colour fill is caught. The bar is set
+	# low on purpose -- it exists to catch "nothing was drawn", not to judge
+	# taste.
+	if int(stats.get("distinct_colours", 0)) < 8:
+		return ("only %d distinct colour(s): the frame is a flat fill, not a "
+			% int(stats.get("distinct_colours", 0))
+			+ "render of the world")
+	# Luma here is 0..1, so these thresholds are fractions of full scale, not
+	# percent. A real shaded landscape lands well above 0.05; a fog-filled
+	# hole sits near 0.
+	var sd := float(stats.get("stddev_luma", 0.0))
+	if sd < 0.01:
+		return ("luma stddev %.4f is under 0.01: the image has no visible "
+			% sd + "structure, so whatever is wrong is not diagnosable")
+	if float(stats.get("dominant_fraction", 0.0)) > 0.98:
+		return ("%.1f%% of the frame is one colour"
+			% (float(stats.get("dominant_fraction", 0.0)) * 100.0)
+			+ ": the world is missing or buried in fog")
+	# Washed out. The two conditions go together deliberately: a high mean
+	# on its own is a legitimate snowfield or overexposed sky, but a high
+	# mean WITH no contrast is fog or bloom sitting on top of geometry that
+	# has nothing to show.
+	var mean := float(stats.get("mean_luma", 0.0))
+	var white := float(stats.get("near_white_fraction", 0.0))
+	if mean > 0.82 and sd < 0.15:
+		return ("mean luma %.3f with stddev %.4f and %.1f%% near-white: the "
+			% [mean, sd, white * 100.0]
+			+ "frame is washed out, most likely fog or glow over broken "
+			+ "geometry")
+	return ""
+
+
 # --- argument parsing -------------------------------------------------------
 
 ## Parse `--render-test` and friends. Returns a config Dictionary, or
@@ -160,6 +277,7 @@ static func parse_args(argv: PackedStringArray) -> Dictionary:
 		"allow_software": false,
 		"gpu_validation": true,
 		"seed": SEED,
+		"effects": "baseline",
 	}
 	# Only this mode's flags are validated. The game is launched with engine
 	# flags and unrelated settings too, and a parser that claimed those as
@@ -219,6 +337,11 @@ static func parse_args(argv: PackedStringArray) -> Dictionary:
 				if not v.is_valid_int() or int(v) < 0:
 					return {"error": "--capture-every wants a non-negative integer"}
 				cfg["capture_every"] = int(v)
+			"--effects":
+				if not EFFECT_PRESETS.has(v):
+					return {"error": "--effects wants one of %s, got '%s'"
+						% [", ".join(PackedStringArray(EFFECT_PRESETS)), v]}
+				cfg["effects"] = v
 			"--all-cameras": cfg["all_cameras"] = true
 			"--no-ui": cfg["ui"] = false
 			"--allow-software":
@@ -288,6 +411,14 @@ var world: Node = null
 var player: Node = null
 var hud: Node = null
 var debug_overlay: Node = null
+## Set by the composition root: `func(pos: Vector3) -> void`, moves the fog
+## volume and the bounce probes to `pos`. Without it the camera and the
+## volumes disagree -- the fog layer stays parked on the player while the
+## benchmark camera stands 30 m away looking through it, which reads as a
+## washed-out, hazy image rather than as the bug it is.
+var follow_volumes: Callable = Callable()
+## Set by the composition root: `func(quality: int, mapping: int) -> void`.
+var apply_render_settings: Callable = Callable()
 
 var cfg := {}
 var adapter := {}
@@ -299,6 +430,8 @@ var _frame_count := 0
 var _warmup_left := 0
 var _log := PackedStringArray()
 var _finished := false
+var _content := {}
+var _bad_captures := PackedStringArray()
 
 
 ## Kick the run off. Returns the exit code the process should end with.
@@ -345,6 +478,7 @@ func start(config: Dictionary) -> int:
 		_resolve(_out_dir + "/captures")))
 
 	_warmup_left = int(cfg.get("warmup_frames", 30))
+	_apply_effects()
 	_camera = Camera3D.new()
 	_camera.name = "RenderTestCamera"
 	_camera.fov = 70.0
@@ -355,6 +489,33 @@ func start(config: Dictionary) -> int:
 	_apply_ui(bool(cfg.get("ui", true)))
 	_run()
 	return OK
+
+
+## Put the world into the requested effect preset before the first frame.
+##
+## The baseline is not "the game with less polish", it is a deliberately
+## reduced set of variables: plain box UVs, no parallax occlusion, no
+## stochastic triplanar shader, no SSIL and no volumetric fog. That is what
+## makes a broken frame diagnosable -- a POM ray-march and a fog volume can
+## each invent geometry that is not there, and both fire happily over a mesh
+## whose faces point the wrong way.
+func _apply_effects() -> void:
+	var preset := str(cfg.get("effects", "baseline"))
+	if apply_render_settings.is_valid():
+		# RenderSettings.Quality: 0 LOW, 1 MEDIUM, 2 HIGH.
+		# MaterialLibrary.Mapping: 0 plain, 1 triplanar, 2 parallax,
+		# 3 stochastic.
+		if preset == "baseline":
+			apply_render_settings.call(0, 0)
+		else:
+			apply_render_settings.call(2, 3)
+	note("effects: %s (quality=%s, mapping=%s)" % [preset,
+		"LOW" if preset == "baseline" else "HIGH",
+		"plain" if preset == "baseline" else "stochastic"])
+	if preset == "baseline":
+		note("baseline preset: POM, stochastic mapping, SSIL, volumetric fog "
+			+ "and SDFGI cascades are off so the captures show geometry, not "
+			+ "post-processing. Pass --effects game for the shipping look.")
 
 
 func _apply_resolution() -> void:
@@ -402,7 +563,11 @@ func _run() -> void:
 		await _shoot(shot)
 	if bool(cfg.get("benchmark", true)):
 		_write_performance()
+	_write_content()
 	_write_metadata()
+	if not _bad_captures.is_empty():
+		_finish(ERR_CONTENT)
+		return
 	_finish(OK)
 
 
@@ -416,6 +581,13 @@ func _shoot(shot: String) -> void:
 	# rather than the camera staring at its own feet.
 	_camera.look_at(focus + Vector3(0.0, 4.0, 0.0), Vector3.UP)
 
+	# Keep the volumes with the camera. The fog layer and the bounce probes
+	# are placed relative to the player in normal play, and the benchmark
+	# camera is somewhere else entirely; leaving them behind fills the frame
+	# with fog that has no business being there.
+	if follow_volumes.is_valid():
+		follow_volumes.call(_camera.global_position)
+
 	var frames := int(cfg.get("frames", 120))
 	var every := int(cfg.get("capture_every", 0))
 	var t0 := Time.get_ticks_usec()
@@ -425,7 +597,7 @@ func _shoot(shot: String) -> void:
 		_frame_count += 1
 		await _frame()
 		if every > 0 and (f + 1) % every == 0 and f + 1 < frames:
-			await _capture("%s_f%03d" % [shot, f + 1])
+			await _capture_raw("%s_f%03d" % [shot, f + 1], false)
 	var path := await _capture(shot)
 	if path != "":
 		_captures.append(path)
@@ -465,6 +637,18 @@ func _focus_point() -> Vector3:
 ## for, because a capture that quietly comes back at a different size is
 ## exactly the kind of thing that makes a benchmark worthless.
 func _capture(label: String) -> String:
+	return await _capture_raw(label, true)
+
+
+## Grab the real framebuffer, write it, and (for the final frame of each
+## preset) analyse what is actually in it.
+##
+## The analysis is not decoration. A run whose validator only checks that a
+## PNG exists at the right dimensions will happily report PASS for a frame
+## that is a flat white rectangle, which is precisely what a real GPU
+## produced here: geometry pointing the wrong way, every visible face culled,
+## and a fog volume filling the holes.
+func _capture_raw(label: String, analyse: bool) -> String:
 	var vp := get_viewport()
 	if vp == null:
 		return ""
@@ -486,6 +670,17 @@ func _capture(label: String) -> String:
 	if err != OK:
 		note("SCREENSHOT_CAPTURE_FAILURE: %s (error %d)" % [label, err])
 		return ""
+	if analyse:
+		var stats := analyze_image(img)
+		var verdict := judge_capture(stats)
+		_content[label] = {"path": rel, "stats": stats, "verdict": verdict}
+		note("captured %s: %d colours, luma %.3f +/- %.3f%s"
+			% [label, int(stats.get("distinct_colours", 0)),
+				float(stats.get("mean_luma", 0.0)),
+				float(stats.get("stddev_luma", 0.0)),
+				"" if verdict == "" else " -- REJECTED: " + verdict])
+		if verdict != "":
+			_bad_captures.append("%s: %s" % [label, verdict])
 	return rel
 
 
@@ -501,6 +696,36 @@ func _resolve(p: String) -> String:
 
 
 # --- output -----------------------------------------------------------------
+
+## Per-capture content report. Written whether or not the content was
+## acceptable, so a rejected run still shows the numbers that rejected it.
+func _write_content() -> void:
+	var lines := PackedStringArray()
+	lines.append("%-14s %8s %7s %7s %7s %7s  %s"
+		% ["capture", "colours", "mean", "stddev", "black%", "white%", "verdict"])
+	for label in _content:
+		var s: Dictionary = _content[label]["stats"]
+		var verdict := str(_content[label]["verdict"])
+		lines.append("%-14s %8d %7.3f %7.3f %7.2f %7.2f  %s"
+			% [label, int(s.get("distinct_colours", 0)),
+				float(s.get("mean_luma", 0.0)), float(s.get("stddev_luma", 0.0)),
+				float(s.get("near_black_fraction", 0.0)) * 100.0,
+				float(s.get("near_white_fraction", 0.0)) * 100.0,
+				"ok" if verdict == "" else "REJECTED"])
+	lines.append("")
+	lines.append("CAPTURE CONTENT: %s"
+		% ("PASS" if _bad_captures.is_empty() else "FAIL"))
+	for b in _bad_captures:
+		lines.append("  - %s" % b)
+	if not _bad_captures.is_empty():
+		lines.append("")
+		lines.append("The frames were written, but their contents are not")
+		lines.append("usable evidence of what the renderer drew. Check")
+		lines.append("mesh winding and face culling first: a frame that is a")
+		lines.append("flat fill is usually geometry facing away from the")
+		lines.append("camera, not a lighting problem.")
+	_write(_out_dir + "/capture-content.txt", "\n".join(lines) + "\n")
+
 
 func _write_metadata() -> void:
 	var m := {
@@ -524,6 +749,13 @@ func _write_metadata() -> void:
 		"display_server": str(adapter.get("display_server", "")),
 		"classification": str(adapter.get("classification", "unknown")),
 		"hardware_acceleration": bool(adapter.get("hardware_acceleration", false)),
+		"effects": str(cfg.get("effects", "baseline")),
+		# Separate verdicts on purpose: "this machine has a GPU" and "these
+		# pictures show the world" are different claims, and collapsing them
+		# into one PASS is how a broken render gets reported as a success.
+		"gpu_validation_pass": bool(adapter.get("hardware_acceleration", false)),
+		"capture_content_pass": _bad_captures.is_empty(),
+		"capture_content": _content,
 	}
 	_write(_out_dir + "/metadata.json", JSON.stringify(m, "  ") + "\n")
 	_write(_out_dir + "/gpu-info.txt", _gpu_report())

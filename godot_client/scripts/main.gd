@@ -295,6 +295,12 @@ func _start_render_test() -> void:
 	rt.player = player
 	rt.hud = hud
 	rt.debug_overlay = debug_overlay
+	# The benchmark camera is not the player, so the fog volume and the
+	# bounce probes -- which follow the player every frame -- have to be
+	# re-anchored on the camera or the captures are shot through fog that
+	# should not be there.
+	rt.follow_volumes = _follow_volumes_at
+	rt.apply_render_settings = set_render_settings
 	# The player is a first-person body whose camera would fight the
 	# benchmark's; the render test owns `current` for the duration.
 	var pc := player.get_node_or_null("Camera") as Camera3D
@@ -317,7 +323,7 @@ func _user_args() -> PackedStringArray:
 		"--render-test", "--scene", "--resolution", "--frames",
 		"--warmup-frames", "--output", "--camera", "--all-cameras",
 		"--no-ui", "--capture-every", "--allow-software",
-		"--no-gpu-validation"
+		"--no-gpu-validation", "--effects"
 	]
 	for a in OS.get_cmdline_args():
 		if a.begins_with("--") and (known.has(a) or _takes_value(a)):
@@ -330,7 +336,7 @@ func _user_args() -> PackedStringArray:
 ## True for the render-test options that consume the following argument.
 func _takes_value(a: String) -> bool:
 	return a in ["--scene", "--resolution", "--frames", "--warmup-frames",
-		"--output", "--camera", "--capture-every"]
+		"--output", "--camera", "--capture-every", "--effects"]
 
 
 func _place_on_surface() -> void:
@@ -577,10 +583,32 @@ func _carve_arrival() -> void:
 ## densest around the camera, and a probe left behind would keep baking light
 ## for terrain the player can no longer see.
 func _follow_volumes() -> void:
-	var p := player.global_position
+	_follow_volumes_at(player.global_position)
+
+
+## Move the fog volume and the bounce-probe ring to an arbitrary point.
+## Split out from `_follow_volumes` so the render test can aim them at its
+## own camera, which is somewhere the player never goes.
+func _follow_volumes_at(p: Vector3) -> void:
 	if _fog_volume != null:
 		_fog_volume.position = p
 	settings.place_probes(p)
+
+
+## Set the render tier and the texture mapping together, then rebind the
+## materials. The render test uses this to pick its effect preset; it is the
+## same path the F1 key and the settings menu go through, so a baseline
+## capture exercises the shipping configuration code rather than a
+## benchmark-only one.
+func set_render_settings(quality: int, mapping: int) -> void:
+	render_quality = clampi(quality, 0, 2)
+	texture_mapping = clampi(mapping, 0, 3)
+	settings.set_quality(render_quality, world.materials,
+		[_env_over, _env_deeps] as Array[Environment])
+	world.set_texture_mapping(texture_mapping)
+	world.rebind_materials()
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
 
 
 ## Switch the render tier at runtime (0 low, 1 medium, 2 high).

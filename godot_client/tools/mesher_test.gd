@@ -13,6 +13,7 @@ func check(cond: bool, msg: String) -> void:
 
 
 func _init() -> void:
+	_test_winding_matches_normal()
 	# --- Isolated block: exactly 12 triangles (6 faces x 2) ---
 	var solo := VoxelBlock.new()
 	solo.is_loaded = true
@@ -206,6 +207,58 @@ func _top_face_colors(mesh: ArrayMesh) -> PackedColorArray:
 			if norms[i].y > 0.9:
 				out.append(cols[i])
 	return out
+
+
+## Every emitted triangle must be wound so that its geometric normal agrees
+## with the normal stored on its vertices. When they disagree the face is
+## inside out and the GPU back-face culls it, so the block is simply not
+## there -- the world gets holes and the camera sees through the ground.
+##
+## This was broken for the -X, -Y and -Z faces (6 of 12 triangles on an
+## isolated block) and nothing caught it, because every other test here
+## counts triangles and a culled triangle is still a triangle. It was found
+## by running the render test on a real GPU and looking at the picture.
+func _test_winding_matches_normal() -> void:
+	var b := VoxelBlock.new()
+	for i in b.content.size():
+		b.content[i] = ContentDB.AIR
+	b.content[MapNode.index(8, 8, 8)] = ContentDB.STONE
+	b.is_loaded = true
+	b.is_generated = true
+	b.fill(MapNode.LIGHT_SUN | (MapNode.LIGHT_SUN << 4))
+	var meshes: Array = GreedyMesher.build(b, {})
+	var m: ArrayMesh = meshes[0]
+	var arrays := m.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var bad := 0
+	var detail := ""
+	for t in range(0, idx.size(), 3):
+		var geo := (verts[idx[t + 1]] - verts[idx[t]]) \
+			.cross(verts[idx[t + 2]] - verts[idx[t]]).normalized()
+		var stored: Vector3 = norms[idx[t]]
+		if geo.dot(stored) < 0.0:
+			bad += 1
+			if detail == "":
+				detail = " (first: stored %s, geometric %s)" % [stored, geo]
+	check(bad == 0, "%d/%d triangles wound against their own normal%s"
+		% [bad, idx.size() / 3, detail])
+
+	# And the specific case that was broken: all six directions must produce
+	# exactly two triangles, so no face is lost to culling.
+	var dirs := {}
+	for t in range(0, idx.size(), 3):
+		var n: Vector3 = norms[idx[t]]
+		var key := "%.0f,%.0f,%.0f" % [n.x, n.y, n.z]
+		dirs[key] = int(dirs.get(key, 0)) + 1
+	check(dirs.size() == 6,
+		"an isolated block should expose all 6 face directions, got %d"
+		% dirs.size())
+	for axis_name in dirs:
+		check(int(dirs[axis_name]) == 2,
+			"direction %s should have 2 triangles, got %d"
+			% [axis_name, int(dirs[axis_name])])
 
 
 func _tris(mesh: ArrayMesh) -> int:
