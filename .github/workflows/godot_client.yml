@@ -125,6 +125,12 @@ jobs:
       - name: Smoke test the exported binary
         run: |
           set -euo pipefail
+          # `cd godot_client` first, like the two steps above it. Every step
+          # starts a fresh shell in the workspace root, so without this the
+          # relative `../build` resolved to the runner's parent directory and
+          # the step failed on `ls` -- reporting "no such file" for a binary
+          # the build had just written successfully one step earlier.
+          cd godot_client
           BIN=../build/luantivoxel/luantivoxel.x86_64
           ls -la "$BIN"
           # The software-rejection gate must still fire, or a change has
