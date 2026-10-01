@@ -12,6 +12,11 @@ extends Node3D
 @export var day_night_enabled := true
 ## RenderSettings.Quality: 0 low, 1 medium, 2 high (SSIL, SDFGI, volumetric fog).
 @export_enum("Low", "Medium", "High") var render_quality := 2
+## Hand the quality tier to the adaptive controller. Off means the tier stays
+## whatever it was set to, which is what the render test and any measurement
+## run needs: a benchmark that silently changes quality halfway through is
+## measuring two different configurations and reporting one number.
+@export var adaptive_quality := true
 ## How block textures are projected. Godot cannot combine triplanar mapping
 ## with parallax occlusion, so this picks one:
 ##   0 plain (box UVs) · 1 triplanar · 2 parallax occlusion (POM)
@@ -75,6 +80,9 @@ var _current_dim := 0
 ## bad flag fails immediately rather than after a minute of world generation.
 var _render_test_config := {}
 var _render_test_wanted := false
+
+## Adaptive rendering. Owns the quality tier unless the player picks one.
+var adaptive: AdaptiveQuality = null
 
 
 func _ready() -> void:
@@ -276,6 +284,11 @@ func _ready() -> void:
 	devtools.name = "DevTools"
 	add_child(devtools)
 	devtools.attach(self, api)
+	# Adaptive rendering starts from whatever tier the project asks for and
+	# takes over from there. The player can pin it at any time with F1-F3.
+	adaptive = AdaptiveQuality.new()
+	adaptive.tier = render_quality
+	adaptive.enabled = adaptive_quality
 	# Last, once every singleton exists: the structural invariants describe
 	# the tree that was actually built, not the one we intended to build.
 	_check_architecture()
@@ -283,6 +296,10 @@ func _ready() -> void:
 	# Only now, with the whole scene assembled, does the render test take
 	# over. It drives the same nodes the player would.
 	if _render_test_wanted:
+		# A benchmark must not have its configuration changed underneath it.
+		adaptive_quality = false
+		if adaptive != null:
+			adaptive.enabled = false
 		_start_render_test()
 
 
@@ -390,6 +407,7 @@ func _setup_environment() -> void:
 func _process(delta: float) -> void:
 	if world == null or player == null:
 		return
+	_update_adaptive_quality(delta)
 	profiler.begin("world")
 	world.update_around(_player_chunk())
 	# Keep the probe and fog volumes on the player: SDFGI traces through the
@@ -448,11 +466,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if engineering_hud != null:
 				engineering_hud.toggle_workshop()
 		elif key == KEY_F1:
-			set_render_quality(0)
+			set_render_quality(0, true)
 		elif key == KEY_F2:
-			set_render_quality(1)
+			set_render_quality(1, true)
 		elif key == KEY_F3:
-			set_render_quality(2)
+			set_render_quality(2, true)
 		elif key == KEY_F4:
 			set_texture_mapping(0)
 		elif key == KEY_F5:
@@ -590,6 +608,44 @@ func _follow_volumes() -> void:
 ## Move the fog volume and the bounce-probe ring to an arbitrary point.
 ## Split out from `_follow_volumes` so the render test can aim them at its
 ## own camera, which is somewhere the player never goes.
+## Feed the frame time to the adaptive controller and apply any change it
+## makes.
+##
+## Sampled on an interval rather than every frame: the controller's windows
+## are seconds long, so sampling at frame rate would just burn CPU producing
+## identical conclusions.
+func _update_adaptive_quality(delta: float) -> void:
+	if adaptive == null or not adaptive.enabled:
+		return
+	_adaptive_accum += delta
+	if _adaptive_accum < ADAPTIVE_SAMPLE_SECONDS:
+		return
+	var elapsed := _adaptive_accum
+	_adaptive_accum = 0.0
+	# Wall-clock frames per second over the window rather than the last
+	# frame's delta: one hitch is not a trend, and the controller needs the
+	# trend. `delta` here is the process frame time, which excludes GPU work
+	# the CPU waited on, so this is a CPU-side measure and is labelled as one
+	# rather than being passed off as frame time.
+	var frames := Engine.get_frames_drawn() - _adaptive_last_frame
+	_adaptive_last_frame = Engine.get_frames_drawn()
+	if frames <= 0:
+		return
+	var ms := (elapsed / float(frames)) * 1000.0
+	var tier := adaptive.observe(ms, Time.get_ticks_msec() / 1000.0, elapsed)
+	if tier < 0:
+		return
+	print("[adaptive] tier %d: %s (%.1f ms)" % [tier, adaptive.last_reason, ms])
+	set_render_quality(tier)
+
+
+## How often the adaptive controller is consulted. Well under its 4 s confirm
+## window, so the sampling rate does not affect its decisions.
+const ADAPTIVE_SAMPLE_SECONDS := 0.5
+var _adaptive_accum := 0.0
+var _adaptive_last_frame := 0
+
+
 func _follow_volumes_at(p: Vector3) -> void:
 	if _fog_volume != null:
 		_fog_volume.position = p
@@ -693,7 +749,14 @@ func set_render_settings(quality: int, mapping: int) -> void:
 
 
 ## Switch the render tier at runtime (0 low, 1 medium, 2 high).
-func set_render_quality(q: int) -> void:
+##
+## `by_player` marks a deliberate choice, which pins the tier and stops the
+## adaptive controller from overriding it. Without that, pressing F3 and
+## then having the machine drop back to LOW a few seconds later looks like
+## the game ignoring the player.
+func set_render_quality(q: int, by_player := false) -> void:
+	if by_player and adaptive != null:
+		adaptive.pin(q)
 	render_quality = q
 	settings.set_quality(q, world.materials,
 		[_env_over, _env_deeps] as Array[Environment])

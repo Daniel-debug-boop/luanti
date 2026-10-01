@@ -142,6 +142,7 @@ const MODULES := {
 	"StabilityWatchdog":  {"layer": "diagnostics", "visibility": PUBLIC},
 	"RenderTest":         {"layer": "diagnostics", "visibility": PUBLIC},
 	"RenderDiagnostics":  {"layer": "diagnostics", "visibility": PUBLIC},
+	"AdaptiveQuality":    {"layer": "diagnostics", "visibility": PUBLIC},
 }
 
 ## Files that are deliberately outside the module graph. `main.gd` declares no
