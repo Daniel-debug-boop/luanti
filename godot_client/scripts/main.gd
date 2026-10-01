@@ -49,12 +49,6 @@ var crafting: CraftingPanel
 var engineering: EngEngineering
 var engineering_hud: EngHud
 
-## The emergent gameplay layer. It derives capabilities, relationships,
-## patterns, behaviours and causal consequences from what the engineering
-## layer already built, and it owns exactly one instance -- two would tick the
-## same events and a golf hole would score twice.
-var emergent: EmergentSystem = null
-
 ## Performance instrumentation and the multiplayer authority. Both are
 ## ordinary members of the game, not developer tooling bolted on: the
 ## profiler is what makes the game measurable on real hardware (F10), and the
@@ -147,20 +141,6 @@ func _ready() -> void:
 	add_child(engineering_hud)
 	engineering_hud.attach(engineering)
 
-	# The emergent layer, pointed at the SAME engineering graph rather than
-	# a second one. It has no component model of its own: a zone is an entity,
-	# a motor is still the engineering layer's motor, and everything the
-	# layer claims about a machine is derived from the graph that actually
-	# simulates it.
-	#
-	# It is a `System`, not a Node, so it is registered rather than parented --
-	# the same treatment the authority gets. It must not be a child of main,
-	# because its tick order relative to the engineering simulation is
-	# explicit (engineering first, then emergent) and a node child would put
-	# it in Godot's process order instead of ours.
-	emergent = EmergentSystem.new()
-	emergent.world = world
-
 	# Claim the single world slot, then check the structural invariants. A
 	# startup that assembles the wrong number of anything is a bug worth
 	# hearing about before the player reaches a save, not after.
@@ -214,9 +194,6 @@ func _ready() -> void:
 	interaction.inventory = inventory
 	interaction.audio = audio
 	interaction.drops_parent = _drops
-	# The emergent layer, as a listener for what the player did. Interaction
-	# still does not know what any of it means.
-	interaction.emergent = emergent
 	add_child(interaction)
 
 	# Mining and placing now move real items rather than picking from a fixed
@@ -452,14 +429,6 @@ func _process(delta: float) -> void:
 		if engineering_hud != null:
 			engineering_hud.set_target(_engineering_target())
 			engineering_hud.set_tool_preview(_tool_preview_text())
-	if emergent != null:
-		# Fed, not ticked. The player is what the layer can sense; it is
-		# handed the position rather than searching the world for it, because
-		# "what is alive in this world" is the game's question. The tick
-		# itself belongs to the registry, below, so it happens exactly once.
-		emergent.attach_to(engineering.graph)
-		emergent.observe([player.position], player.position)
-		emergent.authority = authority
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
@@ -932,7 +901,7 @@ func _do_save() -> void:
 	# The persistence layer owns the policy: seal, back up, write atomically.
 	# main.gd asks; it does not know how a save is made safe.
 	var r := _persistence().save_to(save_slot, player, world, _current_dim,
-		engineering, emergent)
+		engineering)
 	if bool(r["ok"]):
 		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
@@ -975,16 +944,6 @@ func _register_systems() -> void:
 		village)
 	systems.register(_system("engineering",
 		"components, machines and networks", engineering), engineering)
-	# Registered, not parented, and ticked by the registry rather than by hand
-	# below. It was previously ticked explicitly AND registered, which meant
-	# two ticks a frame -- the emergent layer's own rule is that a golf hole
-	# scoring twice is a bug, and the composition root was committing it.
-	# `emergent` ordering places it after engineering in `run_order`, which is
-	# the dependency that matters: relationships are derived from a machine
-	# graph the engineering layer has already rebuilt this frame.
-	systems.register(_system("emergent",
-		"capabilities, patterns and causal rules over that world", emergent),
-		emergent)
 	systems.register(_system("net", "server authority over every mutation",
 		authority), authority)
 	persistence = Persistence.new()
@@ -1041,8 +1000,7 @@ func verify_architecture() -> String:
 func _do_load() -> void:
 	# The persistence layer owns the recovery policy too: it picks the slot or
 	# the backup, refuses a future format, and applies. main.gd reports.
-	var r := _persistence().load_from(save_slot, player, world, engineering,
-		emergent)
+	var r := _persistence().load_from(save_slot, player, world, engineering)
 	if not bool(r["ok"]):
 		print("[main] load failed: ", r["reason"])
 		return

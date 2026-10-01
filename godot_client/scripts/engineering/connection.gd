@@ -372,17 +372,11 @@ func other_end(edge_id: int, node_id: int) -> int:
 	return e.b if e.a == node_id else e.a
 
 
-## Is this edge currently conducting? False when a switch on either end is
-## open, which is how a disconnected circuit is expressed.
-##
-## Named for the answer it gives rather than for the switch. The previous name,
-## `edge_is_open`, read as the opposite of what it returned, and a caller that
-## trusted the name inverted the meaning of the whole graph: it would have
-## derived relationships only for BROKEN edges. Nothing else used it, so
-## renaming it here is cheaper than leaving the trap in the API.
-func edge_is_conductive(edge_id: int) -> bool:
+## Is this edge currently carrying anything? False when a switch on either end
+## is open, which is how a disconnected circuit is expressed.
+func edge_is_open(edge_id: int) -> bool:
 	var e: EngEdge = _edges.get(edge_id, null)
-	return e == null or not _edge_is_broken(e)
+	return e == null or _edge_is_open(e)
 
 
 ## Free ports on a node, for the connection preview.
@@ -421,7 +415,7 @@ func rebuild_networks() -> void:
 		parent[nid] = nid
 	for eid in _edges.keys():
 		var e: EngEdge = _edges[eid]
-		if _edge_is_broken(e):
+		if _edge_is_open(e):
 			continue
 		_union(parent, e.a, e.b)
 
@@ -486,12 +480,7 @@ func _kinds_in(members: Array) -> Array:
 ## what makes an open switch, a blown fuse and a disengaged clutch all work
 ## without any of them being special-cased anywhere: the graph simply does not
 ## union across the broken edge, and the network splits.
-##
-## Named `_edge_is_broken` because that is what it returns. It was previously
-## called `_edge_is_open` and returned the opposite of its own name, which is
-## how `edge_is_open()` ended up answering "is this edge working?" for a
-## caller that read it as "is this edge open?".
-func _edge_is_broken(e: EngEdge) -> bool:
+func _edge_is_open(e: EngEdge) -> bool:
 	for nid in [e.a, e.b]:
 		var n: EngNode = _nodes.get(int(nid), null)
 		if n != null and not n.enabled and EngMachines.breaks_circuit(n.component_id):

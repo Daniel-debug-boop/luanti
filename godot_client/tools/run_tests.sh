@@ -31,8 +31,7 @@ for t in mesher_test seam_test world_test interaction_test render_settings_test 
     crafting_ui_test engineering_test engineering_sim_test \
     engineering_world_test diagnostics_test render_diagnostics_test \
     adaptive_quality_test multiplayer_test \
-    robustness_test architecture_test systems_test ui_test render_test_test \
-    emergent_test; do
+    robustness_test architecture_test systems_test ui_test render_test_test; do
   printf "%-15s " "$t"
   OUT=$(GODOT_SILENCE_ROOT_WARNING=1 "$GODOT_BIN" --headless --path "$DIR" \
     --script "res://tools/$t.gd" 2>&1 | grep -vE "fontconfig|Godot Engine")

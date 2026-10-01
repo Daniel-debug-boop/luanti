@@ -49,14 +49,12 @@ func describes() -> String:
 ## and "the slot is out of range" are different problems and a caller that
 ## wants to react differently must be able to.
 func save_to(p_slot := -1, player: Player = null, p_world: VoxelWorld = null,
-		p_dimension := 0, engineering: Object = null,
-		emergent: Object = null) -> Dictionary:
+		p_dimension := 0, engineering: Object = null) -> Dictionary:
 	if busy:
 		return {"ok": false, "reason": "a save is already in progress",
 			"source": "", "slot": slot, "bytes": 0}
 	busy = true
-	var result: Dictionary = _write(p_slot, player, p_world, p_dimension,
-		engineering, emergent)
+	var result: Dictionary = _write(p_slot, player, p_world, p_dimension, engineering)
 	# GDScript has no `finally`, so the flag is cleared on the single exit
 	# path. A save that left `busy` set would refuse every later save for the
 	# rest of the session, which is the kind of bug that costs a player their
@@ -67,14 +65,13 @@ func save_to(p_slot := -1, player: Player = null, p_world: VoxelWorld = null,
 
 
 func _write(p_slot: int, player: Player, p_world: VoxelWorld,
-		p_dimension: int, engineering: Object,
-		emergent: Object = null) -> Dictionary:
+		p_dimension: int, engineering: Object) -> Dictionary:
 	# p_slot is an override, not a fallback: -1 means "the current slot".
 	# Written the other way round, `save_to(6)` quietly overwrote slot 1 and
 	# reported success -- the worst kind of save bug, because it looks fine.
 	var target: int = slot if p_slot < 0 else p_slot
 	var state := SaveGame.capture(player, inventory, p_world,
-		p_dimension, engineering, emergent)
+		p_dimension, engineering)
 	state["version"] = SaveGame.SAVE_VERSION
 	# A save without an engine version cannot be checked against the binary
 	# that wrote it, and a world that silently half-loads is worse than a
@@ -95,7 +92,7 @@ func _write(p_slot: int, player: Player, p_world: VoxelWorld,
 ## the backup after a damaged slot is a recovery, and the player should be
 ## told their world came back.
 func load_from(p_slot := -1, player: Player = null, p_world: VoxelWorld = null,
-		engineering: Object = null, emergent: Object = null) -> Dictionary:
+		engineering: Object = null) -> Dictionary:
 	var target := slot if p_slot < 0 else p_slot
 	# Every path returns the same keys. A caller that reads `source` to learn
 	# whether the world came back from a backup must not get a KeyError when
@@ -112,7 +109,7 @@ func load_from(p_slot := -1, player: Player = null, p_world: VoxelWorld = null,
 		_last_result = result
 		return _last_result
 	var applied := SaveGame.apply(migrated["data"], player, inventory,
-		p_world, engineering, emergent)
+		p_world, engineering)
 	result["ok"] = applied
 	result["reason"] = "" if applied else SaveGame.last_error
 	result["source"] = String(read["source"])

@@ -19,15 +19,9 @@ extends RefCounted
 ## presentation. Nothing reads another's internals to work out when to run.
 
 ## System name -> the System that owns it.
-## Ticking order, and it is explicit rather than incidental.
-##
-## `emergent` sits immediately after `engineering` because it derives its
-## relationships from the machine graph the engineering layer rebuilds each
-## frame. Tick it first and it would read the previous frame's wiring -- which
-## looks correct on a still world and is a desync on a moving one.
 const ORDER := [
-	"world", "player", "village", "engineering", "emergent", "net",
-	"persistence", "audio", "profiler", "hud",
+	"world", "player", "village", "engineering", "net", "persistence",
+	"audio", "profiler", "hud",
 ]
 
 static var _systems := {}

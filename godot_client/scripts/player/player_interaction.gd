@@ -36,37 +36,6 @@ var drops_parent: Node = null
 ## While true, mining and placing are suppressed (a menu has the cursor).
 var crafting_open := false
 
-## Optional: the emergent gameplay layer, told what the player DID rather than
-## asked what it MEANS.
-##
-## This is the whole player-to-emergent contract, and its restraint is the
-## point. Interaction reports "the player struck at this position" and "the
-## player placed a block here"; it never says "the player swung a golf club",
-## because it cannot know that. The layer decides what striking a ball inside a
-## zone means -- and it decides it from patterns and player rules, so a golf
-## hole, a batting cage and a trapdoor trigger are the same event going to
-## three different sets of rules.
-var emergent: Object = null
-
-
-## The player acted in the world at `pos`. Reported, not interpreted.
-func report_action(action: String, pos: Vector3, power := 0.0) -> Array:
-	if emergent == null or not is_instance_valid(emergent):
-		return []
-	match action:
-		"strike":
-			# The impulse is applied to whatever is nearby and movable. A
-			# cart, a ball, anything the player placed that moves -- there is
-			# no list of strikeable things here. Returned so a caller (and a
-			# test) can see what was actually hit.
-			return emergent.call("strike", pos,
-				(pos - global_position).normalized(), maxf(power, 1.0))
-		_:
-			# Placed a block, took a step, anything else. Reported, not
-			# interpreted: the derived layer may care that a zone was built
-			# over, and it will work that out for itself.
-			return []
-
 
 ## Suppress world interaction while a panel owns the mouse.
 func set_crafting_open(open: bool) -> void:
@@ -141,10 +110,6 @@ func _advance_break(id: int, delta: float) -> void:
 			if audio != null:
 				audio.play_break(id, Vector3(_mine_pos) + Vector3(0.5, 0.5, 0.5))
 			block_broken.emit(_mine_pos, id)
-		# A finished swing. Reported, not interpreted: if a golf hole wants to
-		# count this, a rule says so.
-		report_action("strike", Vector3(_mine_pos) + Vector3(0.5, 0.5, 0.5),
-			1.0)
 		_stop_break()
 
 
@@ -209,7 +174,6 @@ func place() -> bool:
 		if audio != null:
 			audio.play_at("place", Vector3(hit.place) + Vector3(0.5, 0.5, 0.5))
 		block_placed.emit(hit.place, block_id)
-		report_action("place", Vector3(hit.place))
 		return true
 	return false
 

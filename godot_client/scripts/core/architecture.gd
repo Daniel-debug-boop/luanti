@@ -30,7 +30,6 @@ enum Layer {
 	WORLD,       # voxels, generation, content, rendering
 	GAMEPLAY,    # player, mobs, villagers, inventory, crafting, persistence
 	ENGINEERING, # the universal engineering system
-	EMERGENT,    # capabilities, patterns, causal behaviour, player rules
 	NET,         # authority, protocol
 	UI,          # HUD, panels
 	DIAGNOSTICS, # profiler, watchdog, determinism, threading
@@ -47,7 +46,7 @@ enum Layer {
 ## world and the inventory; a villager that cannot see a Player is not a
 ## villager. Splitting them produced six violations that said exactly that.
 const LAYER_ORDER := [
-	"core", "world", "gameplay", "engineering", "emergent", "net", "ui",
+	"core", "world", "gameplay", "engineering", "net", "ui",
 	"diagnostics", "app",
 ]
 
@@ -124,26 +123,6 @@ const MODULES := {
 	"EngBlueprints":      {"layer": "engineering", "visibility": PUBLIC},
 	"EngSociety":         {"layer": "engineering", "visibility": INTERNAL},
 	"EngModding":         {"layer": "engineering", "visibility": PUBLIC},
-
-	# --- emergent: the universal gameplay system ---
-	#
-	# Between engineering and net, because it reads the engineering graph
-	# and submits through the authority, and both directions would be wrong.
-	# The module boundary here is load-bearing and worth stating: the
-	# emergent layer knows what a THING CAN DO and what it is RELATED to, and
-	# nothing about voxels, rendering or transport.
-	"EmergentSystem":      {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentCaps":        {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentPatterns":    {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentMatcher":     {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentEntity":      {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentGraph":       {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentConstraints": {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentBehaviors":   {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentCausal":      {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentRules":       {"layer": "emergent",    "visibility": PUBLIC},
-	"EmergentPersistence": {"layer": "emergent",    "visibility": INTERNAL},
-	"EmergentDiagnostics": {"layer": "emergent",    "visibility": PUBLIC},
 
 	# --- net ---
 	"NetAuthority":       {"layer": "net",         "visibility": PUBLIC},
