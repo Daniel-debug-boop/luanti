@@ -29,7 +29,8 @@ FAIL=0
 for t in mesher_test seam_test world_test interaction_test render_settings_test \
     e2e_test features_test render_test zylann_test gameplay_test creature_test \
     crafting_ui_test engineering_test engineering_sim_test \
-    engineering_world_test diagnostics_test multiplayer_test \
+    engineering_world_test diagnostics_test render_diagnostics_test \
+    multiplayer_test \
     robustness_test architecture_test systems_test ui_test render_test_test; do
   printf "%-15s " "$t"
   OUT=$(GODOT_SILENCE_ROOT_WARNING=1 "$GODOT_BIN" --headless --path "$DIR" \

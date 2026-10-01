@@ -141,6 +141,7 @@ const MODULES := {
 	"GameProfiler":       {"layer": "diagnostics", "visibility": PUBLIC},
 	"StabilityWatchdog":  {"layer": "diagnostics", "visibility": PUBLIC},
 	"RenderTest":         {"layer": "diagnostics", "visibility": PUBLIC},
+	"RenderDiagnostics":  {"layer": "diagnostics", "visibility": PUBLIC},
 }
 
 ## Files that are deliberately outside the module graph. `main.gd` declares no

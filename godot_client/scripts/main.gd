@@ -301,6 +301,7 @@ func _start_render_test() -> void:
 	# should not be there.
 	rt.follow_volumes = _follow_volumes_at
 	rt.apply_render_settings = set_render_settings
+	rt.apply_stage = apply_render_stage
 	# The player is a first-person body whose camera would fight the
 	# benchmark's; the render test owns `current` for the duration.
 	var pc := player.get_node_or_null("Camera") as Camera3D
@@ -323,7 +324,7 @@ func _user_args() -> PackedStringArray:
 		"--render-test", "--scene", "--resolution", "--frames",
 		"--warmup-frames", "--output", "--camera", "--all-cameras",
 		"--no-ui", "--capture-every", "--allow-software",
-		"--no-gpu-validation", "--effects"
+		"--no-gpu-validation", "--effects", "--stage"
 	]
 	for a in OS.get_cmdline_args():
 		if a.begins_with("--") and (known.has(a) or _takes_value(a)):
@@ -336,7 +337,7 @@ func _user_args() -> PackedStringArray:
 ## True for the render-test options that consume the following argument.
 func _takes_value(a: String) -> bool:
 	return a in ["--scene", "--resolution", "--frames", "--warmup-frames",
-		"--output", "--camera", "--capture-every", "--effects"]
+		"--output", "--camera", "--capture-every", "--effects", "--stage"]
 
 
 func _place_on_surface() -> void:
@@ -593,6 +594,86 @@ func _follow_volumes_at(p: Vector3) -> void:
 	if _fog_volume != null:
 		_fog_volume.position = p
 	settings.place_probes(p)
+
+
+## Isolate one layer of the rendering pipeline, for `--render-test --stage`.
+##
+## This deliberately reuses the live Environment objects and lights rather
+## than building parallel ones: a diagnostic that renders through different
+## objects than the game would tell you about the diagnostic. The baseline
+## stages strip every effect off the same environments the game uses, so what
+## is left is geometry and materials alone.
+func apply_render_stage(s: int) -> void:
+	var want := RenderDiagnostics.stage_settings(s)
+	# Each stage is independent, so the previous stage's overrides must go
+	# first. Without this, walking 0 -> 1 -> 2 leaves the unlit flag from
+	# stage 0 set, and every later stage silently renders the baseline.
+	world.materials.clear_diagnostics()
+	# Environment first: an effect left on will contaminate the stages that
+	# are supposed to be clean even if the lights are switched off.
+	RenderDiagnostics.apply_overrides(_env_over,
+		want.get("env_over", {}) as Dictionary)
+	RenderDiagnostics.apply_overrides(_env_deeps,
+		want.get("env_deeps", {}) as Dictionary)
+	var want_we := bool(want.get("world_environment", true))
+	# WorldEnvironment has no `visible` property -- a Node3D does, but this is
+	# a plain Node. The way to remove its influence is to hand it a neutral
+	# environment rather than to hide it.
+	if _we != null:
+		_we.environment = _env_over if want_we \
+			else RenderDiagnostics.make_clean_environment(true)
+	var want_lights := bool(want.get("lights", true))
+	for l in [_sun, _moon, _deeps_ambience]:
+		var light := l as Node
+		if light != null:
+			light.set("visible", want_lights and light == _sun)
+	# The fog volume and probes are atmosphere, so they only exist from the
+	# environment stage onward.
+	var atmo := s >= RenderDiagnostics.Stage.ENVIRONMENT
+	if _fog_volume != null:
+		_fog_volume.visible = atmo
+	for p in _probes:
+		var probe := p as Node
+		if probe != null:
+			probe.set("visible", atmo)
+	# Order matters here. The mapping switch reconfigures the shared
+	# materials, and the diagnostic overrides configure the same object, so
+	# the overrides have to be applied AFTER the mapping switch. Applied
+	# before, set_texture_mapping's own override calls silently undo them and
+	# every stage renders the baseline instead of itself.
+	_apply_stage_materials(int(want.get("material_mode", 0)))
+	# An unlit material ignores lights entirely, which is what makes stage 0
+	# a pure geometry test.
+	world.set_unlit(bool(want.get("unlit", false)))
+	world.set_normal_debug(bool(want.get("normal_debug", false)))
+	# "flat colour, no texture" is the difference between stage 0 and stage 1:
+	# stage 0 must show geometry alone, stage 1 the real albedo on it.
+	world.set_material_override(
+		int(want.get("material_mode", 0)) == 0 and s == RenderDiagnostics.Stage.ALBEDO)
+	# DayNight writes the sun every frame; it has to stand down or it will
+	# undo the light switching above on the next tick.
+	if day_night != null:
+		day_night.set_process(false)
+		if _sun != null and want_lights:
+			_sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
+
+
+## material_mode: 0 flat untextured, 1 the real textured material,
+## 2 POM/stochastic mapping, 3 whatever the quality tier picked.
+##
+## Only the mapping is decided here. The diagnostic overrides are applied by
+## the caller afterwards, because this function reconfigures the same
+## materials and would otherwise clear them.
+func _apply_stage_materials(mode: int) -> void:
+	match mode:
+		0:
+			world.set_texture_mapping(0)
+		1:
+			world.set_texture_mapping(0)
+		2:
+			world.set_texture_mapping(2)
+		_:
+			world.set_texture_mapping(texture_mapping)
 
 
 ## Set the render tier and the texture mapping together, then rebind the

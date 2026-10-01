@@ -52,6 +52,12 @@ const BOOLEAN_OPTIONS := [
 	"--no-gpu-validation",
 ]
 
+## Options the render test hands straight to the renderer when it can, rather
+## than owning itself. Set by main.gd so RenderTest does not have to name a
+## concrete configuration type.
+## apply_stage(stage: int) -> void
+var apply_stage: Callable = Callable()
+
 ## Effect presets for the capture.
 ##
 ## "baseline" is the default and deliberately NOT what a player sees. The
@@ -278,6 +284,7 @@ static func parse_args(argv: PackedStringArray) -> Dictionary:
 		"gpu_validation": true,
 		"seed": SEED,
 		"effects": "baseline",
+		"stage": -1,   # -1 = no layer isolation; use the --effects preset
 	}
 	# Only this mode's flags are validated. The game is launched with engine
 	# flags and unrelated settings too, and a parser that claimed those as
@@ -342,6 +349,14 @@ static func parse_args(argv: PackedStringArray) -> Dictionary:
 					return {"error": "--effects wants one of %s, got '%s'"
 						% [", ".join(PackedStringArray(EFFECT_PRESETS)), v]}
 				cfg["effects"] = v
+			"--stage":
+				var st: Variant = RenderDiagnostics.parse_stage(v)
+				if st == null:
+					return {"error": "--stage wants a name or index from %s, "
+						% ", ".join(
+							PackedStringArray(RenderDiagnostics.STAGE_NAMES))
+						+ "got '%s'" % v}
+				cfg["stage"] = int(st)
 			"--all-cameras": cfg["all_cameras"] = true
 			"--no-ui": cfg["ui"] = false
 			"--allow-software":
@@ -478,7 +493,10 @@ func start(config: Dictionary) -> int:
 		_resolve(_out_dir + "/captures")))
 
 	_warmup_left = int(cfg.get("warmup_frames", 30))
-	_apply_effects()
+	if int(cfg.get("stage", -1)) >= 0:
+		_apply_stage()
+	else:
+		_apply_effects()
 	_camera = Camera3D.new()
 	_camera.name = "RenderTestCamera"
 	_camera.fov = 70.0
@@ -516,6 +534,25 @@ func _apply_effects() -> void:
 		note("baseline preset: POM, stochastic mapping, SSIL, volumetric fog "
 			+ "and SDFGI cascades are off so the captures show geometry, not "
 			+ "post-processing. Pass --effects game for the shipping look.")
+
+
+## Isolate one layer of the pipeline.
+##
+## `--stage` overrides `--effects`: it is a diagnostic instrument, not a
+## quality setting. Stage 0 is the unlit baseline that answers "is the
+## geometry right", and every later stage adds one more thing, so the first
+## stage whose output breaks identifies the responsible subsystem.
+func _apply_stage() -> void:
+	var s := int(cfg.get("stage", 0))
+	if apply_stage.is_valid():
+		apply_stage.call(s)
+	note("stage %d (%s): %s" % [s, RenderDiagnostics.stage_name(s),
+		RenderDiagnostics.describe(s)])
+	# Layer isolation and the effect preset are contradictory: one strips
+	# everything back, the other turns everything on. Say so rather than
+	# letting whichever ran last silently win.
+	if str(cfg.get("effects", "baseline")) != "baseline":
+		note("--stage overrides --effects; the effect preset is ignored")
 
 
 func _apply_resolution() -> void:
@@ -750,6 +787,9 @@ func _write_metadata() -> void:
 		"classification": str(adapter.get("classification", "unknown")),
 		"hardware_acceleration": bool(adapter.get("hardware_acceleration", false)),
 		"effects": str(cfg.get("effects", "baseline")),
+		"stage": int(cfg.get("stage", -1)),
+		"stage_name": (RenderDiagnostics.stage_name(int(cfg["stage"]))
+			if int(cfg.get("stage", -1)) >= 0 else "none"),
 		# Separate verdicts on purpose: "this machine has a GPU" and "these
 		# pictures show the world" are different claims, and collapsing them
 		# into one PASS is how a broken render gets reported as a success.
