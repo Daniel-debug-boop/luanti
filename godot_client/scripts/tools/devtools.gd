@@ -330,6 +330,47 @@ func _graph_report() -> String:
 	lines.append("  cache %d chunks, %d evicted, %d deferred for neighbours"
 		% [int(stream.call("cache_size")), int(st.get("evicted", 0)),
 		int(st.get("deferred", 0))])
+	# The emergent layer's derived graph belongs next to the streaming one:
+	# both are caches recomputed from an authoritative world rather than state
+	# in their own right, and a player asking "why is my hole not scoring"
+	# needs the rebuild counters and the causal counters in the same place.
+	var em: Variant = main.get("emergent")
+	if em != null:
+		lines.append(_emergent_report(em as EmergentSystem))
+	return "\n".join(lines)
+
+
+## What the emergent layer derived, and what it is refusing to do.
+##
+## The budget counters matter as much as the entity list. A construction that
+## works on a quiet server and silently stops scoring on a busy one is
+## indistinguishable from a broken one from the player's side, so the number
+## of dropped senses and stalled analyses is printed next to the answer.
+func _emergent_report(sys: EmergentSystem) -> String:
+	var lines := PackedStringArray()
+	lines.append("EMERGENT  " + sys.report())
+	var gst: Dictionary = sys.graph.stats()
+	lines.append("  derived graph: %d entities, %d adjacency nodes, %d rebuilds, last %.2f ms"
+		% [int(gst.get("entities", 0)), int(gst.get("nodes", 0)),
+		int(gst.get("rebuilds", 0)), float(gst.get("rebuild_ms", 0.0))])
+	lines.append("  sensed %d (dropped %d), analysed %d (dropped %d)"
+		% [int(sys.stats["sensed"]), int(sys.stats["dropped_sense"]),
+		int(sys.stats["analysed"]), int(sys.stats["dropped_analysis"])])
+	lines.append("  " + sys.causal.report())
+	var active := sys.active_behaviours()
+	if active.is_empty():
+		lines.append("  no behaviours active")
+	else:
+		lines.append("  %d behaviour(s) active:" % active.size())
+		var shown := 0
+		for a in active:
+			if shown >= 6:
+				lines.append("    ... and %d more" % (active.size() - shown))
+				break
+			var d: Dictionary = a
+			lines.append("    %s on %d (via %s)" % [String(d["behaviour"]),
+				int(d["subject"]), String(d["pattern"])])
+			shown += 1
 	return "\n".join(lines)
 
 

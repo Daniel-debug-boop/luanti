@@ -33,6 +33,12 @@ extends RefCounted
 const ALLOWED := [
 	"place", "remove", "connect", "disconnect", "manufacture",
 	"operate", "set_interaction_level", "capture_blueprint", "place_blueprint",
+	# The emergent layer's own mutations. They are here rather than bypassing
+	# the authority because a client that could place an entity without a
+	# reach check could place one anywhere on the map, and a client that could
+	# author a rule without a session check could author one the server never
+	# agreed to. Same door as everything else.
+	"emergent_place", "emergent_remove", "emergent_rule",
 ]
 
 ## Tokens refilled per second, and the bucket depth. Sized so a player doing
@@ -55,6 +61,9 @@ const REQUIRED := {
 	"set_interaction_level": ["level"],
 	"capture_blueprint": ["name"],
 	"place_blueprint": ["blueprint"],
+	"emergent_place": ["kind", "position"],
+	"emergent_remove": ["entity"],
+	"emergent_rule": ["text"],
 }
 
 ## How far from a player's own position they may build, in metres. Precision
