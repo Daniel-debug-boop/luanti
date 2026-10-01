@@ -130,11 +130,17 @@ const MODULES := {
 
 	# --- ui ---
 	"WorldHud":           {"layer": "ui",          "visibility": PUBLIC},
+	"UiTheme":            {"layer": "ui",          "visibility": PUBLIC},
+	"BlockIcon":          {"layer": "ui",          "visibility": PUBLIC},
+	"VitalsBar":          {"layer": "ui",          "visibility": PUBLIC},
+	"SettingsMenu":       {"layer": "ui",          "visibility": PUBLIC},
+	"DebugOverlay":       {"layer": "ui",          "visibility": PUBLIC},
 	"DevTools":           {"layer": "app",         "visibility": PUBLIC},
 
 	# --- diagnostics ---
 	"GameProfiler":       {"layer": "diagnostics", "visibility": PUBLIC},
 	"StabilityWatchdog":  {"layer": "diagnostics", "visibility": PUBLIC},
+	"RenderTest":         {"layer": "diagnostics", "visibility": PUBLIC},
 }
 
 ## Files that are deliberately outside the module graph. `main.gd` declares no

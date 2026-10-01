@@ -21,6 +21,10 @@ extends Node3D
 var world: VoxelWorld
 var player: Player
 var hud: WorldHud
+## Developer diagnostics, off until F10. Never part of the player's view.
+var debug_overlay: DebugOverlay
+## The options menu, opened with O.
+var options: SettingsMenu
 var spawner: MobSpawner
 var village: Village
 var interaction: PlayerInteraction
@@ -67,11 +71,35 @@ var _fog_volume: FogVolume
 var _probes: Array[ReflectionProbe] = []
 var _current_dim := 0
 
+## `--render-test` state. The config is parsed before the scene is built so a
+## bad flag fails immediately rather than after a minute of world generation.
+var _render_test_config := {}
+var _render_test_wanted := false
+
 
 func _ready() -> void:
 	settings = RenderSettings.new()
 	settings.quality = render_quality
 	_setup_environment()
+
+	# `--render-test` is a mode, not a different game. The whole scene is
+	# assembled exactly as it is below either way; the only differences are
+	# that the world is seeded deterministically and a RenderTest is handed
+	# the finished scene to drive. Reading the flag here rather than
+	# branching around the scene means normal play cannot drift away from
+	# what the benchmark measures.
+	var rt := RenderTest.parse_args(_user_args())
+	# parse_args returns {"error": ""} when the mode was not asked for, a
+	# config with "enabled" when it was, and {"error": "..."} on a bad flag.
+	# Three cases, so they are distinguished by shape rather than by guessing
+	# at an empty string.
+	if rt.has("error") and not str(rt.get("error", "")).is_empty():
+		push_error("[main] --render-test: %s" % str(rt["error"]))
+		get_tree().quit(RenderTest.ERR_USAGE)
+		return
+	if rt.has("enabled"):
+		_render_test_config = rt
+		_render_test_wanted = true
 
 	world = VoxelWorld.new()
 	world.name = "VoxelWorld"
@@ -79,6 +107,13 @@ func _ready() -> void:
 	world.view_radius = view_radius
 	world.texture_mapping = texture_mapping
 	add_child(world)
+	# The world is deterministic already (the generator is seeded with a
+	# constant in VoxelWorld._ready), but the benchmark states the seed it
+	# used and honours a caller-supplied one, so two runs on different
+	# machines are comparable.
+	if _render_test_wanted:
+		world.generator = WorldGenerator.new(
+			int(_render_test_config.get("seed", RenderTest.SEED)))
 
 	inventory = PlayerInventory.new()
 	inventory.name = "Inventory"
@@ -188,12 +223,32 @@ func _ready() -> void:
 	hud.inventory = inventory
 	hud.day_night = day_night
 	hud.settings = settings
-	hud.inventory = inventory
+
+	# Developer diagnostics live in their own overlay, off until F10. The
+	# gameplay HUD carries nothing a player should not see.
+	debug_overlay = DebugOverlay.new()
+	debug_overlay.player = player
+	debug_overlay.world = world
+	debug_overlay.spawner = spawner
+	debug_overlay.village = village
+	debug_overlay.interaction = interaction
+	debug_overlay.settings = settings
+	hud.debug_overlay = debug_overlay
+
+	# The options menu reads the live settings rather than keeping a copy, so
+	# a function-key change and a menu change can never disagree.
+	options = SettingsMenu.new()
+	options.name = "SettingsMenu"
+	options.quality_requested.connect(set_render_quality)
+	options.mapping_requested.connect(set_texture_mapping)
+	options.sync_from(render_quality, texture_mapping)
+
 	crafting = CraftingPanel.new()
 	crafting.name = "CraftingPanel"
 	add_child(crafting)
 	crafting.setup(inventory, audio)
 	add_child(hud)
+	add_child(options)
 
 	# --- Bounce probes and fog volume ---
 	# A ring of reflection probes around the player supplies indirect bounce
@@ -224,6 +279,58 @@ func _ready() -> void:
 	# Last, once every singleton exists: the structural invariants describe
 	# the tree that was actually built, not the one we intended to build.
 	_check_architecture()
+
+	# Only now, with the whole scene assembled, does the render test take
+	# over. It drives the same nodes the player would.
+	if _render_test_wanted:
+		_start_render_test()
+
+
+## Hand the finished scene to the benchmark and let it drive.
+func _start_render_test() -> void:
+	var rt := RenderTest.new()
+	rt.name = "RenderTest"
+	add_child(rt)
+	rt.world = world
+	rt.player = player
+	rt.hud = hud
+	rt.debug_overlay = debug_overlay
+	# The player is a first-person body whose camera would fight the
+	# benchmark's; the render test owns `current` for the duration.
+	var pc := player.get_node_or_null("Camera") as Camera3D
+	if pc != null:
+		pc.current = false
+	var code := rt.start(_render_test_config)
+	if code != RenderTest.OK:
+		get_tree().quit(code)
+
+
+## Command-line arguments meant for the game.
+##
+## Godot splits `OS.get_cmdline_args()` (everything, including engine flags)
+## from `OS.get_cmdline_user_args()` (only what follows a bare `--`). Both
+## are read so the mode works whether or not the caller remembered the
+## separator, and engine flags we do not own are filtered out.
+func _user_args() -> PackedStringArray:
+	var out := PackedStringArray()
+	var known := [
+		"--render-test", "--scene", "--resolution", "--frames",
+		"--warmup-frames", "--output", "--camera", "--all-cameras",
+		"--no-ui", "--capture-every", "--allow-software",
+		"--no-gpu-validation"
+	]
+	for a in OS.get_cmdline_args():
+		if a.begins_with("--") and (known.has(a) or _takes_value(a)):
+			out.append(a)
+	for a in OS.get_cmdline_user_args():
+		out.append(a)
+	return out
+
+
+## True for the render-test options that consume the following argument.
+func _takes_value(a: String) -> bool:
+	return a in ["--scene", "--resolution", "--frames", "--warmup-frames",
+		"--output", "--camera", "--capture-every"]
 
 
 func _place_on_surface() -> void:
@@ -348,10 +455,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_F7:
 			set_texture_mapping(3)
 		elif key == KEY_F10:
-			# The debug panel: read-only, and the answer to "what was the game
-			# doing when it broke" without a debugger.
+			# Developer diagnostics: fps, coordinates, chunk and effect state.
+			# Off by default and never part of the player's view.
+			var dbg_on := false
+			if debug_overlay != null:
+				dbg_on = debug_overlay.toggle()
 			if devtools != null:
 				devtools.toggle()
+			print("[main] debug overlay %s"
+				% ("on" if dbg_on else "off"))
+		elif key == KEY_O:
+			if options != null:
+				options.toggle()
 		elif key == KEY_F11:
 			print("[dev] ", devtools.report("systems") if devtools != null else "no devtools")
 		elif key == KEY_F12:
@@ -474,6 +589,8 @@ func set_render_quality(q: int) -> void:
 	settings.set_quality(q, world.materials,
 		[_env_over, _env_deeps] as Array[Environment])
 	world.rebind_materials()
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
 	print("[main] render: ", settings.describe())
 
 
@@ -483,6 +600,8 @@ func set_render_quality(q: int) -> void:
 func set_texture_mapping(m: int) -> void:
 	texture_mapping = m
 	world.set_texture_mapping(m)
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
 	print("[main] texture mapping: ",
 		MaterialLibrary.mapping_name()[clampi(m, 0, 3)])
 
