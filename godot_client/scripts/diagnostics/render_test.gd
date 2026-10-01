@@ -105,6 +105,7 @@ static func classify_adapter(renderer: String, vendor: String) -> String:
 static func probe_adapter() -> Dictionary:
 	var out := {}
 	out["display_server"] = DisplayServer.get_name()
+	out["driver_version"] = ""
 	out["video_driver"] = ProjectSettings.get_setting(
 		"rendering/renderer/rendering_method", "unknown")
 	out["rendering_driver"] = ProjectSettings.get_setting(
@@ -134,7 +135,15 @@ static func probe_adapter() -> Dictionary:
 			out["driver_version"] = str(d.get("version", ""))
 	elif raw is PackedStringArray:
 		var arr: PackedStringArray = raw
-		if arr.size() > 0 and str(out["driver_version"]).is_empty():
+		# `.get` rather than `[...]`: `driver_version` is only ever assigned
+		# inside the Dictionary branch above, so on a platform where the OS
+		# returns an ARRAY instead -- which is what the GitHub runner does --
+		# the subscript form reads a key that was never created and the probe
+		# dies. It died only there, and only for the driver version, which is
+		# why it survived every local run: the software rasteriser under
+		# llvmpipe returns the Dictionary shape, and the sandbox and the
+		# runner do not agree on which of the two shapes a headless box has.
+		if arr.size() > 0 and str(out.get("driver_version", "")).is_empty():
 			out["driver_version"] = str(arr[0])
 		if arr.size() > 2 and str(out["name"]).is_empty():
 			out["name"] = str(arr[2])
