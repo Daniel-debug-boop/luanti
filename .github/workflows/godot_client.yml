@@ -1,0 +1,153 @@
+name: godot_client
+
+# The Godot 4.4 client is a separate product from the C++ engine in src/, and
+# the existing workflows all key off C++ paths. Without this, every change to
+# godot_client/ reaches master having been tested by nobody: the geometry
+# bugs fixed in this branch -- faces collapsed onto chunk boundaries, an
+# inside-out winding, an inverted index/unindex pair -- were all invisible to
+# the test suite that existed, and would have been invisible to CI too.
+
+on:
+  push:
+    paths:
+      - 'godot_client/**'
+      - '.github/workflows/godot_client.yml'
+  pull_request:
+    paths:
+      - 'godot_client/**'
+      - '.github/workflows/godot_client.yml'
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.4"
+  GODOT_RELEASE: "Godot_v4.4-stable_linux.x86_64"
+
+jobs:
+  tests:
+    name: GDScript tests and import
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot
+        run: |
+          set -euo pipefail
+          curl -fsSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${GODOT_RELEASE}.zip"
+          unzip -q godot.zip
+          sudo mv Godot_v4.4-stable_linux.x86_64 /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          godot --version
+
+      # The engine imports every asset on first open and writes .godot/.
+      # Doing it here means a broken import fails the build with a readable
+      # message, rather than surfacing later as a missing texture at runtime.
+      - name: Import project
+        run: |
+          set -euo pipefail
+          cd godot_client
+          timeout 300 godot --headless --path . --import || true
+          # A failed import exits non-zero but prints the real error; surface
+          # it rather than letting the job pass on a broken project.
+          if [ ! -d .godot ]; then
+            echo "::error::Godot import produced no .godot directory"
+            exit 1
+          fi
+
+      - name: Parse every script
+        run: |
+          set -euo pipefail
+          cd godot_client
+          fail=0
+          for f in $(find scripts tools -name '*.gd' | sort); do
+            if ! out=$(godot --headless --path . --check-only --script "$f" 2>&1); then
+              echo "::error file=$f::script failed to parse"
+              echo "$out" | grep -E 'Parse Error|SCRIPT ERROR' | head -5 || true
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Run test suite
+        run: |
+          set -euo pipefail
+          cd godot_client
+          sh tools/run_tests.sh godot
+
+  release-build:
+    name: Export and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          set -euo pipefail
+          curl -fsSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${GODOT_RELEASE}.zip"
+          unzip -q godot.zip
+          sudo mv Godot_v4.4-stable_linux.x86_64 /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+
+          # The export templates are a separate 1.2 GB download from the
+          # engine itself. Without them tools/build_release.sh refuses with a
+          # clear message, so this step is the one that makes CI able to
+          # produce the thing players actually download.
+          curl -fsSL -o tpl.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q -o tpl.tpz -d /tmp/tpl
+          cp /tmp/tpl/templates/linux_release.x86_64 \
+             /tmp/tpl/templates/linux_debug.x86_64 \
+             /tmp/tpl/templates/version.txt \
+             ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      # The assets are fetched by a script rather than committed, so the build
+      # step has to fetch them first. It is idempotent and skipped when the
+      # directory is already populated.
+      - name: Fetch assets
+        run: |
+          set -euo pipefail
+          cd godot_client
+          if [ ! -d assets/raw/textures ]; then
+            python3 tools/fetch_assets.py
+          fi
+
+      - name: Build release
+        run: |
+          set -euo pipefail
+          cd godot_client
+          sh tools/build_release.sh godot
+
+      # A build that produces a binary is not the same as a game that starts.
+      # This runs the exported binary headlessly and requires a clean ready
+      # line and zero script errors.
+      - name: Smoke test the exported binary
+        run: |
+          set -euo pipefail
+          # `cd godot_client` first, like the two steps above it. Every step
+          # starts a fresh shell in the workspace root, so without this the
+          # relative `../build` resolved to the runner's parent directory and
+          # the step failed on `ls` -- reporting "no such file" for a binary
+          # the build had just written successfully one step earlier.
+          cd godot_client
+          BIN=../build/luantivoxel/luantivoxel.x86_64
+          ls -la "$BIN"
+          # The software-rejection gate must still fire, or a change has
+          # quietly turned the validator into a no-op.
+          set +e
+          DISPLAY= timeout 120 "$BIN" --headless -- --render-test \
+            --frames 2 --warmup-frames 1 --output /tmp/rt \
+            > /tmp/render_test.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/render_test.log
+          if [ "$code" -ne 3 ] && [ "$code" -ne 4 ]; then
+            echo "::error::expected the GPU gate to refuse (exit 3 or 4), got $code"
+            exit 1
+          fi
+          if ! grep -q "HARDWARE GPU: FAIL" /tmp/rt/gpu-info.txt; then
+            echo "::error::the refused run did not record HARDWARE GPU: FAIL"
+            exit 1
+          fi
+          echo "GPU gate refused correctly on this GPU-less runner"

@@ -24,6 +24,9 @@ func _init() -> void:
 	_test_api_refuses_unknown_items()
 	_test_api_counts_callers()
 	_test_persistence_owns_the_save()
+	_test_persistence_carries_the_emergent_section()
+	_test_emergent_is_ticked_once_and_in_order()
+	_test_interaction_reports_actions_to_the_emergent_layer()
 	_test_persistence_survives_interruption()
 	_test_devtools_reports_are_pure()
 	_finish()
@@ -39,6 +42,10 @@ func _eq(got: Variant, want: Variant, what: String) -> void:
 
 func _true(got: bool, what: String) -> void:
 	_eq(got, true, what)
+
+
+func _r(what: String, cond: bool) -> void:
+	_true(cond, what)
 
 
 func _finish() -> void:
@@ -367,6 +374,118 @@ func _test_persistence_owns_the_save() -> void:
 		"every slot is reported")
 	SaveGame.delete_slot(5)
 	p.teardown()
+
+
+## The emergent layer's save section, exercised through the real capture and
+## apply path rather than through EmergentPersistence alone.
+##
+## The property worth protecting is that it is ADDITIVE: a save written before
+## the emergent layer existed has no `emergent` key, and loading it must succeed
+## rather than treat a missing section as corruption. A save format that can be
+## broken by adding a subsystem is a save format that will be broken.
+func _test_persistence_carries_the_emergent_section() -> void:
+	SystemRegistry.clear()
+	EmergentRules.clear()
+	var em := EmergentSystem.new()
+	_eq(em.initialize(), true, "an emergent system starts")
+	_eq(em.run(), true, "and runs")
+	em._initialize_graph(EngGraph.new())
+	var zone := em.graph.add_entity("zone", Vector3.ZERO)
+	var counter := em.graph.add_entity("counter", Vector3(1, 0, 0))
+	em.invalidate()
+	em.tick(0.05)
+	em.graph.entity(counter).set_state("value", 4.0)
+	_r("the zone was placed", zone > 0)
+
+	var state := SaveGame.capture(null, null, null, 0, null, em)
+	_eq(bool(state.has("emergent")), true, "capture writes an emergent section")
+	_eq(int((state["emergent"]["graph"]["entities"] as Array).size()), 2,
+		"carrying both entities")
+
+	var fresh := EmergentSystem.new()
+	fresh.initialize()
+	fresh.run()
+	fresh._initialize_graph(EngGraph.new())
+	var report: Dictionary = fresh.deserialize(state["emergent"])
+	_eq(int(report["entities"]), 2, "apply restores both")
+	_eq(float(fresh.graph.entity(counter).get_state("value", 0.0)), 4.0,
+		"including the state they reached")
+
+	# An old save with no section at all. Note that `apply` needs at least one
+	# real section to have applied -- the emergent layer alone is not enough,
+	# and neither should it be: a load that restored nothing is a failure, and
+	# that rule predates this layer.
+	var legacy := state.duplicate(true)
+	legacy.erase("emergent")
+	legacy["player"] = {"position": [0, 0, 0], "health": 20.0,
+		"max_health": 20.0, "flying": false}
+	var p := Player.new()
+	root.add_child(p)
+	_eq(SaveGame.apply(legacy, p, null, null, null, fresh), true,
+		"a save predating the emergent layer still loads")
+	_eq(int(report["entities"]), 2,
+		"and the live world's entities are left untouched")
+
+	# And a save whose emergent section is empty rather than absent.
+	var empty := state.duplicate(true)
+	empty["emergent"] = {}
+	_eq(SaveGame.apply(empty, p, null, null, null, fresh), true,
+		"an empty emergent section is not an error either")
+	p.queue_free()
+	em.teardown()
+	fresh.teardown()
+	SystemRegistry.clear()
+	EmergentRules.clear()
+
+
+## The registry must tick the emergent layer exactly once, and after the
+## engineering layer whose graph it derives from.
+func _test_emergent_is_ticked_once_and_in_order() -> void:
+	SystemRegistry.clear()
+	var eng := _sys("engineering", "components, machines and networks")
+	var em := EmergentSystem.new()
+	em.system_name = "emergent"
+	em.initialize()
+	em.run()
+	em._initialize_graph(EngGraph.new())
+	SystemRegistry.register(eng, eng)
+	SystemRegistry.register(em, em)
+	_eq(SystemRegistry.run_order().has("emergent"), true,
+		"the emergent layer is in the tick order")
+	_eq(int(SystemRegistry.run_order().find("emergent"))
+		> int(SystemRegistry.run_order().find("engineering")), true,
+		"and it is after engineering, whose graph it reads")
+	var before := em.tick_count
+	SystemRegistry.tick_all(0.05)
+	_eq(em.tick_count - before, 1,
+		"one registry tick is exactly one emergent tick, not two")
+	SystemRegistry.clear()
+
+
+## The player's actions reach the layer as events, not as meanings. A swing is
+## reported as a swing; whether that scored anything is a rule's business.
+func _test_interaction_reports_actions_to_the_emergent_layer() -> void:
+	var em := EmergentSystem.new()
+	em.initialize()
+	em.run()
+	em._initialize_graph(EngGraph.new())
+	var cart := em.graph.add_entity("cart", Vector3.ZERO)
+	var probe := PlayerInteraction.new()
+	probe.emergent = em
+	root.add_child(probe)
+	var struck: Array = probe.report_action("strike", Vector3(0.2, 0, 0), 9.0)
+	_eq(struck.size(), 1, "a swing struck the cart")
+	_eq(float(em.graph.entity(cart).velocity.length()) > 0.0, true,
+		"and imparted an impulse")
+	# No layer attached at all must be a no-op rather than a crash: the
+	# interaction node exists in tests and in menus that have no emergent layer.
+	probe.emergent = null
+	_eq(probe.report_action("strike", Vector3.ZERO).size(), 0,
+		"with no layer attached, reporting is a no-op")
+	probe.queue_free()
+	em.teardown()
+	SystemRegistry.clear()
+	EmergentRules.clear()
 
 
 func _test_persistence_survives_interruption() -> void:
