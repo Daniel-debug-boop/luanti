@@ -72,6 +72,40 @@ var _produce_timer := 0.0
 ## Cached so the resource scan runs on an interval, not every frame.
 var _has_resource := false
 var _resource_timer := 0.0
+## The block this villager last worked on, so tests and the HUD can see what
+## a job actually touched rather than only that a timer ran.
+var last_worked := Vector3i(0, -999, 0)
+## How many world edits this villager's job has made. A Farmer's goes up while
+## a Guard's stays at zero, which is the difference the jobs are meant to have.
+var work_done := 0
+
+
+## What each job does to the world while on shift, and the clip that shows it
+## doing so. A job missing from this table still works and still produces -- it
+## simply has no world edit to make, which is the honest difference between a
+## Farmer and a Guard rather than a special case bolted onto one of them.
+const JOB_WORK := {
+	"Farmer": {"clip": "Use_Item", "verb": "till"},
+	"Miner": {"clip": "Use_Item", "verb": "mine"},
+	"Woodcutter": {"clip": "Throw", "verb": "chop"},
+	"Blacksmith": {"clip": "Use_Item", "verb": "smith"},
+	"Baker": {"clip": "Interact", "verb": "bake"},
+	"Healer": {"clip": "Spellcasting", "verb": "heal"},
+	"Trader": {"clip": "Interact", "verb": "trade"},
+	"Guard": {"clip": "Use_Item", "verb": "patrol"},
+}
+
+
+## The job's entry from JOB_WORK, or an empty Dictionary for an unknown job.
+func job_work() -> Dictionary:
+	return JOB_WORK.get(job, {})
+
+
+## A human-readable description of what this villager's job is doing, for the
+## HUD and for `greet`.
+func work_verb() -> String:
+	var w := job_work()
+	return String(w.get("verb", "work"))
 
 
 ## Daily routine. Villagers work their job during the day, stand about near
@@ -218,7 +252,13 @@ func _process(delta: float) -> void:
 	# Turn toward the player when they are close, otherwise face travel.
 	var want := _facing
 	var player := _nearest_player()
-	if player != null:
+	if is_working():
+		# On shift and standing at the site: face the work, not the walk. A
+		# villager that keeps facing where it came from while it works reads
+		# as idle no matter which clip is playing.
+		want = atan2(work_site.x - global_position.x,
+			work_site.z - global_position.z)
+	elif player != null:
 		var to := player.global_position - global_position
 		to.y = 0.0
 		if to.length() < 6.0:
@@ -242,8 +282,10 @@ func _update_animation(delta: float) -> void:
 	var speed := moved / maxf(delta, 0.0001)
 	if _greeting_time > 0.0:
 		_animator.play_once(CreatureAnimator.GREET_CLIPS)
-	elif speed <= 0.05 and activity == "Work" and randf() < 0.01:
-		_animator.play_once(CreatureAnimator.WORK_CLIPS)
+	# The work clip is deliberately NOT played from here. It used to fire at a
+	# random 1% per frame, which looked busy and was neither tied to the job
+	# nor reproducible; _perform_job_work() plays the right clip when the job
+	# actually does something.
 	_animator.update(delta, speed, SPEED, SPEED * 1.6)
 
 
@@ -265,10 +307,77 @@ func _work(delta: float) -> void:
 	while _produce_timer >= produce_interval and guard < 64:
 		_produce_timer -= produce_interval
 		guard += 1
+		# Do the visible part of the job first: a unit of produce that the
+		# world never saw made would be exactly the "stands holding a tool"
+		# behaviour this replaces.
+		_perform_job_work()
 		if not produce_one():
 			break
 	if guard > 0 and audio != null:
 		audio.play_at("pickup", _world_pos())
+
+
+## One visible work action: play the job's clip and make the world edit that
+## job makes. Returns true when the world actually changed, so a job with
+## nothing to work on is visibly idle rather than silently busy.
+##
+## Every job goes through this one function, so a new job gets its behaviour
+## by adding a row to JOB_WORK rather than by editing the work loop.
+func _perform_job_work() -> bool:
+	var w := job_work()
+	if w.is_empty():
+		return false
+	# Show the action. A model with no such clip still does the world edit
+	# below, so the behaviour does not depend on which art pack loaded.
+	if _animator != null and _animator.attached():
+		_animator.play_once([String(w.get("clip", ""))])
+	var touched := _apply_job_effect(String(w.get("verb", "")))
+	if touched:
+		work_done += 1
+		last_worked = touched
+	return touched != Vector3i.ZERO
+
+
+## The world edit a job verb makes, near the work site. Returns the cell that
+## changed, or Vector3i.ZERO when the job had nothing in reach.
+##
+## The edits are deliberately small and self-restoring where it matters, so a
+## village left running overnight does not strip its own trees bare or
+## pave over its own farmland.
+func _apply_job_effect(verb: String) -> Vector3i:
+	if world == null or not is_instance_valid(world) or work_site == Vector3.ZERO:
+		return Vector3i.ZERO
+	var base := Vector3i(floori(work_site.x), floori(work_site.y),
+		floori(work_site.z))
+	# `work_site` is where the villager STANDS, so the block underfoot is one
+	# below it. Every job that touches the ground works from `ground`.
+	var ground := base + Vector3i(0, -1, 0)
+	match verb:
+		"till":
+			# Break the surface grass into bare soil underfoot. Reversible,
+			# and it only ever touches the single block being stood on.
+			if world.get_content_at(ground) == ContentDB.GRASS:
+				if world.set_block(ground, ContentDB.DIRT):
+					return ground
+		"mine":
+			# Take one block out of the ground below the site.
+			for dy in range(1, 5):
+				var p := base + Vector3i(0, -dy, 0)
+				if world.get_content_at(p) == ContentDB.STONE:
+					if world.set_block(p, ContentDB.AIR):
+						return p
+		"chop":
+			# Fell the nearest trunk or leaves within reach of the site.
+			for r in range(1, RESOURCE_RADIUS + 1):
+				for dx in range(-r, r + 1):
+					for dz in range(-r, r + 1):
+						for dy in range(0, 4):
+							var p := base + Vector3i(dx, dy, dz)
+							var id := world.get_content_at(p)
+							if id == ContentDB.WOOD or id == ContentDB.LEAVES:
+								if world.set_block(p, ContentDB.AIR):
+									return p
+	return Vector3i.ZERO
 
 
 func _face(want: float, delta: float) -> void:
