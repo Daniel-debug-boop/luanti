@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_animations()
 	_test_smart_mobs()
 	_test_villager_schedule_and_trade()
+	_test_villager_jobs_do_work()
 	_test_pathfinding()
 	_test_block_drops()
 	_finish()
@@ -338,6 +339,161 @@ func _test_villager_schedule_and_trade() -> void:
 	_eq(v.trade(null), "", "trading with a null inventory is handled")
 	inv.queue_free()
 	v.queue_free()
+
+
+## A villager must actually change the world while on shift, not merely run a
+## timer. Each job that has a world edit is checked against a world built to
+## suit it, and a job that has none is checked to be honestly idle.
+func _test_villager_jobs_do_work() -> void:
+	# Every job in the roster must have a work entry, or a villager with that
+	# job silently does nothing at all.
+	for job in ["Farmer", "Miner", "Woodcutter", "Blacksmith", "Baker",
+			"Healer", "Trader", "Guard"]:
+		var v := Villager.new()
+		v.job = job
+		_ok("%s has a work entry" % job)
+		_eq(not v.job_work().is_empty(), true,
+			"%s is a job that works" % job)
+		_eq(v.work_verb() != "", true, "%s has a verb" % job)
+		v.free()
+
+	var w := _flat_world()
+	# Surface the ground at y=20 and give the site grass to till, with a
+	# stone layer under the miner's column for the Miner case below.
+	for x in range(4, 9):
+		for z in range(4, 9):
+			w.set_block(Vector3i(x, 19, z), ContentDB.GRASS)
+	for y in range(16, 19):
+		for x in range(4, 9):
+			for z in range(4, 9):
+				w.set_block(Vector3i(x, y, z), ContentDB.STONE)
+
+	# --- a Farmer tills the block it stands on ---
+	var farmer := Villager.new()
+	farmer.job = "Farmer"
+	farmer.work_site = Vector3(5.5, 20.0, 5.5)
+	farmer.trade_stock = 0
+	farmer.max_stock = 8
+	farmer.produce_interval = 1.0
+	farmer.resource_block = ContentDB.GRASS
+	farmer.world = w
+	farmer.ensure_ready()
+	root.add_child(farmer)
+	farmer.global_position = Vector3(5.5, 20.0, 5.5)
+	farmer.update_schedule(0.5)
+	_eq(farmer.is_working(), true, "a farmer on shift at its site is working")
+	_eq(w.get_content_at(Vector3i(5, 19, 5)), ContentDB.GRASS,
+		"the field starts as grass")
+	farmer._work(6.0)
+	_eq(w.get_content_at(Vector3i(5, 19, 5)), ContentDB.DIRT,
+		"a farmer tills grass into soil")
+	_eq(farmer.work_done > 0, true, "the farmer recorded the work")
+	_eq(farmer.trade_stock > 0, true, "tilling produced stock")
+	farmer.queue_free()
+
+	# --- a Miner removes stone below the site ---
+	var miner := Villager.new()
+	miner.job = "Miner"
+	miner.work_site = Vector3(6.5, 20.0, 6.5)
+	miner.trade_stock = 0
+	miner.max_stock = 8
+	miner.produce_interval = 1.0
+	miner.resource_block = ContentDB.STONE
+	miner.world = w
+	miner.ensure_ready()
+	root.add_child(miner)
+	miner.global_position = Vector3(6.5, 20.0, 6.5)
+	miner.update_schedule(0.5)
+	var before := 0
+	for y in range(16, 19):
+		if w.get_content_at(Vector3i(6, y, 6)) == ContentDB.STONE:
+			before += 1
+	_eq(before, 3, "the miner's column has stone to mine")
+	miner._work(6.0)
+	var after := 0
+	for y in range(16, 19):
+		if w.get_content_at(Vector3i(6, y, 6)) == ContentDB.STONE:
+			after += 1
+	_eq(after < before, true, "a miner removes stone below the site")
+	miner.queue_free()
+
+	# --- a Woodcutter fells a tree near the site ---
+	var woods := _flat_world()
+	for dy in range(0, 3):
+		woods.set_block(Vector3i(6, 20 + dy, 6), ContentDB.WOOD)
+	var chop := Villager.new()
+	chop.job = "Woodcutter"
+	chop.work_site = Vector3(6.5, 20.0, 6.5)
+	chop.trade_stock = 0
+	chop.max_stock = 8
+	chop.produce_interval = 1.0
+	chop.resource_block = ContentDB.WOOD
+	chop.world = woods
+	chop.ensure_ready()
+	root.add_child(chop)
+	chop.global_position = Vector3(6.5, 20.0, 6.5)
+	chop.update_schedule(0.5)
+	_eq(woods.get_content_at(Vector3i(6, 21, 6)), ContentDB.WOOD,
+		"the tree is standing to begin with")
+	chop._work(6.0)
+	var standing := 0
+	for dy in range(0, 3):
+		if woods.get_content_at(Vector3i(6, 20 + dy, 6)) == ContentDB.WOOD:
+			standing += 1
+	_eq(standing < 3, true, "a woodcutter fells wood near the site")
+	chop.queue_free()
+	woods.queue_free()
+
+	# --- a job with no world edit is honestly idle, not busy ---
+	var guard := Villager.new()
+	guard.job = "Guard"
+	guard.work_site = Vector3(5.5, 20.0, 5.5)
+	guard.trade_stock = 0
+	guard.max_stock = 8
+	guard.produce_interval = 1.0
+	guard.resource_block = -1
+	guard.world = w
+	guard.ensure_ready()
+	root.add_child(guard)
+	guard.global_position = Vector3(5.5, 20.0, 5.5)
+	guard.update_schedule(0.5)
+	guard._work(6.0)
+	_eq(guard.trade_stock > 0, true, "a guard still produces on shift")
+	_eq(guard.work_done, 0, "a guard edits no blocks, because its job has none")
+	guard.queue_free()
+
+	# --- an off-shift villager touches nothing ---
+	var off := Villager.new()
+	off.job = "Farmer"
+	off.work_site = Vector3(5.5, 20.0, 5.5)
+	off.trade_stock = 0
+	off.max_stock = 8
+	off.produce_interval = 1.0
+	off.resource_block = -1
+	off.world = w
+	off.ensure_ready()
+	root.add_child(off)
+	off.global_position = Vector3(5.5, 20.0, 5.5)
+	off.update_schedule(0.05)          # the small hours: asleep
+	_eq(off.is_working(), false, "a sleeping villager is not working")
+	_eq(off.is_resting(), true, "a villager at night is resting")
+	off._work(30.0)
+	_eq(off.work_done, 0, "a sleeping villager edits no blocks")
+	_eq(off.trade_stock, 0, "a sleeping villager produces nothing")
+	off.queue_free()
+
+	# A villager with no world at all must not crash on a job action.
+	var homeless := Villager.new()
+	homeless.job = "Farmer"
+	homeless.work_site = Vector3(1.5, 20.0, 1.5)
+	homeless.world = null
+	homeless.ensure_ready()
+	_ok("a villager with no world survives its job")
+	_eq(homeless._perform_job_work(), false,
+		"a job with no world does no work")
+	homeless.free()
+
+	w.queue_free()
 
 
 # --- pathfinding ------------------------------------------------------------

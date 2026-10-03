@@ -14,7 +14,16 @@ config/features=PackedStringArray("4.4", "Forward Plus")
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+; The UI is authored against 1280x720 and `canvas_items` scales it with the
+; window. `expand` (rather than the default `keep`) is what makes an ultrawide
+; or a 4:3 window actually usable: with `keep` the picture is letterboxed and
+; the extra width is thrown away, and edge-anchored panels sit inside the
+; pillarbox instead of at the real screen edge.
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/size/resizable=true
 
 [input]
 

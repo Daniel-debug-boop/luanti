@@ -104,9 +104,20 @@ static func _sample(block: VoxelBlock, neighbours: Dictionary,
 			int(floor(float(c.y) / BS)),
 			int(floor(float(c.z) / BS)))
 		c = c - bo * BS
+		# Only a block that is BOTH generated and loaded may be sampled.
+		# VoxelWorld populates its block table as generation completes, so a
+		# neighbour can be present but not yet filled in; trusting it would
+		# read zeroed content, cull every face against it, and leave a hole
+		# that pops in once the data actually lands. An untrusted neighbour
+		# is treated as air, which draws the faces -- the safe direction,
+		# since a redundant face is hidden by the neighbour when it arrives
+		# and a missing face is a hole in the world.
 		if not neighbours.has(bo):
 			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
-		b = neighbours[bo]
+		var cand: VoxelBlock = neighbours[bo]
+		if cand == null or not cand.is_complete():
+			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
+		b = cand
 	var idx := MapNode.index(c.x, c.y, c.z)
 	if want_light:
 		return b.light[idx] & 0x0F
@@ -168,7 +179,6 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 				self_ids[idx] = own
 
 	# Greedy sweep: merge maximal rectangles of identical faces per slice.
-	var plane := BS if dir == 0 else 0
 	for d in BS:
 		var x := 0
 		while x < BS:
@@ -206,7 +216,7 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 					hh += 1
 
 				_emit_face(block, get_content, get_light, axis, dir, u, v,
-					du, dv, d, x, y, row_w, hh, normal, plane, sid, m,
+					du, dv, d, x, y, row_w, hh, normal, sid, m,
 					opaque, trans)
 				y += hh
 			if row_w > 0:
@@ -218,7 +228,7 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 static func _emit_face(block: VoxelBlock, get_content: Callable,
 		get_light: Callable, axis: int, dir: int, u: int, v: int,
 		du: Vector3i, dv: Vector3i, d: int, x: int, y: int, w: int, h: int,
-		normal: Vector3i, plane: int, own_content: int, _neighbour_id: int,
+		normal: Vector3i, own_content: int, _neighbour_id: int,
 		opaque: Dictionary, trans: Dictionary) -> void:
 	var store := trans if ContentDB.is_translucent(own_content) else opaque
 	var buf := _buffer_for(store, own_content)
@@ -226,7 +236,22 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 	var base := Vector3i.ZERO
 	base[u] = x
 	base[v] = y
-	base[axis] = plane
+	# The face plane is the boundary this face sits ON, which is derived from
+	# the voxel's own coordinate `d` -- not from the direction of travel.
+	#
+	# This used to be a single `plane` value (0 or BS) shared by every face in
+	# the sweep, which placed every face of every chunk on the chunk's own
+	# boundary. A block at (8,8,8) therefore emitted its six faces at x=0 and
+	# x=16 instead of x=8 and x=9: the entire world collapsed into thin
+	# sheets on the chunk edges, which is exactly what the hardware-GPU
+	# captures showed -- haze, floating fragments and no solid ground. The
+	# winding test could not see it because it never checked where a face
+	# was, and the triangle-count tests could not see it because the
+	# triangles were all there, just in the wrong place.
+	#
+	# A +axis face lies between voxel d and d+1, so it sits at d+1; a -axis
+	# face lies between d and d-1, so it sits at d.
+	base[axis] = d + (1 if dir == 0 else 0)
 	var nrm := Vector3(float(normal.x), float(normal.y), float(normal.z))
 
 	var p0 := Vector3(base)
@@ -264,7 +289,27 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 		cols.append(Color(pal.r * bright, pal.g * bright, pal.b * bright,
 			pal.a))
 
-	buf.add_quad(p0, p1, p2, p3, nrm, float(w), float(h),
+	# Winding. `du x dv` is the POSITIVE axis direction for all three axes,
+	# because u=(axis+1)%3 and v=(axis+2)%3 form a right-handed pair with the
+	# axis. So the quad as built above always faces +axis, which is correct
+	# for dir==0 and exactly backwards for dir==1: the -X, -Y and -Z faces
+	# were emitted inside out and silently back-face culled. The mesher tests
+	# only counted triangles, so nothing caught it -- the symptom was a
+	# world with holes in it and a camera that could see through the ground.
+	#
+	# Reversing the corner order flips the triangle winding. Each corner's
+	# ambient-occlusion colour has to travel WITH that corner, so the colours
+	# are permuted to match the new order: position 0 keeps its own colour,
+	# position 1 now holds p3 and so needs c3, and so on. The previous code
+	# rotated the colours instead ([c3,c2,c1,c0]), which attached each
+	# corner's shading to its neighbour -- subtle in a flat quad, and wrong
+	# shading on every block corner in the world.
+	var pts := [p0, p1, p2, p3]
+	if dir == 1:
+		pts = [p0, p3, p2, p1]
+		cols = PackedColorArray([cols[0], cols[3], cols[2], cols[1]])
+
+	buf.add_quad(pts[0], pts[1], pts[2], pts[3], nrm, float(w), float(h),
 		MaterialLibrary.DETAIL_UV_SCALE, cols)
 
 

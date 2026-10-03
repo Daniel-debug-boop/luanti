@@ -10,8 +10,14 @@ extends Node3D
 @export var spawn := Vector3(8.5, 40.0, 8.5)
 ## Turn the day/night clock off to hold the sun still.
 @export var day_night_enabled := true
-## RenderSettings.Quality: 0 low, 1 medium, 2 high (SSIL, SDFGI, volumetric fog).
+## RenderSettings.Quality: 0 low, 1 medium, 2 high (SSIL, SDFGI, volumetric fog),
+## 3 ultra (adds parallax occlusion, which is ULTRA-only by POM_QUALITY).
 @export_enum("Low", "Medium", "High", "Ultra") var render_quality := 2
+## Hand the quality tier to the adaptive controller. Off means the tier stays
+## whatever it was set to, which is what the render test and any measurement
+## run needs: a benchmark that silently changes quality halfway through is
+## measuring two different configurations and reporting one number.
+@export var adaptive_quality := true
 ## How block textures are projected. Godot cannot combine triplanar mapping
 ## with parallax occlusion, so this picks one:
 ##   0 plain (box UVs) · 1 triplanar · 2 parallax occlusion (POM)
@@ -21,6 +27,10 @@ extends Node3D
 var world: VoxelWorld
 var player: Player
 var hud: WorldHud
+## Developer diagnostics, off until F10. Never part of the player's view.
+var debug_overlay: DebugOverlay
+## The options menu, opened with O.
+var options: SettingsMenu
 var spawner: MobSpawner
 var village: Village
 var interaction: PlayerInteraction
@@ -39,6 +49,12 @@ var crafting: CraftingPanel
 ## graph and its simulation; borrows the world and the backpack.
 var engineering: EngEngineering
 var engineering_hud: EngHud
+
+## The emergent gameplay layer. It derives capabilities, relationships,
+## patterns, behaviours and causal consequences from what the engineering
+## layer already built, and it owns exactly one instance -- two would tick the
+## same events and a golf hole would score twice.
+var emergent: EmergentSystem = null
 
 ## Performance instrumentation and the multiplayer authority. Both are
 ## ordinary members of the game, not developer tooling bolted on: the
@@ -67,6 +83,14 @@ var _fog_volume: FogVolume
 var _probes: Array[ReflectionProbe] = []
 var _current_dim := 0
 
+## `--render-test` state. The config is parsed before the scene is built so a
+## bad flag fails immediately rather than after a minute of world generation.
+var _render_test_config := {}
+var _render_test_wanted := false
+
+## Adaptive rendering. Owns the quality tier unless the player picks one.
+var adaptive: AdaptiveQuality = null
+
 
 func _ready() -> void:
 	settings = RenderSettings.new()
@@ -79,6 +103,25 @@ func _ready() -> void:
 	settings.apply(_env_over)
 	settings.apply(_env_deeps)
 
+	# `--render-test` is a mode, not a different game. The whole scene is
+	# assembled exactly as it is below either way; the only differences are
+	# that the world is seeded deterministically and a RenderTest is handed
+	# the finished scene to drive. Reading the flag here rather than
+	# branching around the scene means normal play cannot drift away from
+	# what the benchmark measures.
+	var rt := RenderTest.parse_args(_user_args())
+	# parse_args returns {"error": ""} when the mode was not asked for, a
+	# config with "enabled" when it was, and {"error": "..."} on a bad flag.
+	# Three cases, so they are distinguished by shape rather than by guessing
+	# at an empty string.
+	if rt.has("error") and not str(rt.get("error", "")).is_empty():
+		push_error("[main] --render-test: %s" % str(rt["error"]))
+		get_tree().quit(RenderTest.ERR_USAGE)
+		return
+	if rt.has("enabled"):
+		_render_test_config = rt
+		_render_test_wanted = true
+
 	world = VoxelWorld.new()
 	world.name = "VoxelWorld"
 	world.world_dir = world_dir
@@ -89,6 +132,13 @@ func _ready() -> void:
 	# point at which the starting tier can reach it.
 	world.materials.apply_quality(render_quality)
 	world.rebind_materials()
+	# The world is deterministic already (the generator is seeded with a
+	# constant in VoxelWorld._ready), but the benchmark states the seed it
+	# used and honours a caller-supplied one, so two runs on different
+	# machines are comparable.
+	if _render_test_wanted:
+		world.generator = WorldGenerator.new(
+			int(_render_test_config.get("seed", RenderTest.SEED)))
 
 	inventory = PlayerInventory.new()
 	inventory.name = "Inventory"
@@ -107,6 +157,20 @@ func _ready() -> void:
 	engineering_hud.name = "EngineeringHud"
 	add_child(engineering_hud)
 	engineering_hud.attach(engineering)
+
+	# The emergent layer, pointed at the SAME engineering graph rather than
+	# a second one. It has no component model of its own: a zone is an entity,
+	# a motor is still the engineering layer's motor, and everything the
+	# layer claims about a machine is derived from the graph that actually
+	# simulates it.
+	#
+	# It is a `System`, not a Node, so it is registered rather than parented --
+	# the same treatment the authority gets. It must not be a child of main,
+	# because its tick order relative to the engineering simulation is
+	# explicit (engineering first, then emergent) and a node child would put
+	# it in Godot's process order instead of ours.
+	emergent = EmergentSystem.new()
+	emergent.world = world
 
 	# Claim the single world slot, then check the structural invariants. A
 	# startup that assembles the wrong number of anything is a bug worth
@@ -161,6 +225,9 @@ func _ready() -> void:
 	interaction.inventory = inventory
 	interaction.audio = audio
 	interaction.drops_parent = _drops
+	# The emergent layer, as a listener for what the player did. Interaction
+	# still does not know what any of it means.
+	interaction.emergent = emergent
 	add_child(interaction)
 
 	# Mining and placing now move real items rather than picking from a fixed
@@ -198,12 +265,32 @@ func _ready() -> void:
 	hud.inventory = inventory
 	hud.day_night = day_night
 	hud.settings = settings
-	hud.inventory = inventory
+
+	# Developer diagnostics live in their own overlay, off until F10. The
+	# gameplay HUD carries nothing a player should not see.
+	debug_overlay = DebugOverlay.new()
+	debug_overlay.player = player
+	debug_overlay.world = world
+	debug_overlay.spawner = spawner
+	debug_overlay.village = village
+	debug_overlay.interaction = interaction
+	debug_overlay.settings = settings
+	hud.debug_overlay = debug_overlay
+
+	# The options menu reads the live settings rather than keeping a copy, so
+	# a function-key change and a menu change can never disagree.
+	options = SettingsMenu.new()
+	options.name = "SettingsMenu"
+	options.quality_requested.connect(set_render_quality)
+	options.mapping_requested.connect(set_texture_mapping)
+	options.sync_from(render_quality, texture_mapping)
+
 	crafting = CraftingPanel.new()
 	crafting.name = "CraftingPanel"
 	add_child(crafting)
 	crafting.setup(inventory, audio)
 	add_child(hud)
+	add_child(options)
 
 	# --- Bounce probes and fog volume ---
 	# A ring of reflection probes around the player supplies indirect bounce
@@ -231,9 +318,77 @@ func _ready() -> void:
 	devtools.name = "DevTools"
 	add_child(devtools)
 	devtools.attach(self, api)
+	# Adaptive rendering starts from whatever tier the project asks for and
+	# takes over from there. The player can pin it at any time with F1-F3.
+	adaptive = AdaptiveQuality.new()
+	adaptive.tier = render_quality
+	adaptive.enabled = adaptive_quality
 	# Last, once every singleton exists: the structural invariants describe
 	# the tree that was actually built, not the one we intended to build.
 	_check_architecture()
+
+	# Only now, with the whole scene assembled, does the render test take
+	# over. It drives the same nodes the player would.
+	if _render_test_wanted:
+		# A benchmark must not have its configuration changed underneath it.
+		adaptive_quality = false
+		if adaptive != null:
+			adaptive.enabled = false
+		_start_render_test()
+
+
+## Hand the finished scene to the benchmark and let it drive.
+func _start_render_test() -> void:
+	var rt := RenderTest.new()
+	rt.name = "RenderTest"
+	add_child(rt)
+	rt.world = world
+	rt.player = player
+	rt.hud = hud
+	rt.debug_overlay = debug_overlay
+	# The benchmark camera is not the player, so the fog volume and the
+	# bounce probes -- which follow the player every frame -- have to be
+	# re-anchored on the camera or the captures are shot through fog that
+	# should not be there.
+	rt.follow_volumes = _follow_volumes_at
+	rt.apply_render_settings = set_render_settings
+	rt.apply_stage = apply_render_stage
+	# The player is a first-person body whose camera would fight the
+	# benchmark's; the render test owns `current` for the duration.
+	var pc := player.get_node_or_null("Camera") as Camera3D
+	if pc != null:
+		pc.current = false
+	var code := rt.start(_render_test_config)
+	if code != RenderTest.OK:
+		get_tree().quit(code)
+
+
+## Command-line arguments meant for the game.
+##
+## Godot splits `OS.get_cmdline_args()` (everything, including engine flags)
+## from `OS.get_cmdline_user_args()` (only what follows a bare `--`). Both
+## are read so the mode works whether or not the caller remembered the
+## separator, and engine flags we do not own are filtered out.
+func _user_args() -> PackedStringArray:
+	var out := PackedStringArray()
+	var known := [
+		"--render-test", "--scene", "--resolution", "--frames",
+		"--warmup-frames", "--output", "--camera", "--all-cameras",
+		"--no-ui", "--capture-every", "--allow-software",
+		"--no-gpu-validation", "--effects", "--stage"
+	]
+	for a in OS.get_cmdline_args():
+		if a.begins_with("--") and (known.has(a) or _takes_value(a)):
+			out.append(a)
+	for a in OS.get_cmdline_user_args():
+		out.append(a)
+	return out
+
+
+## True for the render-test options that consume the following argument.
+func _takes_value(a: String) -> bool:
+	return a in ["--scene", "--resolution", "--frames", "--warmup-frames",
+		"--output", "--camera", "--capture-every", "--effects", "--stage"]
 
 
 func _place_on_surface() -> void:
@@ -286,6 +441,7 @@ func _setup_environment() -> void:
 func _process(delta: float) -> void:
 	if world == null or player == null:
 		return
+	_update_adaptive_quality(delta)
 	profiler.begin("world")
 	world.update_around(_player_chunk())
 	# Keep the probe and fog volumes on the player: SDFGI traces through the
@@ -307,6 +463,14 @@ func _process(delta: float) -> void:
 		if engineering_hud != null:
 			engineering_hud.set_target(_engineering_target())
 			engineering_hud.set_tool_preview(_tool_preview_text())
+	if emergent != null:
+		# Fed, not ticked. The player is what the layer can sense; it is
+		# handed the position rather than searching the world for it, because
+		# "what is alive in this world" is the game's question. The tick
+		# itself belongs to the registry, below, so it happens exactly once.
+		emergent.attach_to(engineering.graph)
+		emergent.observe([player.position], player.position)
+		emergent.authority = authority
 	if day_night_enabled and _current_dim == WorldGenerator.DIM_OVERWORLD:
 		day_night.advance(delta)
 	if _current_dim == WorldGenerator.DIM_OVERWORLD:
@@ -350,22 +514,32 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_F1:
 			# ULTRA sits on Shift+F1 rather than taking F4 from the texture
 			# mapping cycle: the four tiers have to be reachable, and the
-			# mapping modes were already on their own key.
-			set_render_quality(3 if event.shift_pressed else 0)
+			# mapping modes were already on their own key. A player-driven
+			# switch pins the tier, so the adaptive controller stops
+			# overriding the choice they just made.
+			set_render_quality(3 if event.shift_pressed else 0, true)
 		elif key == KEY_F2:
-			set_render_quality(1)
+			set_render_quality(1, true)
 		elif key == KEY_F3:
-			set_render_quality(2)
+			set_render_quality(2, true)
 		elif key == KEY_F4:
 			# F4 cycles the block texture mapping rather than claiming a key
 			# per mode. Four modes on four keys put a mode on F5, and F5 is
 			# save -- one of them was silently unreachable.
 			_cycle_texture_mapping(1 if event.shift_pressed else -1)
 		elif key == KEY_F10:
-			# The debug panel: read-only, and the answer to "what was the game
-			# doing when it broke" without a debugger.
+			# Developer diagnostics: fps, coordinates, chunk and effect state.
+			# Off by default and never part of the player's view.
+			var dbg_on := false
+			if debug_overlay != null:
+				dbg_on = debug_overlay.toggle()
 			if devtools != null:
 				devtools.toggle()
+			print("[main] debug overlay %s"
+				% ("on" if dbg_on else "off"))
+		elif key == KEY_O:
+			if options != null:
+				options.toggle()
 		elif key == KEY_F11:
 			print("[dev] ", devtools.report("systems") if devtools != null else "no devtools")
 		elif key == KEY_F12:
@@ -476,18 +650,167 @@ func _carve_arrival() -> void:
 ## densest around the camera, and a probe left behind would keep baking light
 ## for terrain the player can no longer see.
 func _follow_volumes() -> void:
-	var p := player.global_position
+	_follow_volumes_at(player.global_position)
+
+
+## Move the fog volume and the bounce-probe ring to an arbitrary point.
+## Split out from `_follow_volumes` so the render test can aim them at its
+## own camera, which is somewhere the player never goes.
+## Feed the frame time to the adaptive controller and apply any change it
+## makes.
+##
+## Sampled on an interval rather than every frame: the controller's windows
+## are seconds long, so sampling at frame rate would just burn CPU producing
+## identical conclusions.
+func _update_adaptive_quality(delta: float) -> void:
+	if adaptive == null or not adaptive.enabled:
+		return
+	_adaptive_accum += delta
+	if _adaptive_accum < ADAPTIVE_SAMPLE_SECONDS:
+		return
+	var elapsed := _adaptive_accum
+	_adaptive_accum = 0.0
+	# Wall-clock frames per second over the window rather than the last
+	# frame's delta: one hitch is not a trend, and the controller needs the
+	# trend. `delta` here is the process frame time, which excludes GPU work
+	# the CPU waited on, so this is a CPU-side measure and is labelled as one
+	# rather than being passed off as frame time.
+	var frames := Engine.get_frames_drawn() - _adaptive_last_frame
+	_adaptive_last_frame = Engine.get_frames_drawn()
+	if frames <= 0:
+		return
+	var ms := (elapsed / float(frames)) * 1000.0
+	var tier := adaptive.observe(ms, Time.get_ticks_msec() / 1000.0, elapsed)
+	if tier < 0:
+		return
+	print("[adaptive] tier %d: %s (%.1f ms)" % [tier, adaptive.last_reason, ms])
+	set_render_quality(tier)
+
+
+## How often the adaptive controller is consulted. Well under its 4 s confirm
+## window, so the sampling rate does not affect its decisions.
+const ADAPTIVE_SAMPLE_SECONDS := 0.5
+var _adaptive_accum := 0.0
+var _adaptive_last_frame := 0
+
+
+func _follow_volumes_at(p: Vector3) -> void:
 	if _fog_volume != null:
 		_fog_volume.position = p
 	settings.place_probes(p)
 
 
+## Isolate one layer of the rendering pipeline, for `--render-test --stage`.
+##
+## This deliberately reuses the live Environment objects and lights rather
+## than building parallel ones: a diagnostic that renders through different
+## objects than the game would tell you about the diagnostic. The baseline
+## stages strip every effect off the same environments the game uses, so what
+## is left is geometry and materials alone.
+func apply_render_stage(s: int) -> void:
+	var want := RenderDiagnostics.stage_settings(s)
+	# Each stage is independent, so the previous stage's overrides must go
+	# first. Without this, walking 0 -> 1 -> 2 leaves the unlit flag from
+	# stage 0 set, and every later stage silently renders the baseline.
+	world.materials.clear_diagnostics()
+	# Environment first: an effect left on will contaminate the stages that
+	# are supposed to be clean even if the lights are switched off.
+	RenderDiagnostics.apply_overrides(_env_over,
+		want.get("env_over", {}) as Dictionary)
+	RenderDiagnostics.apply_overrides(_env_deeps,
+		want.get("env_deeps", {}) as Dictionary)
+	var want_we := bool(want.get("world_environment", true))
+	# WorldEnvironment has no `visible` property -- a Node3D does, but this is
+	# a plain Node. The way to remove its influence is to hand it a neutral
+	# environment rather than to hide it.
+	if _we != null:
+		_we.environment = _env_over if want_we \
+			else RenderDiagnostics.make_clean_environment(true)
+	var want_lights := bool(want.get("lights", true))
+	for l in [_sun, _moon, _deeps_ambience]:
+		var light := l as Node
+		if light != null:
+			light.set("visible", want_lights and light == _sun)
+	# The fog volume and probes are atmosphere, so they only exist from the
+	# environment stage onward.
+	var atmo := s >= RenderDiagnostics.Stage.ENVIRONMENT
+	if _fog_volume != null:
+		_fog_volume.visible = atmo
+	for p in _probes:
+		var probe := p as Node
+		if probe != null:
+			probe.set("visible", atmo)
+	# Order matters here. The mapping switch reconfigures the shared
+	# materials, and the diagnostic overrides configure the same object, so
+	# the overrides have to be applied AFTER the mapping switch. Applied
+	# before, set_texture_mapping's own override calls silently undo them and
+	# every stage renders the baseline instead of itself.
+	_apply_stage_materials(int(want.get("material_mode", 0)))
+	# An unlit material ignores lights entirely, which is what makes stage 0
+	# a pure geometry test.
+	world.set_unlit(bool(want.get("unlit", false)))
+	world.set_normal_debug(bool(want.get("normal_debug", false)))
+	# "flat colour, no texture" is the difference between stage 0 and stage 1:
+	# stage 0 must show geometry alone, stage 1 the real albedo on it.
+	world.set_material_override(
+		int(want.get("material_mode", 0)) == 0 and s == RenderDiagnostics.Stage.ALBEDO)
+	# DayNight writes the sun every frame; it has to stand down or it will
+	# undo the light switching above on the next tick.
+	if day_night != null:
+		day_night.set_process(false)
+		if _sun != null and want_lights:
+			_sun.rotation_degrees = Vector3(-55.0, -35.0, 0.0)
+
+
+## material_mode: 0 flat untextured, 1 the real textured material,
+## 2 POM/stochastic mapping, 3 whatever the quality tier picked.
+##
+## Only the mapping is decided here. The diagnostic overrides are applied by
+## the caller afterwards, because this function reconfigures the same
+## materials and would otherwise clear them.
+func _apply_stage_materials(mode: int) -> void:
+	match mode:
+		0:
+			world.set_texture_mapping(0)
+		1:
+			world.set_texture_mapping(0)
+		2:
+			world.set_texture_mapping(2)
+		_:
+			world.set_texture_mapping(texture_mapping)
+
+
+## Set the render tier and the texture mapping together, then rebind the
+## materials. The render test uses this to pick its effect preset; it is the
+## same path the F1 key and the settings menu go through, so a baseline
+## capture exercises the shipping configuration code rather than a
+## benchmark-only one.
+func set_render_settings(quality: int, mapping: int) -> void:
+	render_quality = clampi(quality, 0, 2)
+	texture_mapping = clampi(mapping, 0, 3)
+	settings.set_quality(render_quality, world.materials,
+		[_env_over, _env_deeps] as Array[Environment])
+	world.set_texture_mapping(texture_mapping)
+	world.rebind_materials()
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
+
+
 ## Switch the render tier at runtime (0 low, 1 medium, 2 high, 3 ultra).
-func set_render_quality(q: int) -> void:
+##
+## `by_player` marks a deliberate choice, which pins the tier and stops the
+## adaptive controller from overriding it. Without that, pressing F3 and
+## then having the machine drop back to LOW a few seconds later looks like
+## the game ignoring the player.
+func set_render_quality(q: int, by_player := false) -> void:
+	if by_player and adaptive != null:
+		adaptive.pin(q)
 	render_quality = q
 	settings.set_quality(q, world.materials,
 		[_env_over, _env_deeps] as Array[Environment])
 	world.rebind_materials()
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
 	print("[main] render: ", settings.describe())
 
 
@@ -496,8 +819,14 @@ func set_render_quality(q: int) -> void:
 ## cannot be combined; this replaces one with the other.
 func set_texture_mapping(m: int) -> void:
 	var names := MaterialLibrary.mapping_name()
+	# Clamped rather than assigned directly: `world.set_texture_mapping` would
+	# index the mode table with an out-of-range value from a caller that
+	# computed it by hand, and F4's wrap is the only thing that should produce
+	# a value outside 0..3.
 	texture_mapping = clampi(m, 0, names.size() - 1)
 	world.set_texture_mapping(texture_mapping)
+	if options != null:
+		options.sync_from(render_quality, texture_mapping)
 	print("[main] texture mapping: ", names[texture_mapping])
 
 
@@ -631,7 +960,7 @@ func _do_save() -> void:
 	# The persistence layer owns the policy: seal, back up, write atomically.
 	# main.gd asks; it does not know how a save is made safe.
 	var r := _persistence().save_to(save_slot, player, world, _current_dim,
-		engineering)
+		engineering, emergent)
 	if bool(r["ok"]):
 		audio.play("save")
 		print("[main] saved to slot %d: %s" % [save_slot,
@@ -674,6 +1003,16 @@ func _register_systems() -> void:
 		village)
 	systems.register(_system("engineering",
 		"components, machines and networks", engineering), engineering)
+	# Registered, not parented, and ticked by the registry rather than by hand
+	# below. It was previously ticked explicitly AND registered, which meant
+	# two ticks a frame -- the emergent layer's own rule is that a golf hole
+	# scoring twice is a bug, and the composition root was committing it.
+	# `emergent` ordering places it after engineering in `run_order`, which is
+	# the dependency that matters: relationships are derived from a machine
+	# graph the engineering layer has already rebuilt this frame.
+	systems.register(_system("emergent",
+		"capabilities, patterns and causal rules over that world", emergent),
+		emergent)
 	systems.register(_system("net", "server authority over every mutation",
 		authority), authority)
 	persistence = Persistence.new()
@@ -730,7 +1069,8 @@ func verify_architecture() -> String:
 func _do_load() -> void:
 	# The persistence layer owns the recovery policy too: it picks the slot or
 	# the backup, refuses a future format, and applies. main.gd reports.
-	var r := _persistence().load_from(save_slot, player, world, engineering)
+	var r := _persistence().load_from(save_slot, player, world, engineering,
+		emergent)
 	if not bool(r["ok"]):
 		print("[main] load failed: ", r["reason"])
 		return

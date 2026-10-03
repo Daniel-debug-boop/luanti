@@ -233,7 +233,12 @@ func _paint_cell(index: int) -> void:
 
 
 func _swatch(slot: Control) -> ColorRect:
-	var s := slot.get_meta("swatch", null) as ColorRect
+	# Guard with has_meta rather than relying on get_meta's default argument:
+	# Godot 4.4 prints an error for a missing key even when a default is given,
+	# which put nine spurious errors in the log during start-up.
+	var s: ColorRect = null
+	if slot.has_meta("swatch"):
+		s = slot.get_meta("swatch") as ColorRect
 	if s == null:
 		s = ColorRect.new()
 		s.set_anchors_preset(Control.PRESET_FULL_RECT)

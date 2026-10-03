@@ -569,3 +569,51 @@ func set_texture_mapping(m: int) -> void:
 		return
 	materials.set_mapping(m)
 	rebind_materials()
+
+
+## Render the world with lighting ignored, so a capture shows geometry and
+## albedo alone. This is the baseline stage of the rendering diagnostic: if
+## the world looks wrong unshaded, no amount of lighting or post-processing
+## tuning is going to help, and that is worth knowing before touching any of
+## them.
+func set_unlit(on: bool) -> void:
+	if materials == null:
+		return
+	materials.set_unlit(on)
+	_rebind_all()
+	rebind_materials()
+
+
+## Draw surface normals as colour. A back-face culled or mis-wound face shows
+## up here as a missing or mismatched colour region, which is otherwise very
+## hard to attribute.
+func set_normal_debug(on: bool) -> void:
+	if materials == null:
+		return
+	materials.set_normal_debug(on)
+	# Chunks meshed after this point must pick the override up too, so record
+	# it and let _bind_surfaces ask the library rather than assuming the
+	# material chosen at mesh time is still right.
+	_rebind_all()
+	rebind_materials()
+
+
+## Force every live surface back through material_for() right now.
+func _rebind_all() -> void:
+	for store in [_meshes, _trans_nodes]:
+		for key in store.keys():
+			var mi: MeshInstance3D = store[key]
+			if mi == null or not is_instance_valid(mi) or mi.mesh == null:
+				continue
+			_bind_surfaces(mi, mi.mesh)
+
+
+## Force every surface onto a flat, untextured material. Separates "the
+## texture set for this block is wrong" from "the geometry for this block is
+## wrong", which look identical in a textured capture.
+func set_material_override(on: bool) -> void:
+	if materials == null:
+		return
+	materials.set_flat_override(on)
+	_rebind_all()
+	rebind_materials()

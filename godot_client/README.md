@@ -15,15 +15,29 @@ a populated village.
 
 ## Run it
 
+From source, with Godot 4.4:
+
 ```sh
 godot --path godot_client           # or open godot_client/ in the Godot editor
 ```
 
+Or as a standalone build -- the player does not need Godot at all:
+
+```sh
+sh godot_client/tools/build_release.sh /path/to/godot
+```
+
+That writes `build/luantivoxel/luantivoxel-<version>-linux-x86_64.tar.gz` plus
+a `.sha256`, and packs a README with the controls and requirements. The script
+exports and then **smoke-tests the exported binary**, failing the build if it
+does not reach a ready state or logs a script error -- so a package that starts
+and then falls over cannot be published by accident.
+
 Controls: `WASD` move · `Space` jump/up · `Shift` sprint · `F` toggle fly ·
-`G` switch dimension · `LMB` mine · `RMB` place · `1`–`8`/scroll select block ·
-`E` talk/trade · `C` crafting grid · `F5` save · `F9` load · `F8` toggle the
-Voxel Tools backend · `F1`–`F3` render quality · `F4`–`F7` texture mapping ·
-`Esc` release mouse.
+`G` switch dimension · `LMB` mine · `RMB` place · `1`–`8`/scroll/click select
+block · `E` talk/trade · `C` crafting grid · `F5` save · `F9` load · `F8`
+toggle the Voxel Tools backend · `F1`–`F3` render quality · `F4`–`F7` texture
+mapping · `F10` profiler · `F11` architecture overlay · `Esc` release mouse.
 
 ## Mobs, villagers and audio
 
@@ -417,13 +431,22 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Twenty suites run headless:
+The script is self-sufficient: it runs the asset import pass first (without it
+every suite that touches a texture or a sound fails with a setup error rather
+than a real one) and generates the converted-world fixture `e2e_test` needs.
+A suite is reported as passing only when it prints a verdict line at column 0
+*and* reports no failure marker, so a suite that crashes before printing a
+verdict is red rather than green on an incidental `PASS` elsewhere in its
+output.
+
+All twenty-six suites run headless and pass on a clean checkout
+(verified against Godot 4.4.stable.official, linux/x86_64):
 
 | Suite | Covers |
 |---|---|
 | `zylann_test` | Voxel Tools presence, graceful degradation on stock Godot, streaming + GDScript generation + voxel read/write on the custom build |
 | `gameplay_test` | GLoot protoset/stacking/hotbar/serialization, shaped + shapeless recipe matching, craft consumes-and-produces, save/load round-trip including world edits, malformed-payload rejection |
-| `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, the 76+ shipped clips drive every animator state, mobs flee/attack/avoid ledges, villager schedules and trading, A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
+| `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, the 76+ shipped clips drive every animator state, mobs flee/attack/avoid ledges, villager schedules and trading, **every job actually changes the world** (Farmer tills, Miner cuts stone, Woodcutter fells; a job with no edit stays honestly idle; an asleep villager touches nothing; a villager with no world does not crash), A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
 | `crafting_ui_test` | 3x3 grid construction, shaped and shapeless matching through the panel, drag payload source/target rules, an unaffordable craft is refused and consumes nothing, villager production requires shift + work site + nearby resource, stock caps, and production draws down on trade |
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
@@ -431,7 +454,7 @@ Twenty suites run headless:
 | `render_settings_test` | triplanar/POM mutual exclusion, POM gated to ULTRA, all four mapping modes, stochastic shader compiles and samples in world space, SSAO/SSIL/volumetric fog/glow on, quality tiers resolve to distinct texture rungs, live scene surfaces |
 | `asset_test` | the asset pipeline as an acceptance test: manifest provenance and CC0 on every entry, power-of-two and rung-name agreement on every map, no upscaled rung, normal + ARM present wherever promised, 3-tier decreasing LOD chains within the 20k budget, `visibility_range` actually wired in `village.gd`, every HDRI named in `day_night.gd` present on disk *and* every present HDRI named in code, every declared block resolving to the texture set the catalogue promises, no orphaned set in the runtime tree, and the attribution + rejection documents present |
 | `e2e_test` | real scene streams chunks, textured surfaces bound in the scene graph, collision reads terrain |
-| `features_test` | village + clock + HDRI sky, dimension switch both ways, glowstone in loaded chunks, mobs spawn, mining through the scene |
+| `features_test` | village + clock + HDRI sky, dimension switch both ways, glowstone in loaded chunks, mobs spawn, mining through the scene, **clicking a hotbar slot selects it and clicking off it does not** |
 | `render_test` | textured and vertex-coloured surfaces, world-space bounds, camera present, HDRI panorama bound |
 | `engineering_test` | material properties and serialization, component/port registration, port compatibility both ways, part geometry and mass, operation accept/reject leaving the part untouched, thermal gating |
 | `engineering_sim_test` | connection graph, network formation and destruction, mechanical/electrical/fluid networks, overload bogs down rather than cheating, assembly recognition including unusual builds, LOD tiers, graph serialization |
@@ -442,6 +465,12 @@ Twenty suites run headless:
 | `systems_test` | one owner per system (a second world is refused), the lifecycle state machine including misuse-vs-failure, idempotent teardown, signal disconnection, run order and reverse teardown, a failed system not taking the frame with it, the API facade returning results instead of crashing, a client being denied every mutating call, and interrupted saves recovering from the backup |
 | `architecture_test` | layer and visibility rules over the whole source tree, **tests of the checker itself** (a checker that never rejects anything is not a checker), exactly one world / inventory / profiler / player in `main.tscn`, the message envelope and direction rules, sequence ordering, determinism hashing and the fixed step, the threading rule, and the absence of the removed dead architecture |
 | `playable_test` | **the playable loop, through the real `main.tscn`**: chop a tree, collect the wood, place a block, refuse to place a block inside your own body, manufacture a workbench, make room in the hotbar to hold it, place it with F, then F5/F9 a save and reload with the world, the backpack and the assembly all restored. Plus the key table in `ARCHITECTURE.md` §16 checked against the code: every documented key is bound, in the file that owns it, and no key is claimed twice |
+| `seam_test` | the seams between systems: every declaration the engine resolves at runtime is present, every autoload and scene reference loads, and no system depends on another through a path that does not exist |
+| `render_diagnostics_test` | each `--render-test --stage` isolates exactly one layer of the pipeline, and the baseline stages really are clean rather than leaving the previous stage's overrides behind |
+| `adaptive_quality_test` | the adaptive controller drops tiers when frames are late and holds when they are not, respects a player-pinned tier, and never oscillates between two rungs |
+| `render_test_test` | the rendering benchmark itself: cameras aimed at the sun, a stated seed so two runs are comparable, and the frame budget held by adapting quality rather than by reacting to slow frames |
+| `ui_test` | the HUD and options panel: every control is wired, the options panel reflects and can change the live tier and mapping, and no control claims a key another one owns |
+| `emergent_test` | the emergent gameplay system end to end: capability-driven content, driver probing, and the adapter path from a declared capability to the system that satisfies it |
 
 ## Honest limitations
 
@@ -485,17 +514,30 @@ Twenty suites run headless:
   `MultiplayerAPI` peer transport, because a loopback host/client pair cannot
   be stood up in a headless sandbox to prove the handshake. Everything above
   the transport is done; the socket layer is not.
-* **The HUD/crafting swatch metadata logs an error headless.** `get_meta` on a
-  slot prints `The object does not have any 'meta' values with the key
-  'swatch'` nine times while the main scene starts. It is pre-existing (it
-  reproduces identically on `fcf77a1` and on this branch), cosmetic, and does
-  not fail any suite — but it is a real error message being printed, not a
-  clean start-up.
+* ~~**The HUD/crafting swatch metadata logs an error headless.**~~ **Fixed.**
+  The cause was a Godot 4.4 behaviour, not a bug in the call sites:
+  `get_meta(name, default)` still logs `The object does not have any 'meta'
+  values with the key ...` when the key is absent, even though it correctly
+  returns the default. Verified directly against 4.4.stable. Both call sites
+  (`scripts/hud.gd`, `scripts/gameplay/crafting_panel.gd`) now guard with
+  `has_meta` first, and start-up is clean.
+
+* **Mouse hotbar selection was dead, and every suite passed anyway.** `_input`
+  in `scripts/hud.gd` did `for slot in _hotbar`, where `_hotbar` is an
+  `HBoxContainer`. A `Node` is not iterable in GDScript, so this was a *compile*
+  error — the function never ran, and clicking a hotbar slot did nothing. It
+  survived because no test clicked anything, and because a script that fails to
+  compile fails *silently at the call site* in a headless run. Fixed to
+  `get_children()`, and `features_test` now drives a real
+  `InputEventMouseButton` through `hud._input` and asserts the selection
+  changed — verified to fail when the fix is reverted.
 * **Nothing has ever been rendered.** This environment has no GPU, no X11 and
   no Wayland. Every check is structural — properties exist and are enabled,
   shaders compile, voxels read back the right ids. No frame has been displayed,
   and `is_area_meshed()` stays false headless. Treat all visual claims here as
-  unverified.
+  unverified. What *has* been verified is that a standalone build exports,
+  unpacks, checksum-matches and boots to a ready state with no script errors —
+  but that is a start-up check, not a picture.
 * **SDFGI is configured but not running** — it needs an `SDFGIProbeVolume3D`
   node, which cannot be created from script in Godot 4.4. Add one in the
   editor and the settings already in `RenderSettings` take effect. Bounce
@@ -504,16 +546,29 @@ Twenty suites run headless:
   environment has no GPU or display server, so every check is structural
   (the properties are real and enabled), not visual.
 * **Inventory, crafting and saving exist but are shallow.** The container is
-  GLoot and the save system is real and tested, but: there is no drag-and-drop
-  3x3 crafting grid (the `C` key crafts from what you carry), the recipe book
-  is 12 placeholder recipes, there is no furnace/smelting, no item durability,
-  and only the GDScript backend's edit log is saved — a converted Luanti world
-  is read but never written back.
+  GLoot and the save system is real and tested. The 3x3 crafting grid *is*
+  fully drag-and-drop: `scripts/gameplay/crafting_slot.gd` implements
+  `_get_drag_data`/`_can_drop_data`/`_drop_data` for grid cells, the result slot
+  and the inventory strip, with source/target rules asserted by
+  `crafting_ui_test` — an earlier version of this file wrongly said there was
+  no drag-and-drop grid. What is genuinely still missing: there is no furnace
+  or smelting, no tool tiers, no item durability, the recipe book is a small
+  hand-written set rather than a scrolling book, and only the GDScript
+  backend's edit log is saved — a converted Luanti world is read but never
+  written back.
 * **Villagers work and trade, but there is no dialogue** — no conversation
-  tree, no reputation, and no job *animation* beyond a generic work clip: a
-  Farmer does not visibly till a field, they stand at a spot holding a tool.
-  Production is a timer gated on a resource being nearby, not a simulation.
-  Mobs have no breeding, hunger or taming.
+  tree and no reputation. The jobs are now real rather than decorative: each
+  job has an entry in `Villager.JOB_WORK` giving it a verb and a clip, and
+  every work cycle performs the matching world edit — the Farmer tills grass
+  into soil underfoot, the Miner cuts stone out of the ground below the site,
+  the Woodcutter fells nearby wood — while facing the work rather than the
+  walk. A job with no world edit (a Guard) is honestly idle rather than
+  falsely busy, and an off-shift or asleep villager touches nothing. Still
+  missing: production is a timer gated on a resource being nearby, not a full
+  simulation; there is no dialogue, no reputation, and Mobs have no breeding,
+  hunger or taming. Note that the Miner and Woodcutter *deplete* what they
+  work, so a village left running unattended will slowly strip its own stone
+  and trees — regrowth is not implemented yet.
 * **The crafting grid is a single screen** — one 3x3 recipe at a time, with no
   furnace, no smelting, no tool tiers, no durability and no recipe book to
   scroll. The 12-recipe book is a placeholder.

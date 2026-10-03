@@ -30,6 +30,9 @@ const RUNTIME := "res://assets/runtime/textures"
 ## The vendored stochastic triplanar shader (derived from Acegiak's
 ## Apache-2.0 terrain shader; see addons/ATTRIBUTION.md).
 const STOCHASTIC_SHADER := preload("res://scripts/world/voxel_stochastic.gdshader")
+## Renders surface normals as colour. See RenderDiagnostics, Stage.NORMAL.
+const NORMAL_DEBUG_SHADER := preload(
+	"res://scripts/world/voxel_normal_debug.gdshader")
 ## How many times the detail texture repeats per block, relative to UV1.
 const DETAIL_UV_SCALE := 4.0
 
@@ -102,15 +105,88 @@ var _shader_materials := {}   # int -> ShaderMaterial
 ## Set names that are known to be missing on disk, so we never retry.
 var _failed := {}             # String -> true
 var _plain: StandardMaterial3D
+var _plain_untextured: StandardMaterial3D
 var _water: StandardMaterial3D
 var _emissive: StandardMaterial3D
 var _procedural := {}         # set name -> StandardMaterial3D
 var _quality := Quality.HIGH
 var _mapping := Mapping.PARALLAX
 
+# --- rendering diagnostic overrides ---
+#
+# These bypass every other material decision. They are off in normal play and
+# set only by `VoxelWorld.set_unlit()` and friends, which the
+# `--render-test --stage` diagnostic drives. Kept here rather than in the
+# renderer so the diagnostic exercises the same material binding path the
+# game does -- a diagnostic with its own materials would diagnose itself.
+var _unlit := false
+var _normal_debug := false
+var _flat_override := false
+var _normal_mat: ShaderMaterial = null
+
+
+## Draws world-space normals as RGB colour.
+##
+## StandardMaterial3D has no normals-display mode, so this needs the small
+## shader in voxel_normal_debug.gdshader. It is unshaded and double-sided on
+## purpose: culling would hide exactly the faces this exists to reveal.
+func _normal_material() -> ShaderMaterial:
+	if _normal_mat == null:
+		_normal_mat = ShaderMaterial.new()
+		_normal_mat.shader = NORMAL_DEBUG_SHADER
+	return _normal_mat
+
+
+## A flat, untextured, unshaded material. The per-block tint the mesher bakes
+## into vertex colours still applies, so this shows palette and geometry
+## without textures or lighting.
+func _flat_material() -> StandardMaterial3D:
+	return _plain_untextured
+
+
+func _make_flat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.vertex_color_use_as_albedo = true
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
+## Ignore lighting entirely: a pure geometry-and-albedo test.
+func set_unlit(on: bool) -> void:
+	_unlit = on
+
+
+## Draw normals as colour.
+func set_normal_debug(on: bool) -> void:
+	_normal_debug = on
+
+
+## Flat colour for every block, ignoring texture sets.
+func set_flat_override(on: bool) -> void:
+	_flat_override = on
+
+
+## Drop every diagnostic override. The diagnostic sets them one at a time as
+## it walks up the stages, and each stage must first clear the previous
+## stage's overrides -- otherwise stage N inherits stage N-1's flags and the
+## stages quietly stop being independent, which is the one thing this
+## diagnostic must never be.
+func clear_diagnostics() -> void:
+	_unlit = false
+	_normal_debug = false
+	_flat_override = false
+
+
+## True while any diagnostic override is active, so the renderer can tell a
+## diagnostic capture from a real one.
+func is_diagnostic() -> bool:
+	return _unlit or _normal_debug or _flat_override
+
 
 func _init() -> void:
 	_plain = _make_plain()
+	_plain_untextured = _make_flat()
 	_water = _make_water()
 	_emissive = _make_emissive()
 
@@ -418,7 +494,20 @@ func _get_procedural(id: int) -> StandardMaterial3D:
 
 
 ## Material for one mesher surface, given the block id that produced it.
+##
+## The three diagnostic overrides come first: they exist to take the render
+## pipeline apart, so they have to win over every ordinary material choice
+## rather than being overridden by it.
 func material_for(id: int) -> Material:
+	# Order matters: the normal-debug shader is the most specific override
+	# and has to be tested first. The NORMAL stage is also "unlit" (a
+	# normals picture must not be shaded), so with the unlit branch first it
+	# would win and every stage from NORMAL onwards would render the same
+	# flat baseline.
+	if _normal_debug:
+		return _normal_material()
+	if _unlit or _flat_override:
+		return _flat_material()
 	if id == ContentDB.GLOWSTONE:
 		return _emissive
 	if _mapping == Mapping.STOCHASTIC:
