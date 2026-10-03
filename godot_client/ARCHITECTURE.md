@@ -254,6 +254,7 @@ Failure is a return value, not an exception and not a crash.
 | Non-authoritative write | `GameApi.authoritative == false` | refused with the rule named |
 | Invalid port/op/field | `NetProtocol.validate` | refused, `rule` says which check |
 | Out of reach / not owned | `NetAuthority.submit` | refused, apply never called |
+| Billed for a change that then failed | `NetAuthority.submit` | the ledger is restored before the refusal is returned |
 | Truncated or spliced save | `SaveMigration.read_resilient` | recovered from `.bak`, and says so |
 | Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
 | Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
@@ -301,10 +302,14 @@ Checked at every startup (`main.gd` → `EngArch.verify_runtime`) and by
 
 Two files, two jobs:
 
-* `NetAuthority` — **is this allowed?** Op allow-list, required fields,
+* `NetAuthority` — **is this allowed?** Op allow-list, per-field schema,
   session check, per-peer token bucket, server-side economy charge, ownership
   on every node the command touches, and reach against the server's own
-  clamped belief about where the player is.
+  clamped belief about where the player is. Charging and mutating are one
+  event: a handler that reports failure is rolled back before the refusal is
+  returned. There is no flag that disables any of it — a client that sends a
+  field naming a check to skip (`ignore_reach` and friends) is refused, not
+  obeyed.
 * `NetProtocol` — **what is a message?** The envelope, the directions, the
   field requirements, the ordering rules.
 

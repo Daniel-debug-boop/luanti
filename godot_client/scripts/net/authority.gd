@@ -23,6 +23,15 @@ extends RefCounted
 ##              Player B's motor while A is offline.
 ##   economy    the client claims to have paid for it. The server checks
 ##              its own ledger and charges its own copy.
+##   atomicity  a command that is charged for and then fails to happen leaves
+##              a player who paid for nothing, which is worse than a refusal
+##              because it is also unreportable.
+##
+## There is deliberately no flag that turns any of this off. A
+## `validation_enabled` boolean is a switch a shipped build can be flipped
+## with by a scene property, a stray script or a mistyped constant, and the
+## mistake is invisible until somebody is exploited. Single player does not
+## need one: the host is a peer like any other and goes through the same gate.
 ##
 ## Everything the server accepts is recorded in `log()`, so a disputed build can
 ## be replayed after the fact.
@@ -30,6 +39,10 @@ extends RefCounted
 ## Commands a client may issue. Anything else is rejected by schema, which is
 ## what stops a client from reaching a method that was never meant to be
 ## networked.
+##
+## This list and `SCHEMA` below describe the same set of commands, and
+## `multiplayer_test` asserts they agree. They used to be kept in step by hand,
+## which is exactly how they stop agreeing.
 const ALLOWED := [
 	"place", "remove", "connect", "disconnect", "manufacture",
 	"operate", "set_interaction_level", "capture_blueprint", "place_blueprint",
@@ -47,24 +60,79 @@ const ALLOWED := [
 const TOKENS_PER_SECOND := 12.0
 const BUCKET_DEPTH := 24.0
 
-## Fields each op cannot be processed without. An allow-list of op names is
-## not enough on its own: `{"op": "place"}` passes a name check and is still
-## meaningless, and a server that has to defend itself against nonsense in
-## every downstream handler is a server with the bug already written.
-const REQUIRED := {
-	"place": ["component"],
-	"remove": ["node"],
-	"connect": ["a", "b"],
-	"disconnect": ["a"],
-	"manufacture": ["component"],
-	"operate": [],
-	"set_interaction_level": ["level"],
-	"capture_blueprint": ["name"],
-	"place_blueprint": ["blueprint"],
-	"emergent_place": ["kind", "position"],
-	"emergent_remove": ["entity"],
-	"emergent_rule": ["text"],
+## Every op's fields: which are required, which are allowed, and what each one
+## has to look like.
+##
+## One table, not a name list plus a required-fields list. An allow-list of op
+## names is not enough on its own -- `{"op": "place"}` passes a name check and
+## is still meaningless, and a server that has to defend itself against
+## nonsense in every downstream handler is a server with the bug already
+## written. Nor is "is it present" enough: `{"op": "remove", "node": {}}` is
+## present, and is still nonsense.
+##
+## The kinds, and what they reject:
+##
+##   name    non-empty String, at most `MAX_NAME` characters
+##   text    non-empty String, at most `MAX_TEXT` characters
+##   id      integer, 0 .. `MAX_ID`. Zero is a real id and is ownership-checked
+##           like any other; the id-zero-is-unset assumption it used to encode
+##           let `{"op":"remove","node":0}` skip the check entirely.
+##   vector  a Vector3, range-checked against `MAX_WORLD_EXTENT`
+##   angle   a finite number, so a NaN rotation cannot reach a transform
+##   count   integer, 1 .. `MAX_COUNT`, so one packet cannot build 4000 motors
+##   cost    a Dictionary of name -> positive integer. See `_check_cost`.
+const SCHEMA := {
+	"place": {
+		"required": {"component": "name"},
+		"optional": {"position": "vector", "rotation_y": "angle",
+			"cost": "cost", "interaction_level": "level"},
+	},
+	"remove": {"required": {"node": "id"}, "optional": {}},
+	"connect": {
+		"required": {"a": "id", "b": "id"},
+		"optional": {"a_port": "name", "b_port": "name", "cost": "cost"},
+	},
+	"disconnect": {"required": {"a": "id"}, "optional": {}},
+	"manufacture": {
+		"required": {"component": "name"},
+		"optional": {"cost": "cost", "count": "count"},
+	},
+	"operate": {"required": {}, "optional": {"node": "id", "enabled": "flag"}},
+	"set_interaction_level": {"required": {"level": "level"}, "optional": {}},
+	"capture_blueprint": {
+		"required": {"name": "name"},
+		"optional": {"nodes": "count"},
+	},
+	"place_blueprint": {
+		"required": {"blueprint": "name"},
+		"optional": {"position": "vector", "rotation_y": "angle",
+			"cost": "cost"},
+	},
+	"emergent_place": {
+		"required": {"kind": "name", "position": "vector"},
+		"optional": {"node": "id"},
+	},
+	"emergent_remove": {"required": {"entity": "id"}, "optional": {}},
+	"emergent_rule": {"required": {"text": "text"}, "optional": {}},
 }
+
+## Length limits. A 64 kB component name is not a bug that shows up as a
+## crash; it is a 64 kB log line in every downstream error message.
+const MAX_NAME := 64
+const MAX_TEXT := 512
+## How many items one command may be billed for, and how much of any one of
+## them. Both exist because the number came from the client.
+const MAX_COST_ITEMS := 32
+const MAX_COST_PER_ITEM := 1000000
+const MAX_ID := 100000000
+const MAX_COUNT := 64
+
+## Fields a client may send that name a check to skip. They are refused
+## outright rather than ignored: a client that can *ask* to skip validation has
+## learned that validation is optional, and the day some future field of the
+## same name is honoured is the day that client is right.
+const BYPASS_FIELDS := ["ignore_reach", "ignore_ownership", "ignore_rate",
+	"ignore_cost", "bypass", "admin", "trusted", "no_check"]
 
 ## How far from a player's own position they may build, in metres. Precision
 ## mode does not extend it: if you can measure to a millimetre you still have to
@@ -73,8 +141,16 @@ const MAX_REACH := 12.0
 ## Hard cap, independent of any reach check, so a bug in a cursor cannot let
 ## someone build into unloaded space.
 const MAX_WORLD_EXTENT := 100000.0
-
-var enabled := true
+## The largest vertical excursion that survives the extent check.
+const MAX_WORLD_HEIGHT := 4096.0
+## Top speed the server will believe, in m/s. Faster than a sprint, slower
+## than a vehicle nobody has built yet.
+const MAX_SPEED := 40.0
+## The longest tick a client may claim. The movement clamp is `MAX_SPEED * dt`,
+## so an unclamped `dt` is a teleport: one packet claiming 1000 s of movement
+## buys 40 km, and the reach check that depends on the server's belief about
+## where a player is is worth nothing.
+const MAX_TICK := 0.25
 
 var _tokens := {}          # peer id -> float
 var _last_refill := {}     # peer id -> seconds
@@ -94,9 +170,13 @@ func _init() -> void:
 # --- session lifecycle ------------------------------------------------------
 
 ## A peer completed the handshake. Until this is called, `submit` rejects it.
+##
+## The name is truncated rather than rejected: it is cosmetic, it appears in
+## the audit log, and refusing a 4 kB name teaches a client to find the limit
+## rather than to keep it short.
 func join(peer_id: int, name: String, position: Vector3, now: float) -> bool:
 	_sessions[peer_id] = {
-		"name": name,
+		"name": name.substr(0, MAX_NAME),
 		"position": position,
 		"revoked": false,
 		"joined_at": now,
@@ -136,15 +216,19 @@ func set_peer_position(peer_id: int, position: Vector3, dt: float) -> Vector3:
 	if not _sessions.has(peer_id):
 		return Vector3.ZERO
 	var current: Vector3 = _sessions[peer_id]["position"]
-	# 40 m/s is faster than a sprint and slower than a teleport cheat, so
-	# legitimate movement passes untouched and a teleport is pulled back.
-	var limit := 40.0 * maxf(dt, 0.0) + 0.5
+	# MAX_SPEED is faster than a sprint and slower than a teleport cheat, so
+	# legitimate movement passes untouched and a teleport is pulled back. The
+	# tick is clamped first, because `dt` came from the same client as the
+	# position and an unclamped one makes the speed limit meaningless.
+	var step := clampf(dt, 0.0, MAX_TICK)
+	var limit := MAX_SPEED * step + 0.5
 	var moved := position - current
 	var accepted := current
-	if moved.length() <= limit:
+	if is_finite(moved.x) and is_finite(moved.y) and is_finite(moved.z) \
+			and moved.length() <= limit:
 		accepted = position
 	accepted.x = clampf(accepted.x, -MAX_WORLD_EXTENT, MAX_WORLD_EXTENT)
-	accepted.y = clampf(accepted.y, -4096.0, 4096.0)
+	accepted.y = clampf(accepted.y, -MAX_WORLD_HEIGHT, MAX_WORLD_HEIGHT)
 	accepted.z = clampf(accepted.z, -MAX_WORLD_EXTENT, MAX_WORLD_EXTENT)
 	_sessions[peer_id]["position"] = accepted
 	return accepted
@@ -154,18 +238,33 @@ func set_peer_position(peer_id: int, position: Vector3, dt: float) -> Vector3:
 
 ## The server's own copy of a player's resources. Never the client's number.
 func set_ledger(peer_id: int, items: Dictionary) -> void:
-	_ledger[peer_id] = items.duplicate()
+	_ledger[peer_id] = items.duplicate(true)
 
 
+## A copy, not the ledger itself.
+##
+## `Dictionary` is a reference type in GDScript, so returning the stored
+## dictionary hands the caller a handle on it: a snapshot taken before a
+## charge was changed by that charge, and the refund below restored a ledger
+## that had already been debited.
 func ledger_of(peer_id: int) -> Dictionary:
-	return _ledger.get(peer_id, {})
+	var l: Dictionary = _ledger.get(peer_id, {})
+	return l.duplicate(true)
 
 
 ## What the peer actually has after a charge, for the server to compare a
 ## client prediction against.
+##
+## It re-checks what it is about to subtract rather than trusting the caller.
+## `charge` is public, it is the one place a number becomes money, and the
+## failure it has to refuse is the cheapest exploit in the file: a cost of -5
+## is arithmetically a credit, so a server that only checked affordability
+## would hand out resources to anyone who asked nicely.
 func charge(peer_id: int, cost: Dictionary) -> bool:
-	var l: Dictionary = _ledger.get(peer_id, {})
+	var l: Dictionary = _ledger.get(peer_id, {}).duplicate(true)
 	for item in cost:
+		if not _is_int(cost[item]) or int(cost[item]) <= 0:
+			return false
 		if int(l.get(item, 0)) < int(cost[item]):
 			return false
 	for item in cost:
@@ -230,38 +329,40 @@ func advance_clock(now: float) -> void:
 
 ## Validate and apply one command. Returns
 ## `{"ok": bool, "reason": String, "result": Variant, "peer": int}`.
-## `ok == false` means the server changed nothing at all.
+## `ok == false` means the server changed nothing at all -- not the world, and
+## not the ledger.
 ##
 ## `apply` is the closure that performs the real mutation against the server's
-## own world. It is only ever called after every check has passed, and its
-## return value is passed back untouched.
-func submit(peer_id: int, command: Dictionary, apply: Callable) -> Dictionary:
+## own world. It is only ever called after every check has passed, and it
+## reports failure the same way everything else here does: return a Dictionary
+## with `"ok": false` and a reason. A handler that returns such a dictionary
+## after having charged the player is rolled back, because a player who paid
+## for a motor that was not built has no way to get the money back and no way
+## to prove it happened.
+func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 	var fail := func(reason: String) -> Dictionary:
 		_rejected += 1
 		_record(peer_id, command, false, reason)
 		return {"ok": false, "reason": reason, "result": null, "peer": peer_id}
 
-	if not enabled:
-		var res: Variant = apply.call(command) if apply.is_valid() else null
-		_accepted += 1
-		_record(peer_id, command, true, "")
-		return {"ok": true, "reason": "", "result": res, "peer": peer_id}
-
-	# 1. schema -- before anything else, because every later check reads fields
-	# that may not be there.
+	# 0. the command itself
 	if not (command is Dictionary):
 		return fail.call("command is not a dictionary")
-	var op := String(command.get("op", ""))
+	var cmd: Dictionary = command
+	var op := String(cmd.get("op", ""))
+	for field in BYPASS_FIELDS:
+		if cmd.has(field):
+			# Refused, not ignored. A server that quietly drops the field has
+			# taught the client that the field exists.
+			return fail.call("'%s' is not something a client may ask for" % field)
 	if not ALLOWED.has(op):
 		return fail.call("unknown op '%s'" % op)
-	for field in REQUIRED[op]:
-		if not command.has(field) or command[field] == null:
-			return fail.call("op '%s' requires '%s'" % [op, field])
-		var v: Variant = command[field]
-		# An empty String is a missing value; 0 is a legitimate node id, so the
-		# check has to be type-aware rather than a blanket falsy test.
-		if (v is String or v is StringName) and String(v).is_empty():
-			return fail.call("op '%s' requires '%s'" % [op, field])
+
+	# 1. schema -- before anything else, because every later check reads fields
+	# that may not be there, and reads them as the types they are supposed to be.
+	var shape := _check_shape(op, cmd)
+	if not bool(shape["ok"]):
+		return fail.call(String(shape["reason"]))
 
 	# 2. session
 	if not is_joined(peer_id):
@@ -273,55 +374,218 @@ func submit(peer_id: int, command: Dictionary, apply: Callable) -> Dictionary:
 		return fail.call("rate limited")
 	_tokens[peer_id] = float(_tokens[peer_id]) - 1.0
 
-	# 4. economy -- charged from the server's ledger, never the client's claim
-	var cost: Dictionary = command.get("cost", {})
-	if not cost.is_empty():
-		if not can_afford(peer_id, cost):
-			return fail.call("insufficient resources")
+	# 4. economy -- charged from the server's ledger, never the client's claim.
+	# The shape check above has already refused a malformed or negative cost,
+	# so `can_afford` here is comparing two numbers that both make sense.
+	var cost: Dictionary = cmd.get("cost", {})
+	if not cost.is_empty() and not can_afford(peer_id, cost):
+		return fail.call("insufficient resources")
 
-	# 5. reach + ownership, which need the node ids the op touches
-	var target_id := int(command.get("node", 0))
-	var node_a := int(command.get("a", 0))
-	var node_b := int(command.get("b", 0))
-	var ids: Array[int] = []
-	if target_id != 0:
-		ids.append(target_id)
-	if node_a != 0:
-		ids.append(node_a)
-	if node_b != 0:
-		ids.append(node_b)
-	for id in ids:
+	# 5. ownership, for every node the op touches. Zero is a node like any
+	# other; it used to be skipped on the assumption that it meant "none", which
+	# meant `{"op":"remove","node":0}` never reached the ownership check.
+	for field in ["node", "a", "b", "entity"]:
+		if not cmd.has(field):
+			continue
+		var id := int(cmd[field])
 		if not may_modify(peer_id, id):
 			return fail.call("node %d belongs to peer %d" % [id, owner_of(id)])
 
-	var pos: Variant = command.get("position", null)
-	if pos != null:
-		if not (pos is Vector3):
-			return fail.call("position is not a vector")
-		var p: Vector3 = pos
-		if absf(p.x) > MAX_WORLD_EXTENT or absf(p.z) > MAX_WORLD_EXTENT \
-				or absf(p.y) > 4096.0:
-			return fail.call("position outside the world")
+	# 6. reach
+	if cmd.has("position"):
+		var p: Vector3 = cmd["position"]
 		var origin := peer_position(peer_id)
-		if command.get("ignore_reach", false) != true \
-				and origin.distance_to(p) > MAX_REACH:
+		if origin.distance_to(p) > MAX_REACH:
 			return fail.call("out of reach: %.1f m away (limit %.1f)" % [
 				origin.distance_to(p), MAX_REACH])
 
-	# Everything passed. Now, and only now, does the world change.
-	if not cost.is_empty():
-		if not charge(peer_id, cost):
-			return fail.call("insufficient resources")
-	var result: Variant = apply.call(command) if apply.is_valid() else null
+	# 7. a handler, before the charge rather than after it. Without this a
+	# command with a dead closure still succeeded: the player was billed, the
+	# result was null, and `ok` was true. A server with no handler for an op
+	# has a bug in it, and the fix is to say so rather than to take the money.
+	if not apply.is_valid():
+		return fail.call("no handler for op '%s'" % op)
+
+	# Everything passed. Now, and only now, does the world change -- and the
+	# charge and the mutation are one event or neither.
+	var ledger_before: Dictionary = ledger_of(peer_id)
+	if not cost.is_empty() and not charge(peer_id, cost):
+		return fail.call("insufficient resources")
+	var result: Variant = apply.call(cmd)
+	var applied := _handler_succeeded(result)
+	if not applied:
+		if not cost.is_empty():
+			# The mutation failed, so the payment did not happen. Restoring the
+			# whole ledger rather than re-adding the cost keeps this correct even
+			# if a handler moved something else out of it.
+			set_ledger(peer_id, ledger_before)
+		return fail.call(_handler_reason(result))
 	_accepted += 1
 	_record(peer_id, command, true, "")
 	return {"ok": true, "reason": "", "result": result, "peer": peer_id}
 
 
-func _record(peer_id: int, command: Dictionary, ok: bool, reason: String) -> void:
+## Did the mutation this command describes actually happen?
+##
+## A handler that returns a Dictionary saying `ok: false` did not. Anything
+## else -- a plain result, a Dictionary with no `ok`, null for an op that has
+## nothing to return -- counts as done, because the authority validates the
+## command, not the handler's opinion of itself.
+func _handler_succeeded(result: Variant) -> bool:
+	if result is Dictionary:
+		var d: Dictionary = result
+		if d.has("ok"):
+			return bool(d["ok"])
+	return true
+
+
+func _handler_reason(result: Variant) -> String:
+	if result is Dictionary:
+		var d: Dictionary = result
+		if d.has("ok") and not bool(d["ok"]):
+			var why := String(d.get("reason", ""))
+			if not why.is_empty():
+				return why
+	return "the world refused the change"
+
+
+## Every field the op knows about, present and well-typed.
+##
+## Returns `{"ok": bool, "reason": String}`. Required fields must be present;
+## optional ones must be absent or correct. A present-but-unknown field is
+## accepted: adding one must not break an older server.
+func _check_shape(op: String, cmd: Dictionary) -> Dictionary:
+	var spec: Dictionary = SCHEMA[op]
+	var required: Dictionary = spec["required"]
+	var optional: Dictionary = spec["optional"]
+	for field in required:
+		if not cmd.has(field) or cmd[field] == null:
+			return {"ok": false,
+				"reason": "op '%s' requires '%s'" % [op, field]}
+		var bad := _check_value(field, cmd[field], String(required[field]))
+		if not bad.is_empty():
+			return {"ok": false,
+				"reason": "op '%s' field '%s' %s" % [op, field, bad]}
+	for field in optional:
+		if not cmd.has(field) or cmd[field] == null:
+			continue
+		var bad2 := _check_value(field, cmd[field], String(optional[field]))
+		if not bad2.is_empty():
+			return {"ok": false,
+				"reason": "op '%s' field '%s' %s" % [op, field, bad2]}
+	return {"ok": true, "reason": ""}
+
+
+## A complaint about one value, or "" if it is fine.
+func _check_value(field: String, value: Variant, kind: String) -> String:
+	match kind:
+		"name", "text":
+			var cap := MAX_NAME if kind == "name" else MAX_TEXT
+			if not (value is String or value is StringName):
+				return "must be a string"
+			var s := String(value)
+			if s.is_empty():
+				return "must not be empty"
+			if s.length() > cap:
+				return "must be at most %d characters" % cap
+		"id":
+			if not _is_int(value):
+				return "must be an integer"
+			var n := int(value)
+			if n < 0 or n > MAX_ID:
+				return "must be between 0 and %d" % MAX_ID
+		"count":
+			if not _is_int(value):
+				return "must be an integer"
+			if int(value) < 1 or int(value) > MAX_COUNT:
+				return "must be between 1 and %d" % MAX_COUNT
+		"flag":
+			if not (value is bool):
+				return "must be true or false"
+		"vector":
+			if not (value is Vector3):
+				return "must be a position"
+			var p: Vector3 = value
+			if not (is_finite(p.x) and is_finite(p.y) and is_finite(p.z)):
+				return "must be a finite position"
+			if absf(p.x) > MAX_WORLD_EXTENT or absf(p.z) > MAX_WORLD_EXTENT \
+					or absf(p.y) > MAX_WORLD_HEIGHT:
+				return "is outside the world"
+		"angle":
+			if not (value is int or value is float):
+				return "must be a number"
+			if not is_finite(float(value)):
+				return "must be a finite number"
+			if absf(float(value)) > TAU * 8.0:
+				return "is not a rotation"
+		"level":
+			if _is_int(value):
+				if int(value) < 0 or int(value) > 3:
+					return "must be between 0 and 3"
+			elif not (value is String or value is StringName):
+				return "must be a level"
+			elif String(value).is_empty():
+				return "must not be empty"
+		"cost":
+			var complaint := _check_cost(value)
+			if not complaint.is_empty():
+				return complaint
+		_:
+			return "is a field this op does not define"
+	return ""
+
+
+## A cost is the client saying what it expects to be charged. It cannot be
+## allowed to be a shape that charges something other than what it says.
+##
+## The two exploits a bounds check alone does not catch: a negative amount,
+## which `charge` happily applies as a *credit* -- `{"cost": {"iron": -5}}`
+## is a money printer -- and an empty cost, which is simply "build it for
+## free". The second one is the reason the server must eventually price the
+## order itself rather than believe the client; until it does, refusing the
+## malformed shapes is the part that can be done here.
+func _check_cost(value: Variant) -> String:
+	if not (value is Dictionary):
+		return "must be a dictionary"
+	var d: Dictionary = value
+	if d.size() > MAX_COST_ITEMS:
+		return "names too many items"
+	for item in d:
+		if not (item is String or item is StringName):
+			return "must be named by strings"
+		var name := String(item)
+		if name.is_empty() or name.length() > MAX_NAME:
+			return "names an unusable item"
+		var amount: Variant = d[item]
+		if not _is_int(amount):
+			return "must be whole numbers"
+		if int(amount) <= 0:
+			# A negative cost is not a discount; `charge` would subtract it.
+			return "must be positive"
+		if int(amount) > MAX_COST_PER_ITEM:
+			return "is implausibly large"
+	return ""
+
+
+## An integer, or a float that is exactly an integer.
+##
+## JSON has one number type, so a peer that encodes `{"node": 5}` as `5.0`
+## is not attacking anything -- but `5.5`, and `NaN`, and a String, are, and
+## `int()` alone tells them apart only by accident.
+func _is_int(value: Variant) -> bool:
+	if value is int:
+		return true
+	if value is float:
+		var f := float(value)
+		return is_finite(f) and is_equal_approx(f, roundf(f)) \
+			and absf(f) < 9.0e15
+	return false
+
+
+func _record(peer_id: int, command: Variant, ok: bool, reason: String) -> void:
 	_log.append({
 		"peer": peer_id,
-		"op": String(command.get("op", "")),
+		"op": String(command.get("op", "")) if command is Dictionary else "?",
 		"ok": ok,
 		"reason": reason,
 		"at": _now,

@@ -730,16 +730,34 @@ func submit(peer_id: int, command: Dictionary) -> Dictionary:
 ## The mutation itself. Server-side only, and deliberately small: place an
 ## entity, remove one, add a rule. Anything that would need world knowledge
 ## belongs in the engineering layer, which already has an op for it.
+##
+## Every branch reports `ok` and a reason, because that is the contract
+## `NetAuthority` uses to decide whether a command that was charged for
+## actually happened: a handler that reports a bare `{"entity": 0}` cannot be
+## told apart from one that refused, so a failed placement would keep the
+## player's money.
 func _apply_command(cmd: Dictionary) -> Variant:
 	match String(cmd.get("op", "")):
 		"emergent_place":
-			var eid := graph.add_entity(String(cmd.get("kind", "")),
-				cmd.get("position", Vector3.ZERO), int(cmd.get("node", 0)))
-			return {"entity": eid}
+			var kind := String(cmd.get("kind", ""))
+			if not EmergentEntity.has_kind(kind):
+				return {"ok": false, "reason": "no entity kind '%s'" % kind}
+			var eid := graph.add_entity(kind, cmd.get("position", Vector3.ZERO),
+				int(cmd.get("node", 0)))
+			if eid < 0:
+				return {"ok": false, "reason": "'%s' could not be placed" % kind}
+			return {"ok": true, "reason": "", "entity": eid}
 		"emergent_remove":
-			return {"removed": graph.remove_entity(int(cmd.get("entity", 0)))}
+			var id := int(cmd.get("entity", 0))
+			if not graph.remove_entity(id):
+				return {"ok": false, "reason": "no entity %d" % id}
+			return {"ok": true, "reason": "", "removed": id}
 		"emergent_rule":
-			return EmergentRules.add_text(String(cmd.get("text", "")))
+			var r := EmergentRules.add_text(String(cmd.get("text", "")))
+			var err := String(r.get("error", ""))
+			if not err.is_empty():
+				return {"ok": false, "reason": err}
+			return {"ok": true, "reason": "", "id": int(r.get("id", 0))}
 		_:
 			return null
 
