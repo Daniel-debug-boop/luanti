@@ -9,27 +9,42 @@ extends Node3D
 ## is rebuilt whenever the player moves to a new one, which keeps the prop
 ## count bounded no matter how far the player travels.
 
-const MODEL_DIR := "res://assets/raw/models"
+const MODEL_DIR := "res://assets/runtime/models"
 
-## Prop models used for the settlement, with their real-world scale.
+## Where LOD1 takes over, in metres from the camera. A prop is 0.3-0.9 m tall,
+## so this is roughly "still in front of you" -- past it the silhouette is all
+## that survives anyway.
+const LOD1_RANGE := 14.0
+## Where LOD2 takes over, roughly the far edge of a village district.
+const LOD2_RANGE := 34.0
+
+## Fade length at a LOD boundary, in metres. Godot 4 replaced the scalar
+## `visibility_range_fade` with a fade *mode* plus a per-boundary margin in
+## metres, so the fade is a distance rather than an opacity ramp length.
+const LOD_FADE := 2.0
+
+## Prop models used for the settlement. There is no `scale` here any more: the
+## models are baked to real-world metres by tools/make_lods.py, so a 0.88 m
+## barrel is 0.88 m in the world and nothing in the game has to know a fudge
+## factor. Each also has LOD1 and LOD2 meshes beside it in the same directory.
 const PROP_KINDS := [
-	{"model": "wooden_crate_01", "scale": 0.9, "weight": 3.0},
-	{"model": "wooden_crate_02", "scale": 0.9, "weight": 3.0},
-	{"model": "Barrel_01", "scale": 0.85, "weight": 3.0},
-	{"model": "wine_barrel_01", "scale": 0.85, "weight": 2.0},
-	{"model": "wooden_barrels_01", "scale": 0.85, "weight": 2.0},
-	{"model": "metal_tool_chest", "scale": 0.9, "weight": 1.5},
-	{"model": "old_military_crate", "scale": 0.9, "weight": 1.5},
-	{"model": "treasure_chest", "scale": 0.9, "weight": 1.0},
-	{"model": "street_lamp_01", "scale": 1.0, "weight": 1.0},
-	{"model": "Lantern_01", "scale": 1.0, "weight": 1.0},
-	{"model": "wooden_lantern_01", "scale": 1.0, "weight": 1.0},
-	{"model": "painted_wooden_bench", "scale": 1.0, "weight": 2.0},
-	{"model": "painted_wooden_stool", "scale": 1.0, "weight": 2.0},
-	{"model": "chinese_stool", "scale": 1.0, "weight": 1.0},
-	{"model": "ceramic_pot", "scale": 1.0, "weight": 2.0},
-	{"model": "planter_pot_clay", "scale": 1.0, "weight": 2.0},
-	{"model": "potted_plant_01", "scale": 1.0, "weight": 2.0},
+	{"model": "wooden_crate_01", "weight": 3.0},
+	{"model": "wooden_crate_02", "weight": 3.0},
+	{"model": "Barrel_01", "weight": 3.0},
+	{"model": "wine_barrel_01", "weight": 2.0},
+	{"model": "wooden_barrels_01", "weight": 2.0},
+	{"model": "metal_tool_chest", "weight": 1.5},
+	{"model": "old_military_crate", "weight": 1.5},
+	{"model": "treasure_chest", "weight": 1.0},
+	{"model": "street_lamp_01", "weight": 1.0},
+	{"model": "Lantern_01", "weight": 1.0},
+	{"model": "wooden_lantern_01", "weight": 1.0},
+	{"model": "painted_wooden_bench", "weight": 2.0},
+	{"model": "painted_wooden_stool", "weight": 2.0},
+	{"model": "chinese_stool", "weight": 1.0},
+	{"model": "ceramic_pot", "weight": 2.0},
+	{"model": "planter_pot_clay", "weight": 2.0},
+	{"model": "potted_plant_01", "weight": 2.0},
 ]
 
 ## Villager roster: name, job, skin, tunic.
@@ -60,8 +75,8 @@ var audio: AudioDirector = null
 @export var props_per_district := 26
 @export var villagers_per_district := 4
 
-var _scenes := {}          # model name -> PackedScene (or null when missing)
-var _loaded := {}          # model name -> PackedScene
+var _scenes := {}          # model name -> Array[PackedScene] (LOD0..LOD2)
+var _loaded := {}          # model name -> PackedScene (LOD0)
 var _district := Vector3i(9999, 9999, 9999)
 var _prop_count := 0
 var _villager_count := 0
@@ -74,17 +89,63 @@ func _ready() -> void:
 		_scenes[name] = _load_model(name)
 
 
-## Load a downloaded glTF bundle. Returns null when the model is not present,
-## so the village degrades to whatever props did import.
-func _load_model(name: String) -> PackedScene:
-	var path := "%s/%s/%s_1k.gltf" % [MODEL_DIR, name, name]
-	if not ResourceLoader.exists(path):
+## Load a prop's LOD chain. Returns an empty array when the model is not
+## present, so the village degrades to whatever props did import.
+func _load_model(name: String) -> Array:
+	var out: Array = []
+	for lod in 3:
+		var path := "%s/%s/lod%d.gltf" % [MODEL_DIR, name, lod]
+		if not ResourceLoader.exists(path):
+			break
+		var ps: PackedScene = load(path)
+		if ps == null:
+			break
+		out.append(ps)
+		if lod == 0:
+			_loaded[name] = ps
+	if out.is_empty():
 		_missing.append(name)
-		return null
-	var ps: PackedScene = load(path)
-	if ps != null:
-		_loaded[name] = ps
-	return ps
+	return out
+
+
+## Every MeshInstance3D under `root`, at any depth. The props are single-level
+## today, but a model with a nested armature or a second material group would
+## not be, and a LOD chain that silently skipped half its geometry would be
+## worse than no LOD at all.
+func _collect_mesh_nodes(root: Node, out: Array[MeshInstance3D]) -> void:
+	for c in root.get_children():
+		if c is MeshInstance3D:
+			out.append(c as MeshInstance3D)
+		if c is Node:
+			_collect_mesh_nodes(c, out)
+
+
+## Give one prop its LOD chain: LOD0 out to LOD1_RANGE, then LOD1 out to
+## LOD2_RANGE, then LOD2 for good.
+##
+## The switch is Godot's own `visibility_range` on the MeshInstance, evaluated
+## per instance on the GPU, not a script that polls the camera. That is the
+## whole point: a script-based LOD would have to run every frame for every
+## prop, which is the cost the LOD was supposed to remove.
+func _attach_lods(root: Node3D, chain: Array) -> void:
+	var near: Array[MeshInstance3D] = []
+	_collect_mesh_nodes(root, near)
+	for mi in near:
+		mi.visibility_range_begin = 0.0
+		mi.visibility_range_end = LOD1_RANGE
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		mi.visibility_range_end_margin = LOD_FADE
+	for i in range(1, chain.size()):
+		var lod_node: Node3D = chain[i].instantiate()
+		lod_node.name = "LOD%d" % i
+		root.add_child(lod_node)
+		var far: Array[MeshInstance3D] = []
+		_collect_mesh_nodes(lod_node, far)
+		for mi2 in far:
+			mi2.visibility_range_begin = LOD1_RANGE if i == 1 else LOD2_RANGE
+			mi2.visibility_range_end = LOD2_RANGE if i == 1 else 0.0
+			mi2.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			mi2.visibility_range_end_margin = LOD_FADE
 
 
 ## How many prop models imported successfully.
@@ -163,13 +224,13 @@ func _rebuild(district: Vector3i) -> void:
 				break
 		var kind: Dictionary = PROP_KINDS[chosen]
 		var name: String = kind["model"]
-		var scene: PackedScene = _scenes.get(name, null)
-		if scene == null:
+		var chain: Array = _scenes.get(name, [])
+		if chain.is_empty():
 			continue
 		var spot := _scatter_point(rng, origin, 13.0)
 		if spot == Vector3i.ZERO:
 			continue
-		var node := _place_prop(scene, spot, float(kind["scale"]), rng)
+		var node := _place_prop(chain, spot, rng)
 		if node != null:
 			placed += 1
 
@@ -304,16 +365,17 @@ func _scatter_point(rng: RandomNumberGenerator, origin: Vector3i,
 	return Vector3i.ZERO
 
 
-func _place_prop(scene: PackedScene, spot: Vector3i, scale: float,
+func _place_prop(chain: Array, spot: Vector3i,
 		rng: RandomNumberGenerator) -> Node3D:
-	var node := scene.instantiate()
+	var node: Node3D = chain[0].instantiate()
 	if node == null:
 		return null
-	node.scale = Vector3(scale, scale, scale)
-	# Poly Haven props are modelled in metres with their origin at the base, so
-	# the instance sits directly on the block face.
+	# No scale: the models are baked to real-world metres by the asset
+	# pipeline, and their origin is at the base, so the instance sits directly
+	# on the block face.
 	node.position = Vector3(spot.x + 0.5, float(spot.y), spot.z + 0.5)
 	node.rotation.y = rng.randf_range(0.0, TAU)
 	add_child(node)
+	_attach_lods(node, chain)
 	_prop_count += 1
 	return node

@@ -25,7 +25,7 @@ extends RefCounted
 ## SDFGI and volumetric fog are the two expensive entries, so they are tiered:
 ## `Quality.LOW` leaves them off.
 
-enum Quality { LOW, MEDIUM, HIGH }
+enum Quality { LOW, MEDIUM, HIGH, ULTRA }
 
 @export var quality := Quality.HIGH
 ## Half-extent of each reflection probe's influence, in nodes.
@@ -247,8 +247,8 @@ func active_effects() -> Dictionary:
 
 ## One-line summary, e.g. "HIGH: ssao ssil fog glow probes".
 func describe() -> String:
-	var tiers := ["LOW", "MEDIUM", "HIGH"]
-	var names: String = tiers[clampi(quality, 0, 2)]
+	var tiers := ["LOW", "MEDIUM", "HIGH", "ULTRA"]
+	var names: String = tiers[clampi(quality, 0, 3)]
 	var on := active_effects()
 	var parts := PackedStringArray()
 	for key in ["ssao", "ssil", "volumetric_fog", "glow", "bounce_probes"]:

@@ -3,6 +3,12 @@
 Both addons here are vendored verbatim from their upstream projects, with
 their licences included alongside them. Nothing in either addon was modified.
 
+> **Textures, models and HDRIs are not here.** Everything under
+> `assets/runtime/` is documented in `assets/THIRD_PARTY_ASSETS.md`. This file
+> covers only the vendored *code* in `addons/`, which is where the licence
+> obligations actually live: the Apache-2.0 shaders require attribution, and
+> their notices are carried inside the shader source itself.
+
 ---
 
 ## `terrain-shader/` — Triplanar terrain shader

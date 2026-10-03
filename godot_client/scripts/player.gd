@@ -44,7 +44,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if (event as InputEventKey).keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif (event as InputEventKey).keycode == KEY_F:
+		elif (event as InputEventKey).keycode == KEY_V:
+			# F is the engineering "use held tool" key (ARCHITECTURE.md
+			# section 15). Flight used to be F as well: two nodes each with
+			# their own _unhandled_input, so every attempt to place a part
+			# also toggled flight. V is unbound and is a plausible thing to
+			# reach for when you want to get off the ground.
 			flying = not flying
 			velocity.y = 0.0
 		elif Input.mouse_mode == Input.MOUSE_MODE_VISIBLE \
@@ -173,6 +178,31 @@ func _box_free(pos: Vector3) -> bool:
 func get_eye_position() -> Vector3:
 	return position + Vector3.UP * EYE_HEIGHT \
 		+ Vector3(0.0, sin(_bob) * 0.035, 0.0)
+
+
+## Point the player along a world-space direction.
+##
+## This exists because `_yaw`/`_pitch` are private and `_physics_process`
+## rewrites `rotation` from them every frame, so the only other way to aim is
+## synthesised mouse motion -- which `_unhandled_input` ignores unless the
+## mouse is captured. That guard is right for a player and wrong for anything
+## that is not a person at a keyboard: a test, a cutscene camera, a spectator
+## mode, a server-driven look-at. All of those are "point the player here", so
+## that is one named operation rather than four workarounds.
+func look_along(dir: Vector3) -> void:
+	if dir.length_squared() < 0.000001:
+		return
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	# With yaw then pitch applied, a node's forward (-Z) is
+	#   (-sin(yaw)*cos(pitch), sin(pitch), -cos(yaw)*cos(pitch)).
+	# Matching that to `dir` gives yaw from the horizontal part and pitch
+	# from the ratio of vertical to horizontal, with no sign guesswork:
+	# sin(pitch) is dir.y, so a downward direction is a negative pitch.
+	if flat.length_squared() > 0.000001:
+		_yaw = atan2(-dir.x, -dir.z)
+	_pitch = clampf(atan2(dir.y, maxf(flat.length(), 0.000001)), -1.5, 1.5)
+	rotation.y = _yaw
+	rotation.x = _pitch
 
 
 func get_block_position() -> Vector3i:

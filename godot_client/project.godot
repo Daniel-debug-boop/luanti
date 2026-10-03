@@ -78,3 +78,19 @@ place_right={
 textures/default_filters/anisotropic_filtering_level=2
 textures/default_filters/use_mipmaps=true
 anti_aliasing/quality/msaa_3d=1
+
+; --- asset pipeline import defaults ----------------------------------------
+; Every texture in assets/runtime is a PBR map, and PBR maps without mipmaps
+; shimmer at exactly the distances a voxel world is looked at from, while
+; mipmaps without VRAM compression cost four bytes per texel. These two settings
+; are what the whole runtime texture budget is predicated on; the asset
+; validation suite (tools/asset_test.gd) checks that they are still here.
+[importer_defaults]
+
+texture={
+"compress/mode": 2,
+"compress/high_quality": false,
+"mipmaps/generate": true,
+"detect_3d/compress_to": 1,
+"process/size_limit": 0
+}

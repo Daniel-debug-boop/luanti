@@ -75,6 +75,30 @@ const IRON_BLOCK := 22
 const STEEL_BLOCK := 23
 const BRASS_BLOCK := 24
 
+# --- Construction palette -------------------------------------------------
+#
+# Ids 25..31 are the materials a player builds *with*. They were added when the
+# art pipeline replaced the flat vertex colours: before this, the only things
+# you could place were terrain and ore, so there was nothing to build a village,
+# a road or a workshop out of, and the architecture half of the world had no
+# visual language at all.
+#
+# They are ordinary blocks: the same ContentDB entry, the same mesher surface,
+# the same inventory, the same save file. Nothing about the voxel systems knows
+# they exist, which is the point.
+
+const PLANKS := 25
+const COBBLESTONE := 26
+const BRICK := 27
+const CONCRETE := 28
+const ASPHALT := 29
+const GLASS := 30
+const METAL_PLATE := 31
+
+## One past the highest registered id. Loops over content use this rather than
+## a literal, so adding a block cannot silently fall out of the range.
+const MAX_ID := 31
+
 ## Blocks that are refined metal rather than natural terrain, and so have a
 ## matching engineering material id. Everything else returns "".
 const METAL_OF := {
@@ -137,6 +161,14 @@ static func _table() -> Array[Entry]:
 		Entry.new(IRON_BLOCK, "iron_block", Color(0.78, 0.78, 0.80), false, 0, 2.5),
 		Entry.new(STEEL_BLOCK, "steel_block", Color(0.56, 0.58, 0.62), false, 0, 3.0),
 		Entry.new(BRASS_BLOCK, "brass_block", Color(0.80, 0.68, 0.32), false, 0, 2.4),
+		# --- construction palette ---
+		Entry.new(PLANKS, "planks", Color(0.62, 0.47, 0.30), false, 0, 1.1),
+		Entry.new(COBBLESTONE, "cobblestone", Color(0.47, 0.46, 0.45), false, 0, 2.0),
+		Entry.new(BRICK, "brick", Color(0.55, 0.33, 0.26), false, 0, 2.2),
+		Entry.new(CONCRETE, "concrete", Color(0.60, 0.60, 0.59), false, 0, 2.4),
+		Entry.new(ASPHALT, "asphalt", Color(0.22, 0.22, 0.24), false, 0, 2.0),
+		Entry.new(GLASS, "glass", Color(0.72, 0.84, 0.90, 0.28), true, 0, 0.4),
+		Entry.new(METAL_PLATE, "metal_plate", Color(0.50, 0.53, 0.56), false, 0, 2.6),
 	]
 	return _entries
 

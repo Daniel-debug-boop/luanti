@@ -1,0 +1,4 @@
+# Dev-only dependency for the asset pipeline (tools/process_textures.py).
+# Not imported by the game, the editor, or any test: only by the offline
+# image processing step that turns 4K CC0 sources into the runtime ladder.
+Pillow>=10,<13

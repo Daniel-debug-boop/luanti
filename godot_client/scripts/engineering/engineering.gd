@@ -163,16 +163,25 @@ const VISUAL_STEP := 12.0
 
 ## Place a component, spending one from the player's backpack.
 ##
-## The bill is charged before the node is created, and refunded if creation
-## fails, so a full inventory can never eat a motor.
+## The finished part is what pays for it. This used to also require the
+## raw-material bill to be affordable, which meant placing charged the
+## ingredients a second time: a workbench cost 8 wood to manufacture and
+## another 8 to put down, and nothing in the game produces wood fast enough
+## to pay that. The bill belongs to `manufacture()`, which is the verb that
+## turns raw materials into a part; `place()` is the verb that puts a part
+## where the player is pointing.
+##
+## The part is taken before the node is created and refunded if creation
+## fails, so a full world can never eat a motor.
 func place(component_id: String, position: Vector3, rotation_y := 0.0,
 		part: EngPart = null) -> Dictionary:
 	if not EngPorts.has(component_id):
 		return {"ok": false, "reason": "unknown component", "node": 0}
-	if inventory != null and not _can_build(component_id):
-		var check := EngItems.can_build(inventory, component_id)
-		return {"ok": false, "reason": "missing %s" % str(
-			check["missing"]), "node": 0}
+	# The one capability check that stays: a station in progress is exempt,
+	# because a station is what the other components are made of.
+	if inventory != null and not EngWorkshop.can_component(graph, component_id):
+		return {"ok": false, "reason": "your workshop cannot shape %s yet"
+			% EngItems.material_of(component_id), "node": 0}
 	if inventory != null and inventory.consume_eng(component_id, 1) == 0:
 		return {"ok": false, "reason": "none in the pack", "node": 0}
 	var node := graph.place(component_id, position, rotation_y, part)

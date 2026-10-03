@@ -1,7 +1,7 @@
 class_name MaterialLibrary
 extends RefCounted
-## Builds PBR materials from the Poly Haven texture sets in assets/raw and maps
-## content ids to them.
+## Builds PBR materials from the runtime texture library in
+## assets/runtime/textures and maps content ids to them.
 ##
 ## The mesher emits one surface per block id, so this class hands out the
 ## material for each of those surfaces. Everything here is stock Godot 4.4: the
@@ -10,21 +10,23 @@ extends RefCounted
 ## project.
 ##
 ##   * Triplanar mapping        -- `uv1_triplanar` + `uv1_world_triplanar`
-##   * Parallax occlusion (POM) -- the `heightmap_*` family. Godot 4 renamed
-##                                  POM to "heightmap"; `heightmap_deep_parallax`
-##                                  is the real occlusion-marched variant. It
-##                                  consumes the downloaded `disp` (displacement)
-##                                  maps, which is exactly the height field POM
-##                                  ray-marches.
+##   * Parallax occlusion (POM) -- the `heightmap_*` family, at ULTRA only
 ##   * Detail layer             -- `detail_enabled`, reading the mesher's UV2 set
 ##   * PBR                      -- albedo, normal, and ARM (occlusion) textures
 ##
+## The textures themselves are not in this file and were not downloaded for
+## this file: they are built by `tools/acquire_assets.py` and
+## `tools/process_textures.py` into a resolution ladder, and every one of them
+## is recorded in assets/source_manifest/manifest.json. This file only decides
+## *which rung of that ladder the current quality tier stands on*, which is
+## why there is a resolution table here and no image files.
+##
 ## `vertex_color_use_as_albedo` stays on so the mesher's baked daylight,
-## directional shading and ambient occlusion tint the photo texture.
-## Ids with no texture set fall back to the palette-only vertex-color material,
-## so the world still renders.
+## directional shading and ambient occlusion tint the photo texture. Ids with no
+## texture set fall back to the palette-only vertex-colour material, so the
+## world still renders if an asset is missing.
 
-const RAW := "res://assets/raw/textures"
+const RUNTIME := "res://assets/runtime/textures"
 ## The vendored stochastic triplanar shader (derived from Acegiak's
 ## Apache-2.0 terrain shader; see addons/ATTRIBUTION.md).
 const STOCHASTIC_SHADER := preload("res://scripts/world/voxel_stochastic.gdshader")
@@ -32,7 +34,30 @@ const STOCHASTIC_SHADER := preload("res://scripts/world/voxel_stochastic.gdshade
 const DETAIL_UV_SCALE := 4.0
 
 ## Effect quality tiers, applied by `apply_quality`.
-enum Quality { LOW, MEDIUM, HIGH }
+enum Quality { LOW, MEDIUM, HIGH, ULTRA }
+
+## Which rung of the texture ladder each quality tier stands on.
+##
+## LOW and MEDIUM share the 512 rung: at that size a one-metre block face is
+## already smaller than a screen tile at normal distance, and the difference
+## between 512 and 1024 is invisible while the cost is not. ULTRA is the only
+## tier that reaches the 2048 rung, and only the sets that have it.
+const TEXTURE_TIER := {
+	Quality.LOW: 512,
+	Quality.MEDIUM: 512,
+	Quality.HIGH: 1024,
+	Quality.ULTRA: 2048,
+}
+
+## Detail overlays ship at one size, because `DETAIL_UV_SCALE` already tiles
+## them four times per block: there is no point paying for a 1K detail map
+## that is sampled at quarter-block frequency.
+const DETAIL_TIER := 512
+
+## Parallax occlusion needs one extra texture per material and a ray march per
+## fragment, on faces that are flat by construction because they are block
+## faces. It is therefore an ULTRA-only effect. See assets/ART_DIRECTION.md.
+const POM_QUALITY := Quality.ULTRA
 
 ## How the block texture is projected onto the face.
 ##
@@ -44,8 +69,8 @@ enum Quality { LOW, MEDIUM, HIGH }
 ##
 ##   TRIPLANAR -- project on X/Y/Z, blends on the normal. Fixes the stretching
 ##                that box UVs suffer on sloped voxel faces.
-##   PARALLAX  -- POM via the heightmap system, ray-marching the set's `disp`
-##                map. Gives the face real relief at grazing angles.
+##   PARALLAX  -- POM via the heightmap system. Gives the face relief at
+##                grazing angles. ULTRA only.
 ##   STOCHASTIC-- the vendored Acegiak triplanar shader with stochastic
 ##                sampling, so the repeating grid pattern of a tiled texture
 ##                is broken up. Hand-authored GLSL rather than an engine
@@ -53,11 +78,23 @@ enum Quality { LOW, MEDIUM, HIGH }
 ##   PLAIN     -- straight box UVs, cheapest.
 enum Mapping { PLAIN, TRIPLANAR, PARALLAX, STOCHASTIC }
 
+## Sets that are made of code rather than of downloaded pixels. A material with
+## no texture at all is the right answer for glass: a translucent, very smooth
+## surface with a faint tint *is* the material, and a downloaded glass texture
+## would be a fourth resident texture for a block that is mostly the sky.
+const PROCEDURAL := {
+	"glass": {
+		"color": Color(0.78, 0.88, 0.94, 0.26),
+		"roughness": 0.06,
+		"metallic": 0.0,
+	},
+}
+
 ## Photographic PBR material, keyed by block id. Keying by id rather than by
 ## texture-set name lets several blocks that share a set still get their own
 ## detail overlay.
 var _materials := {}          # int -> Material
-## Translucent variants (water, ice), keyed by block id.
+## Translucent variants (water, ice, glass), keyed by block id.
 var _trans_materials := {}    # int -> Material
 ## Stochastic-shader materials, keyed by block id. These are ShaderMaterial,
 ## not StandardMaterial3D, so they live apart from the engine-material path.
@@ -67,6 +104,7 @@ var _failed := {}             # String -> true
 var _plain: StandardMaterial3D
 var _water: StandardMaterial3D
 var _emissive: StandardMaterial3D
+var _procedural := {}         # set name -> StandardMaterial3D
 var _quality := Quality.HIGH
 var _mapping := Mapping.PARALLAX
 
@@ -112,10 +150,16 @@ func _make_emissive() -> StandardMaterial3D:
 ## classes' constants.
 static func texture_set_for(id: int) -> String:
 	match id:
-		ContentDB.GRASS, ContentDB.CACTUS:
-			return "forrest_ground_01"
-		ContentDB.DIRT, ContentDB.WOOD, ContentDB.LEAVES:
+		ContentDB.GRASS:
+			return "aerial_grass_rock"
+		ContentDB.CACTUS:
+			return "bark_brown_02"
+		ContentDB.DIRT:
 			return "brown_mud_leaves_01"
+		ContentDB.WOOD:
+			return "bark_brown_02"
+		ContentDB.LEAVES:
+			return "forest_leaves_02"
 		ContentDB.STONE, ContentDB.BEDROCK:
 			return "rock_06"
 		ContentDB.SAND:
@@ -128,6 +172,39 @@ static func texture_set_for(id: int) -> String:
 			return "coast_sand_rocks_02"
 		ContentDB.DEEPSLATE, ContentDB.DEEPSLATE_DEEP, ContentDB.VOID_ROCK:
 			return "rock_face_04"
+		# --- ores: composed from the host rock and the metal they refine into
+		ContentDB.COPPER_ORE:
+			return "ore_copper"
+		ContentDB.IRON_ORE:
+			return "ore_iron"
+		ContentDB.COAL_ORE:
+			return "ore_coal"
+		ContentDB.SILVER_ORE:
+			return "ore_silver"
+		# --- refined metals
+		ContentDB.COPPER_BLOCK:
+			return "acg_metal_057a"
+		ContentDB.IRON_BLOCK:
+			return "acg_metal_055a"
+		ContentDB.STEEL_BLOCK:
+			return "acg_metal_032"
+		ContentDB.BRASS_BLOCK:
+			return "acg_metal_048a"
+		# --- the construction palette
+		ContentDB.PLANKS:
+			return "oak_wood_planks"
+		ContentDB.COBBLESTONE:
+			return "cobblestone_04"
+		ContentDB.BRICK:
+			return "brick_wall_003"
+		ContentDB.CONCRETE:
+			return "concrete_floor_02"
+		ContentDB.ASPHALT:
+			return "asphalt_01"
+		ContentDB.METAL_PLATE:
+			return "corrugated_iron"
+		ContentDB.GLASS:
+			return "glass"
 	return ""
 
 
@@ -136,17 +213,55 @@ static func texture_set_for(id: int) -> String:
 ## albedo: dirt is broken up by gravel, stone by the coarse rock face.
 static func detail_set_for(id: int) -> String:
 	match id:
-		ContentDB.GRASS, ContentDB.LEAVES, ContentDB.CACTUS:
-			return "brown_mud_leaves_01"
-		ContentDB.DIRT, ContentDB.WOOD, ContentDB.SAND:
+		ContentDB.GRASS, ContentDB.CACTUS:
+			return "forrest_ground_01"
+		ContentDB.LEAVES:
+			return "aerial_grass_rock"
+		ContentDB.DIRT, ContentDB.SAND:
 			return "aerial_rocks_02"
+		ContentDB.WOOD:
+			return "bark_brown_02"
 		ContentDB.STONE, ContentDB.BEDROCK, ContentDB.GRAVEL:
+			return "rock_face_04"
+		ContentDB.COBBLESTONE:
 			return "rock_face_04"
 		ContentDB.SNOW:
 			return "coast_sand_rocks_02"
+		ContentDB.ICE:
+			return "snow_02"
 		ContentDB.DEEPSLATE, ContentDB.DEEPSLATE_DEEP, ContentDB.VOID_ROCK:
 			return "rock_06"
+		ContentDB.PLANKS:
+			return "bark_brown_02"
+		ContentDB.BRICK, ContentDB.CONCRETE:
+			return "concrete_floor_02"
+		ContentDB.ASPHALT:
+			return "cobblestone_04"
+		ContentDB.METAL_PLATE:
+			return "acg_metal_063"
+		ContentDB.COPPER_ORE:
+			return "rock_06"
+		ContentDB.IRON_ORE:
+			return "rock_06"
+		ContentDB.COAL_ORE:
+			return "rock_06"
+		ContentDB.SILVER_ORE:
+			return "rock_06"
 	return ""
+
+
+## The rung of the texture ladder the current tier loads. A set that does not
+## have this rung (a 1K source has no 2048) falls back to the largest it has,
+## so nothing is ever asked for a file the pipeline did not write.
+func _tier_for(set_name: String) -> int:
+	var want: int = TEXTURE_TIER.get(_quality, 1024)
+	var path := "%s/%s/diff_%d.jpg" % [RUNTIME, set_name, want]
+	if _has(path):
+		return want
+	for t in [1024, 512]:
+		if _has("%s/%s/diff_%d.jpg" % [RUNTIME, set_name, t]):
+			return t
+	return 0
 
 
 static func _abs(res_path: String) -> String:
@@ -184,14 +299,15 @@ func _apply_effects(mat: Material, id: int) -> void:
 		mat.uv1_world_triplanar = true
 		mat.uv1_triplanar_sharpness = 1.0
 		mat.uv1_scale = Vector3.ONE
-	elif _mapping == Mapping.PARALLAX and _quality >= Quality.MEDIUM:
+	elif _mapping == Mapping.PARALLAX and _quality >= POM_QUALITY:
 		# --- Parallax occlusion mapping (Godot's heightmap system) ---
 		# The POM stage ray-marches the height field in tangent space to fake
 		# depth, so a block face gains relief at grazing angles instead of
-		# reading as a flat photograph. The height field is the set's own
-		# `disp` map, which ships with every Poly Haven set we downloaded.
+		# reading as a flat photograph. The height field is derived from the
+		# set's own normal map by the asset pipeline, so the relief POM fakes
+		# and the relief the shader lights are the same relief.
 		var own := MaterialLibrary.texture_set_for(id)
-		var hpath := "%s/%s_disp.jpg" % [RAW, own]
+		var hpath := "%s/%s/height_1024.png" % [RUNTIME, own]
 		if _has(hpath):
 			mat.heightmap_enabled = true
 			mat.heightmap_texture = load(hpath)
@@ -199,27 +315,28 @@ func _apply_effects(mat: Material, id: int) -> void:
 			# the block rather than bulging out of it.
 			mat.heightmap_scale = 0.04
 			mat.heightmap_min_layers = 8
-			mat.heightmap_max_layers = 16 if _quality >= Quality.HIGH else 8
+			mat.heightmap_max_layers = 16
 			# Deep parallax is the occlusion-marched variant proper.
-			mat.heightmap_deep_parallax = _quality >= Quality.HIGH
+			mat.heightmap_deep_parallax = true
 			mat.heightmap_flip_tangent = false
 
 	# --- Detail layer ---
 	# Reads UV2, which the mesher tiles DETAIL_UV_SCALE times per block, so the
 	# overlay breaks up the albedo without changing the base tiling.
 	if _quality >= Quality.MEDIUM:
-		var own_set := MaterialLibrary.texture_set_for(id)
 		var dname := MaterialLibrary.detail_set_for(id)
-		var dpath := "%s/%s_diff.jpg" % [RAW, dname]
-		if dname != "" and dname != own_set and _has(dpath):
-			mat.detail_enabled = true
-			mat.detail_uv_layer = BaseMaterial3D.DETAIL_UV_2
-			mat.detail_albedo = load(dpath)
-			# Blend mode 0 is ADD, 1 is MIX. MIX keeps the overlay subtle --
-			# this is surface breakup, not a pattern painted on the block.
-			mat.detail_blend_mode = 1
-			# detail_mask is a Texture2D, not a scalar, so the overlay
-			# strength is controlled by the blend mode and the texture choice.
+		if dname != "" and dname != MaterialLibrary.texture_set_for(id):
+			var dpath := "%s/%s/diff_%d.jpg" % [RUNTIME, dname, DETAIL_TIER]
+			if _has(dpath):
+				mat.detail_enabled = true
+				mat.detail_uv_layer = BaseMaterial3D.DETAIL_UV_2
+				mat.detail_albedo = load(dpath)
+				# Blend mode 0 is ADD, 1 is MIX. MIX keeps the overlay subtle --
+				# this is surface breakup, not a pattern painted on the block.
+				mat.detail_blend_mode = 1
+				# detail_mask is a Texture2D, not a scalar, so the overlay
+				# strength is controlled by the blend mode and the texture
+				# choice.
 
 
 ## Load a PBR set if present; failures are cached so we never retry per frame.
@@ -228,10 +345,11 @@ func _get_material(id: int, translucent: bool) -> StandardMaterial3D:
 	if store.has(id):
 		return store[id]
 	var set_name := MaterialLibrary.texture_set_for(id)
-	var diff := "%s/%s_diff.jpg" % [RAW, set_name]
-	if not _has(diff):
+	var tier := _tier_for(set_name)
+	if tier == 0:
 		_failed[set_name] = true
 		return null
+	var diff := "%s/%s/diff_%d.jpg" % [RUNTIME, set_name, tier]
 
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = load(diff)
@@ -244,16 +362,22 @@ func _get_material(id: int, translucent: bool) -> StandardMaterial3D:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.albedo_color = Color(1, 1, 1, 0.78)
 
+	# Normal and ARM maps are written at half the albedo tier above 1024, so
+	# they are asked for by the same capped resolution.
+	var data_tier: int = min(tier, 1024)
 	# Normal maps must be flagged as such or Godot reads them as albedo.
-	var nor := "%s/%s_nor_gl.jpg" % [RAW, set_name]
+	var nor := "%s/%s/nor_gl_%d.png" % [RUNTIME, set_name, data_tier]
 	if _has(nor):
 		mat.normal_enabled = true
 		mat.normal_texture = load(nor)
 		mat.normal_scale = 1.0 if _quality >= Quality.HIGH else 0.6
 	# The ARM map packs occlusion in R, roughness in G, metalness in B. Godot
 	# can read all three from one texture, so it is bound as the ORM map.
-	var arm := "%s/%s_arm.jpg" % [RAW, set_name]
+	var arm := "%s/%s/arm_%d.png" % [RUNTIME, set_name, data_tier]
 	if _has(arm):
+		# ambientCG ships no occlusion map at 1K, so the pipeline writes R as
+		# fully open for those sets. Binding it is then a no-op rather than a
+		# black surface, which is why this is unconditional.
 		mat.ao_enabled = true
 		mat.ao_texture = load(arm)
 		mat.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
@@ -266,17 +390,47 @@ func _get_material(id: int, translucent: bool) -> StandardMaterial3D:
 	return mat
 
 
+## A material made of code, not of pixels. See PROCEDURAL.
+func _get_procedural(id: int) -> StandardMaterial3D:
+	var set_name := MaterialLibrary.texture_set_for(id)
+	if not PROCEDURAL.has(set_name):
+		return null
+	if _procedural.has(set_name):
+		return _procedural[set_name]
+	var spec: Dictionary = PROCEDURAL[set_name]
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = spec["color"]
+	m.roughness = spec["roughness"]
+	m.metallic = spec["metallic"]
+	# Glass is lit from the sky but must not be lit from behind by its own
+	# backfaces, which is what CULL_DISABLED plus a lit shading mode gives.
+	# The procedural materials are counted by `effect_counts` alongside the
+	# textured ones, so they go through the same effect pass: a material that
+	# skipped it would be counted as a textured material with no projection
+	# mode at all, which is what made triplanar mode report 28 of 29.
+	_apply_effects(m, id)
+	_materials[id] = m
+	_procedural[set_name] = m
+	return m
+
+
 ## Material for one mesher surface, given the block id that produced it.
 func material_for(id: int) -> Material:
 	if id == ContentDB.GLOWSTONE:
 		return _emissive
 	if _mapping == Mapping.STOCHASTIC:
-		if MaterialLibrary.texture_set_for(id) != "":
-			var smat := _get_shader_material(id, ContentDB.is_translucent(id))
+		if MaterialLibrary.texture_set_for(id) != "" \
+				and not ContentDB.is_translucent(id):
+			var smat := _get_shader_material(id, false)
 			if smat != null:
 				return smat
 		return _plain
 	if ContentDB.is_translucent(id):
+		if MaterialLibrary.texture_set_for(id) in PROCEDURAL:
+			return _get_procedural(id)
 		if MaterialLibrary.texture_set_for(id) != "":
 			var tmat := _get_material(id, true)
 			if tmat != null:
@@ -311,6 +465,7 @@ func set_mapping(m: int) -> void:
 		_materials.clear()
 		_trans_materials.clear()
 		_shader_materials.clear()
+		_procedural.clear()
 		prime()
 		return
 	for store in [_materials, _trans_materials, _shader_materials]:
@@ -333,31 +488,34 @@ func _get_shader_material(id: int, translucent: bool) -> ShaderMaterial:
 	if _shader_materials.has(id):
 		return _shader_materials[id]
 	var set_name := MaterialLibrary.texture_set_for(id)
-	var diff := "%s/%s_diff.jpg" % [RAW, set_name]
-	if not _has(diff):
+	var tier := _tier_for(set_name)
+	if tier == 0:
 		return null
+	var data_tier: int = min(tier, 1024)
 	var m := ShaderMaterial.new()
 	m.shader = STOCHASTIC_SHADER
 	# The mesher's vertex colours are already in sRGB, so no conversion.
-	m.set_shader_parameter("albedo_tex", load(diff))
+	m.set_shader_parameter("albedo_tex",
+		load("%s/%s/diff_%d.jpg" % [RUNTIME, set_name, tier]))
 	m.set_shader_parameter("albedo_tint", Color(1, 1, 1, 1))
 	# One texture tile per block face.
 	m.set_shader_parameter("uv_scale", 1.0)
 	var dname := MaterialLibrary.detail_set_for(id)
-	if dname != "" and _has("%s/%s_diff.jpg" % [RAW, dname]):
+	if dname != "" and _has("%s/%s/diff_%d.jpg"
+			% [RUNTIME, dname, DETAIL_TIER]):
 		m.set_shader_parameter("detail_tex",
-			load("%s/%s_diff.jpg" % [RAW, dname]))
+			load("%s/%s/diff_%d.jpg" % [RUNTIME, dname, DETAIL_TIER]))
 		m.set_shader_parameter("detail_strength",
 			0.35 if _quality >= Quality.MEDIUM else 0.0)
 	else:
 		m.set_shader_parameter("detail_strength", 0.0)
-	if _has("%s/%s_nor_gl.jpg" % [RAW, set_name]):
+	if _has("%s/%s/nor_gl_%d.png" % [RUNTIME, set_name, data_tier]):
 		m.set_shader_parameter("normal_tex",
-			load("%s/%s_nor_gl.jpg" % [RAW, set_name]))
+			load("%s/%s/nor_gl_%d.png" % [RUNTIME, set_name, data_tier]))
 		m.set_shader_parameter("normal_strength", 1.0)
-	if _has("%s/%s_arm.jpg" % [RAW, set_name]):
+	if _has("%s/%s/arm_%d.png" % [RUNTIME, set_name, data_tier]):
 		m.set_shader_parameter("arm_tex",
-			load("%s/%s_arm.jpg" % [RAW, set_name]))
+			load("%s/%s/arm_%d.png" % [RUNTIME, set_name, data_tier]))
 		m.set_shader_parameter("use_arm", true)
 	else:
 		m.set_shader_parameter("use_arm", false)
@@ -385,6 +543,11 @@ func quality() -> int:
 	return _quality
 
 
+## The rung of the texture ladder the current tier is loading.
+func texture_tier() -> int:
+	return int(TEXTURE_TIER.get(_quality, 1024))
+
+
 ## How many block ids resolved to a textured material.
 func loaded_count() -> int:
 	return _materials.size() + _trans_materials.size() + _shader_materials.size()
@@ -393,8 +556,36 @@ func loaded_count() -> int:
 ## Load every texture set the content database can reference, so the reported
 ## count covers the whole set rather than only the blocks in view.
 func prime() -> void:
-	for id in range(0, 32):
+	for id in range(0, ContentDB.MAX_ID + 1):
 		material_for(id)
+
+
+## Estimated VRAM held by the textures bound to the live materials.
+##
+## Godot imports a 3D-detected texture with VRAM compression, so a BC7 map
+## costs about one byte per texel plus a third for the mip chain. This is an
+## estimate from the engine's own texture dimensions, not a measurement of the
+## driver: the only way to get the latter is to run on a GPU, which this
+## development environment does not have.
+func texture_vram_mb() -> float:
+	var bytes := 0
+	var seen := {}
+	for store in [_materials, _trans_materials]:
+		for id in store.keys():
+			var m := store[id] as StandardMaterial3D
+			if m == null:
+				continue
+			for tex in [m.albedo_texture, m.normal_texture,
+					m.roughness_texture, m.metallic_texture,
+					m.heightmap_texture, m.detail_albedo]:
+				if tex == null:
+					continue
+				var key: String = tex.resource_path
+				if key == "" or seen.has(key):
+					continue
+				seen[key] = true
+				bytes += tex.get_width() * tex.get_height() * 4 / 3
+	return float(bytes) / (1024.0 * 1024.0)
 
 
 ## How many live materials have each advanced effect switched on. Used by the
@@ -427,6 +618,8 @@ func effect_counts() -> Dictionary:
 		"pom": pom,
 		"detail": detail,
 		"stochastic": stochastic,
+		"procedural": _procedural.size(),
+		"tier": texture_tier(),
 		# Godot discards the heightmap on a triplanar material, so exactly one
 		# of these should be non-zero. A material counted in both would be
 		# rendering with triplanar and a silently dead heightmap.
@@ -442,4 +635,5 @@ func describe() -> String:
 			sets[MaterialLibrary.texture_set_for(id)] = true
 	var names := sets.keys()
 	names.sort()
-	return "%d texture sets: %s" % [names.size(), ", ".join(names)]
+	return "%d texture sets at %dpx: %s" % [names.size(), texture_tier(),
+			", ".join(names)]

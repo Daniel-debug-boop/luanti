@@ -112,6 +112,61 @@ static func default_recipes() -> Array:
 			"output": ContentDB.GLOWSTONE,
 			"count": 2,
 		},
+		# --- construction palette -----------------------------------------
+		# The building materials, so the architecture half of the world is
+		# reachable by playing rather than by being handed to the player.
+		# They are all stone/wood/metal recipes on the materials that already
+		# existed; nothing new is smelted to make a wall.
+		{
+			"id": "saw_planks",
+			"shapeless": [ContentDB.WOOD, ContentDB.WOOD],
+			"output": ContentDB.PLANKS,
+			"count": 4,
+		},
+		{
+			"id": "split_cobblestone",
+			"pattern": ["XX", "XX"],
+			"keys": {"X": ContentDB.STONE},
+			"output": ContentDB.COBBLESTONE,
+		},
+		{
+			# DIRT stands in for clay-bearing earth: the world has no clay
+			# block, and a brick recipe that needs one would be a brick recipe
+			# nobody can use. When clay arrives, this key changes and nothing
+			# else does.
+			"id": "bake_bricks",
+			"pattern": ["XXX", "XXX", "XXX"],
+			"keys": {"X": ContentDB.DIRT},
+			"output": ContentDB.BRICK,
+			"count": 4,
+		},
+		{
+			"id": "pour_concrete",
+			"pattern": ["XX.", "XX.", "..."],
+			"keys": {"X": ContentDB.GRAVEL},
+			"output": ContentDB.CONCRETE,
+			"count": 2,
+		},
+		{
+			"id": "compact_asphalt",
+			"shapeless": [ContentDB.GRAVEL, ContentDB.COAL_ORE],
+			"output": ContentDB.ASPHALT,
+			"count": 2,
+		},
+		{
+			"id": "blow_glass",
+			"pattern": ["XX.", "XX."],
+			"keys": {"X": ContentDB.SAND},
+			"output": ContentDB.GLASS,
+			"count": 2,
+		},
+		{
+			"id": "roll_metal_plate",
+			"pattern": ["XXX", "XXX"],
+			"keys": {"X": ContentDB.IRON_BLOCK},
+			"output": ContentDB.METAL_PLATE,
+			"count": 2,
+		},
 	]
 
 

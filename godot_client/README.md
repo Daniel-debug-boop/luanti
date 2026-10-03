@@ -170,32 +170,54 @@ python3 godot_client/tools/convert_world.py /tmp/testworld /tmp/testchunks
 
 ## Art assets
 
-All art is free HD material from **Poly Haven** (CC0), downloaded directly
-into `godot_client/assets/raw/` and committed to the repo:
+All art is free **CC0** material from **Poly Haven** and **ambientCG**, plus
+**KayKit** characters, converted into a resolution ladder and a LOD hierarchy
+by a four-stage Python pipeline. Full provenance — source URL, checksum,
+licence, author, conversion, optimisation, destination — is in
+[`assets/THIRD_PARTY_ASSETS.md`](assets/THIRD_PARTY_ASSETS.md) and
+`assets/source_manifest/manifest.json`.
 
 ```sh
-python3 godot_client/tools/fetch_assets.py    # re-download (needs network)
+python3 godot_client/tools/acquire_assets.py   # download + checksum (network)
+python3 godot_client/tools/process_textures.py  # resample, encode, derive maps
+python3 godot_client/tools/make_lods.py         # validate, decimate, bake scale
+python3 godot_client/tools/import_assets.py     # Godot importer, one file/process
 ```
+
+The catalogue in `tools/asset_catalog.py` is the single source of truth: every
+stage reads it, and nothing downloads a URL that is not in it. Stages 2–4 run
+offline from the committed `assets/runtime/` tree, so the game does not depend
+on a provider staying up.
 
 | Kind | Count | Used for |
 |---|---|---|
-| HDRIs | 9 | the sky, day and night |
-| PBR texture sets | 8 (32 maps) | block surfaces: albedo, normal, AO/roughness/metalness |
-| glTF models | 17 | village props: crates, barrels, lamps, benches, pots, plants |
-
-Godot imports these on first editor open (`--editor --quit` does the same
-headlessly), so no manual import step is needed.
+| HDRIs | 9 | the sky, day, dusk and night |
+| PBR texture sets | 26 (179 maps) | block surfaces plus detail overlays |
+| glTF models | 17 × 3 LOD tiers | village props: crates, barrels, lamps, benches, pots, plants |
+| Characters | 5 | villagers and mobs (skinned; no LODs by design) |
 
 * **Blocks** — the greedy mesher emits one surface per block id, and each
   surface is bound to the PBR material for that id. UVs are in block units, so
   a texture tiles once per block instead of stretching across a merged run.
   Ambient occlusion, daylight and directional shading are baked into vertex
   colors and multiplied over the photo albedo.
+* **Quality tiers** — every texture set ships at 512, 1024 and (where the
+  source supports it) 2048. LOW and MEDIUM load the 512 rung, HIGH the 1024,
+  ULTRA the 2048. Parallax occlusion is ULTRA-only. `F1` cycles quality, and
+  `Shift+F1` jumps straight to ULTRA.
+* **Materials** — 32 block ids resolve to textured PBR materials; glass is a
+  procedural translucent material with no texture at all, because a glass
+  block is mostly the sky seen through it.
 * **Sky** — `DayNight` runs a 24-hour clock, rotates the sun, warms the light
   at dawn and dusk, and swaps between the daytime, sunset and night panoramas.
 * **Props** — `Village` places the glTF models on flat, dry ground near the
   player and populates the site with named villagers who walk around, turn to
-  face you, and greet you when you press `E`.
+  face you, and greet you when you press `E`. Each prop carries LOD0/LOD1/LOD2
+  and switches tier with Godot's own `visibility_range` (14 m and 34 m), so
+  the LOD system costs nothing per frame.
+
+Models are baked to real-world metres at build time by `make_lods.py`, so the
+game never applies a scale fudge factor to a prop.
 
 ## Rendering
 
@@ -211,10 +233,11 @@ discards the heightmap — so exactly one is active at a time:
 |---|---|
 | `plain` | box UVs, cheapest |
 | `triplanar` | projects on X/Y/Z, blends by normal; fixes stretching on sloped faces |
-| `parallax` (default) | Godot 4's POM, via the `heightmap_*` family, ray-marching each set's `disp` map |
+| `parallax` (default) | Godot 4's POM, via the `heightmap_*` family, ray-marching each set's `height` map. **ULTRA only** — below that it is cost with nothing to reveal, since a block face is flat by construction |
 | `stochastic` | vendored Acegiak triplanar shader with per-cell hash sampling, which also breaks up the repeating tile pattern |
 
-**Environment effects** (`F1`–`F3` for the quality tier):
+**Environment effects** (`F1` cycles the quality tier; `Shift+F1` goes
+straight to ULTRA):
 
 * **SSAO** — sub-voxel contact darkening on top of the mesher's baked
   per-vertex occlusion, so corners read as separate blocks.
@@ -318,7 +341,14 @@ authority, so there is no second simulation.
 ```
 godot_client/
 ├── scenes/main.tscn           entry point
-├── assets/raw/                downloaded Poly Haven HDRIs, textures, models
+├── assets/
+│   ├── ART_DIRECTION.md       the art contract the pipeline implements
+│   ├── THIRD_PARTY_ASSETS.md  every asset, its licence and its conversion
+│   ├── rejected/              refused assets and refused options, with reasons
+│   ├── source_manifest/       machine-readable provenance + checksums
+│   ├── source/                raw downloads (gitignored, 201 MB)
+│   └── runtime/               what the game loads: textures, models, HDRIs
+├── tools/                     the asset pipeline + the test suite
 ├── addons/                    vendored third-party shaders (see ATTRIBUTION.md)
 ├── scripts/
 │   ├── main.gd                assembly: world, player, mobs, village, sky, HUD
@@ -387,7 +417,7 @@ stay cached per dimension, so switching back is instant.
 sh godot_client/tools/run_tests.sh <path-to-godot>
 ```
 
-Nineteen suites run headless:
+Twenty suites run headless:
 
 | Suite | Covers |
 |---|---|
@@ -398,7 +428,8 @@ Nineteen suites run headless:
 | `mesher_test` | 12-tri isolated block, greedy merge, per-id surfaces, tiled UVs, palette colors, AO, translucent pass, empty skip, PBR material binding |
 | `world_test` | six biomes occur, bedrock floor, oceans, trees, Deeps content |
 | `interaction_test` | DDA raycast hit/normal/place cell, break/place, bedrock immunity, edit replay across reload, mining to completion, HDRI set + clock, village props and villagers |
-| `render_settings_test` | triplanar/POM mutual exclusion, all four mapping modes, stochastic shader compiles and samples in world space, SSAO/SSIL/volumetric fog/glow on, quality tiers, live scene surfaces |
+| `render_settings_test` | triplanar/POM mutual exclusion, POM gated to ULTRA, all four mapping modes, stochastic shader compiles and samples in world space, SSAO/SSIL/volumetric fog/glow on, quality tiers resolve to distinct texture rungs, live scene surfaces |
+| `asset_test` | the asset pipeline as an acceptance test: manifest provenance and CC0 on every entry, power-of-two and rung-name agreement on every map, no upscaled rung, normal + ARM present wherever promised, 3-tier decreasing LOD chains within the 20k budget, `visibility_range` actually wired in `village.gd`, every HDRI named in `day_night.gd` present on disk *and* every present HDRI named in code, every declared block resolving to the texture set the catalogue promises, no orphaned set in the runtime tree, and the attribution + rejection documents present |
 | `e2e_test` | real scene streams chunks, textured surfaces bound in the scene graph, collision reads terrain |
 | `features_test` | village + clock + HDRI sky, dimension switch both ways, glowstone in loaded chunks, mobs spawn, mining through the scene |
 | `render_test` | textured and vertex-coloured surfaces, world-space bounds, camera present, HDRI panorama bound |
@@ -410,8 +441,34 @@ Nineteen suites run headless:
 | `robustness_test` | save migration chain and forward-refusal, checksum integrity, backup recovery from a truncated file, complex factory round trip byte-identical, anti-duplication invariants, 12 000-tick soak for determinism / no growth / LOD sleeping / 60 successive autosaves |
 | `systems_test` | one owner per system (a second world is refused), the lifecycle state machine including misuse-vs-failure, idempotent teardown, signal disconnection, run order and reverse teardown, a failed system not taking the frame with it, the API facade returning results instead of crashing, a client being denied every mutating call, and interrupted saves recovering from the backup |
 | `architecture_test` | layer and visibility rules over the whole source tree, **tests of the checker itself** (a checker that never rejects anything is not a checker), exactly one world / inventory / profiler / player in `main.tscn`, the message envelope and direction rules, sequence ordering, determinism hashing and the fixed step, the threading rule, and the absence of the removed dead architecture |
+| `playable_test` | **the playable loop, through the real `main.tscn`**: chop a tree, collect the wood, place a block, refuse to place a block inside your own body, manufacture a workbench, make room in the hotbar to hold it, place it with F, then F5/F9 a save and reload with the world, the backpack and the assembly all restored. Plus the key table in `ARCHITECTURE.md` §16 checked against the code: every documented key is bound, in the file that owns it, and no key is claimed twice |
 
 ## Honest limitations
+
+* **Nineteen suites all passed while the game was still unplayable in three
+  separate ways.** `playable_test` was added specifically to answer "can a
+  person play this?", and it failed on the first run for reasons no other
+  suite cared about:
+  * **Loading a save wiped the entire backpack.** `PlayerInventory.deserialize`
+    restored the items and then re-assigned `inventory.protoset` — and GLoot's
+    `protoset` setter calls `clear()`. The load reported success, printed
+    "loaded slot 1", and left the player with nothing. Every existing test that
+    saved and reloaded checked the *result dictionary*, not the backpack.
+  * **A manufactured part could never be held**, so F — the key that places a
+    component — could never do anything. The starting kit fills all eight
+    hotbar slots with blocks, `fill_hotbar_from_inventory()` only ever looked at
+    blocks, and `stow_selected()` existed but was bound to no key. The entire
+    engineering placement verb was unreachable in ordinary play.
+  * **Placing a component charged its raw-material bill a second time.** One
+    workbench cost 8 wood to manufacture and another 8 to put down.
+  * Two keys were claimed twice: **F5** was both save and the second texture
+    mapping (dead code, first branch wins), and **F** was both "use held tool"
+    and the flight toggle — in two different files, so a duplicate scan of one
+    file would never have found it.
+
+  The lesson is the one worth keeping: a suite that checks the return value of
+  a call is testing the call, not the effect. Only a test that plays the game
+  to a point and looks at the world afterwards catches these.
 
 * **No real GPU profiling has been done, because this environment has no GPU.**
   The instrumentation for it now exists and is wired to **F10** — fps, frame

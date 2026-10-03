@@ -11,7 +11,7 @@ extends Node3D
 ## Turn the day/night clock off to hold the sun still.
 @export var day_night_enabled := true
 ## RenderSettings.Quality: 0 low, 1 medium, 2 high (SSIL, SDFGI, volumetric fog).
-@export_enum("Low", "Medium", "High") var render_quality := 2
+@export_enum("Low", "Medium", "High", "Ultra") var render_quality := 2
 ## How block textures are projected. Godot cannot combine triplanar mapping
 ## with parallax occlusion, so this picks one:
 ##   0 plain (box UVs) · 1 triplanar · 2 parallax occlusion (POM)
@@ -70,8 +70,14 @@ var _current_dim := 0
 
 func _ready() -> void:
 	settings = RenderSettings.new()
-	settings.quality = render_quality
+	# The tier has to be applied to the environments here, before the world's
+	# material library exists: `settings.quality = render_quality` on its own
+	# would leave every environment effect configured for the default tier,
+	# whatever tier the scene was actually launched at.
 	_setup_environment()
+	settings.quality = render_quality
+	settings.apply(_env_over)
+	settings.apply(_env_deeps)
 
 	world = VoxelWorld.new()
 	world.name = "VoxelWorld"
@@ -79,6 +85,10 @@ func _ready() -> void:
 	world.view_radius = view_radius
 	world.texture_mapping = texture_mapping
 	add_child(world)
+	# The world's material library exists only now, so this is the first
+	# point at which the starting tier can reach it.
+	world.materials.apply_quality(render_quality)
+	world.rebind_materials()
 
 	inventory = PlayerInventory.new()
 	inventory.name = "Inventory"
@@ -333,20 +343,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key == KEY_B:
 			if engineering_hud != null:
 				engineering_hud.toggle_workshop()
+		elif key == KEY_Q:
+			# The only way to make hotbar space, and therefore the only way
+			# to free a slot for a manufactured part.
+			interaction.stow_selected()
 		elif key == KEY_F1:
-			set_render_quality(0)
+			# ULTRA sits on Shift+F1 rather than taking F4 from the texture
+			# mapping cycle: the four tiers have to be reachable, and the
+			# mapping modes were already on their own key.
+			set_render_quality(3 if event.shift_pressed else 0)
 		elif key == KEY_F2:
 			set_render_quality(1)
 		elif key == KEY_F3:
 			set_render_quality(2)
 		elif key == KEY_F4:
-			set_texture_mapping(0)
-		elif key == KEY_F5:
-			set_texture_mapping(1)
-		elif key == KEY_F6:
-			set_texture_mapping(2)
-		elif key == KEY_F7:
-			set_texture_mapping(3)
+			# F4 cycles the block texture mapping rather than claiming a key
+			# per mode. Four modes on four keys put a mode on F5, and F5 is
+			# save -- one of them was silently unreachable.
+			_cycle_texture_mapping(1 if event.shift_pressed else -1)
 		elif key == KEY_F10:
 			# The debug panel: read-only, and the answer to "what was the game
 			# doing when it broke" without a debugger.
@@ -468,7 +482,7 @@ func _follow_volumes() -> void:
 	settings.place_probes(p)
 
 
-## Switch the render tier at runtime (0 low, 1 medium, 2 high).
+## Switch the render tier at runtime (0 low, 1 medium, 2 high, 3 ultra).
 func set_render_quality(q: int) -> void:
 	render_quality = q
 	settings.set_quality(q, world.materials,
@@ -481,10 +495,17 @@ func set_render_quality(q: int) -> void:
 ## Godot silently discards the heightmap when triplanar is on, so the two
 ## cannot be combined; this replaces one with the other.
 func set_texture_mapping(m: int) -> void:
-	texture_mapping = m
-	world.set_texture_mapping(m)
-	print("[main] texture mapping: ",
-		MaterialLibrary.mapping_name()[clampi(m, 0, 3)])
+	var names := MaterialLibrary.mapping_name()
+	texture_mapping = clampi(m, 0, names.size() - 1)
+	world.set_texture_mapping(texture_mapping)
+	print("[main] texture mapping: ", names[texture_mapping])
+
+
+## Step the block texture mapping by `dir`, wrapping at both ends. F4 steps
+## forward, Shift+F4 steps back.
+func _cycle_texture_mapping(dir: int) -> void:
+	var n: int = MaterialLibrary.mapping_name().size()
+	set_texture_mapping((texture_mapping + dir + n) % n)
 
 
 ## Walk over loose blocks and pick them up.

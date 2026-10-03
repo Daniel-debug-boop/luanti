@@ -5,6 +5,19 @@ extends SceneTree
 var failures := 0
 
 
+## Every MeshInstance3D under `node`, at any depth. The LOD tiers are
+## instantiated glTF scenes, so their meshes are not necessarily direct
+## children of the node _attach_lods() added.
+func _mesh_under(node: Node) -> Array:
+	var out := []
+	for c in node.get_children():
+		if c is MeshInstance3D:
+			out.append(c)
+		if c is Node:
+			out.append_array(_mesh_under(c))
+	return out
+
+
 func check(cond: bool, msg: String) -> void:
 	if not cond:
 		failures += 1
@@ -192,13 +205,57 @@ func _run() -> void:
 	print("village models: %d loaded, missing: %s"
 		% [village.model_count(), village.missing_models()])
 	check(village.model_count() > 0,
-		"no Poly Haven models loaded from assets/raw")
+		"no Poly Haven LOD chains loaded from assets/runtime/models")
 	# Stand the player on the test floor so the village can find a site.
 	village.update(Vector3(8.5, 12.0, 8.5))
 	print("village: %d props, %d villagers"
 		% [village.prop_count(), village.villager_count()])
 	check(village.villager_count() > 0, "no villagers spawned")
 	check(village.prop_count() > 0, "no props scattered")
+
+	# Every prop must carry a real LOD chain. _attach_lods() adds LOD1 and
+	# LOD2 as child nodes and switches them with MeshInstance3D
+	# .visibility_range, so a prop placed as a bare LOD0 node is paying full
+	# cost at every distance the player can see it from.
+	var props := 0
+	var with_lod1 := 0
+	var with_lod2 := 0
+	var ranged := 0
+	for c in village.get_children():
+		if not (c is Node3D) or c is Villager:
+			continue
+		# A placed prop has exactly three mesh-bearing children: its own LOD0
+		# geometry plus LOD1 and LOD2.
+		var has_l1 := false
+		var has_l2 := false
+		for sub in c.get_children():
+			if sub is Node3D and str(sub.name) == "LOD1":
+				has_l1 = true
+			elif sub is Node3D and str(sub.name) == "LOD2":
+				has_l2 = true
+			for mi in _mesh_under(sub):
+				if (mi as MeshInstance3D).visibility_range_end > 0.0 \
+						or (mi as MeshInstance3D).visibility_range_begin > 0.0:
+					ranged += 1
+		if not has_l1 and not has_l2:
+			continue
+		props += 1
+		if has_l1:
+			with_lod1 += 1
+		if has_l2:
+			with_lod2 += 1
+	print("props with a LOD chain: %d (LOD1 %d, LOD2 %d); \
+		ranged MeshInstances: %d" % [props, with_lod1, with_lod2, ranged])
+	check(props > 0,
+		"no placed prop carries a LOD chain, so the decimation in "
+			+ "make_lods.py is not reaching the scene")
+	check(with_lod2 == props and with_lod1 == props,
+		"only %d/%d props have LOD1 and %d/%d have LOD2; a partial chain "
+			% [with_lod1, props, with_lod2, props]
+			+ "means one tier is being drawn on top of another")
+	check(ranged > 0,
+		"no MeshInstance has a visibility_range, so Godot is never told to "
+			+ "switch tiers")
 
 	# Every villager must be a distinct named NPC standing on solid ground.
 	var named := {}

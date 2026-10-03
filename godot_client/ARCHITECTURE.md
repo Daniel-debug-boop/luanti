@@ -477,7 +477,79 @@ would have made every future subsystem an edit to that file.
 
 ---
 
-## 13. What was removed, and why
+## 13. Assets as a pipeline, not a folder
+
+**The art contract is written down before it is executed.** `assets/ART_DIRECTION.md`
+states the rules (one texture tile per one-metre block face, one unit is one
+metre, desaturated mid-key, tiling terrain only, CC0 only) and the three
+things the project deliberately refuses to do (parallax occlusion below ULTRA,
+4K runtime textures, LODs on skinned characters). `assets/rejected/` records
+the refusals with their reasons, because a decision nobody wrote down gets
+re-litigated by the next person.
+
+**One catalogue, four stages.** `tools/asset_catalog.py` declares every
+texture set, model, HDRI and character, with its provider, source ID, licence,
+author, resolution ladder and role. Nothing else knows a download URL:
+
+```
+asset_catalog.py
+   -> acquire_assets.py    download + checksum -> source/ + manifest
+   -> process_textures.py  resample/encode/derive -> runtime/textures/
+   -> make_lods.py         validate/decimate/bake scale -> runtime/models/
+   -> import_assets.py     Godot importer -> .import manifests
+```
+
+The catalogue is the authority, not this document and not the manifest. Adding
+a texture set means editing `TEXTURES` in the catalogue and re-running the
+stages; nothing is hand-placed into `assets/runtime/`.
+
+**Source and runtime are separate trees, and only runtime ships.**
+`assets/source/` is 201 MB of raw provider downloads and is gitignored;
+`assets/runtime/` is 123 MB of converted textures, 39 MB of decimationed
+models and 13 MB of HDRIs, and is committed. The manifest in
+`assets/source_manifest/` records the URL, checksum, licence, author,
+acquisition date, conversion and optimisation for both, so the runtime tree is
+reproducible without trusting the repository that holds it.
+
+**No rung is ever an upscale.** `tiers_for()` caps each set's resolution
+ladder at the resolution its source actually has. A 1K texture produces 1024 and
+512 and nothing else. Upscaling invents no detail, costs memory, and looks
+worse than the rung below it.
+
+**Scale is baked into geometry, never applied at runtime.** `village.gd` used
+to carry a hand-tuned `scale` per prop kind. That put a model's real size in a
+place with nothing to do with the model, and made the LOD chain disagree with
+the node about world size. `make_lods.py` now bakes the scale into the glTF
+(`BAKE_HEIGHT` in the catalogue), so `Lantern_01` ships at 0.50 m of real
+geometry and the game places every prop at `Vector3.ONE` scale.
+
+**LOD is Godot's, not ours.** `_attach_lods()` sets
+`MeshInstance3D.visibility_range` on each tier's meshes — 14 m to LOD1, 34 m
+to LOD2 — and adds LOD1/LOD2 as sibling child nodes. There is no per-frame
+script and no camera polling, because the LOD system's whole job is to remove
+per-frame cost.
+
+**The importer works around an engine deadlock.** `godot --headless --import`
+hangs on the second VRAM-compressed texture in any single process, in this
+environment, with no GPU and no display. `tools/import_assets.py` therefore
+imports one asset per throwaway mirror project and merges the results; a
+Godot `.import` payload is addressed by `md5("res://" + path)`, not by which
+project produced it, so the output is identical. This is documented in
+`assets/THIRD_PARTY_ASSETS.md` with the full reproduction.
+
+**`asset_test` is the acceptance test for all of it.** It fails the build if a
+manifest entry lacks a licence, an author, a source page, a date or a
+checksum; if a licence is not CC0; if a map is not a power of two or does not
+match its rung name; if a set writes a rung above its source resolution; if a
+model has fewer than three tiers or tiers that do not decrease; if a block id
+resolves to a different texture set than the catalogue promises; if an HDRI is
+on disk but not named in `day_night.gd`, or named in code but not on disk.
+Pipeline defects that are not yet visible in-game are warnings, not failures,
+and the suite prints both counts.
+
+---
+
+## 14. What was removed, and why
 
 Nothing here was removed for tidiness. Each removal closed a hole where two
 systems could answer the same question.
@@ -498,7 +570,7 @@ down the intent, not by suppressing the finding.
 
 ---
 
-## 14. How to check any of this
+## 15. How to check any of this
 
 ```sh
 sh godot_client/tools/run_tests.sh <path-to-godot>
@@ -521,13 +593,17 @@ trusted.
 
 ---
 
-## 15. Keys
+## 16. Keys
 
 | Key | |
 |---|---|
-| F1–F3 | render quality |
-| F4–F7 | texture mapping |
-| F5 / F9 | save / load |
+| F1 | render quality low |
+| F2 | render quality medium |
+| F3 | render quality high |
+| Shift+F1 | render quality ULTRA (the only tier with parallax occlusion) |
+| F4 | cycle block texture mapping (Shift+F4 reverses) |
+| F5 | save |
+| F9 | load |
 | F10 | developer tools |
 | F11 | system health report |
 | F12 | performance overlay |
@@ -536,6 +612,70 @@ trusted.
 | F | use held tool |
 | R | cycle interaction level (assisted / standard / precision) |
 | B | engineering workshop |
-| 1–8, G | hotbar, dimension |
+| 1, 2, 3, 4, 5, 6, 7, 8 | hotbar slots |
+| G | switch dimension |
+| Q | stow the selected slot into the backpack |
+| V | toggle flight (creative) |
+| Enter | capture the mouse |
 
 `F8` is free. If you are about to bind it to a voxel backend, read §1 again.
+
+Texture mapping is one key that cycles, not four keys, because four modes on
+four consecutive keys reached F5 -- which is save. Only the first branch for a
+key runs, so one mapping mode was unreachable.
+
+`Q` exists because of the same class of bug. The starting kit fills all eight
+hotbar slots with blocks, `fill_hotbar_from_inventory()` only ever considered
+blocks, and `stow_selected()` was called from nowhere. So a manufactured part
+could never be *held* -- and holding it is exactly what `F` means, which made
+the whole component-placing verb unreachable in ordinary play. A key table
+cannot show you that. Only playing to that point can.
+
+Two keys used to be claimed twice, and both were found by `playable_test.gd`
+rather than by reading the code:
+
+- **F5** was both save and the second texture mapping mode. One `if/elif`
+  chain, first branch wins: the mapping was dead code the table advertised.
+- **F** was both "use held tool" and the flight toggle. These are two different
+  nodes, each with its own `_unhandled_input`, so *both* ran: every attempt to
+  place a part also toggled flight. Flight moved to V.
+
+Note the second one is a different failure from the first, and the harder one.
+`F5` was one `if/elif` chain in one file, which a duplicate scan catches.
+`F` was claimed in two different files by two different nodes, where a
+duplicate scan of `main.gd` alone would find nothing -- and a key is *not* a
+global resource. It is a per-node branch, and two nodes listening for it both
+fire. Unhandled input has no first-come-wins rule; the scene tree delivers to
+every node that wants the event.
+
+A key table is a claim about the running program, so it is tested like one.
+`playable_test.gd` reads this table out of the code and refuses a key that is
+not bound, that is bound in the wrong file, or that is claimed twice.
+
+## 16. What "playable" means here, and how it is checked
+
+`playable_test.gd` loads the real `scenes/main.tscn` and plays it: chop a tree,
+collect the wood, place a block, manufacture a workbench, make hotbar room to
+hold it, place it, save, reload, and check that the world, the backpack and the
+assembly all came back.
+
+It exists because nineteen other suites were green while the game was unplayable
+in three ways at once. Each of those bugs was invisible to a suite that asserted
+on a *return value* rather than on the *effect*:
+
+| Bug | Why the other suites missed it |
+|---|---|
+| Loading a save wiped the backpack | The load returns `ok: true`; the test checked the result, not the pack. |
+| A manufactured part could never be held, so F did nothing | Nothing ever held one, so nothing ever noticed. |
+| Placing charged the bill twice | Only visible if you can afford the first 8 and then check the second. |
+
+The general rule: **assert on the world, not on the report.** A function that
+returns a result and a function that changes the game state are two different
+contracts, and only the second one is the one a player experiences.
+
+Where a test must stand in for a player, it says so in a comment. `_walk_to`
+moves the player rather than synthesising held keys, because `Input.get_vector`
+reads real key state and the synthesiser would be what is under test. Headless
+runs also have no mouse capture, so aiming goes through the game's own
+`Player.look_along()` instead of fabricated mouse motion -- which is why that
+method exists at all.

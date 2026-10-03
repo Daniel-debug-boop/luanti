@@ -142,3 +142,14 @@ lib/irrlichtmt
 
 # Generated mod storage database
 client/mod_storage.sqlite
+
+# --- EMERGENT asset pipeline -----------------------------------------------
+# Downloaded CC0 sources: the 4K/2K originals the runtime texture ladder is
+# downsampled from. Hundreds of megabytes, and reproducible byte for byte from
+# assets/source_manifest/manifest.json (URL + checksum per file), so they are
+# not committed. Everything the game actually loads is under assets/runtime/.
+godot_client/assets/source/
+
+# Python bytecode from the asset pipeline tools.
+__pycache__/
+*.pyc

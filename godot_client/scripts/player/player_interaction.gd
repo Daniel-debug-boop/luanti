@@ -204,6 +204,27 @@ func refresh_hotbar() -> void:
 		selected = inventory.selected
 
 
+## Put whatever is in the selected slot away into the backpack, freeing the
+## slot.
+##
+## This is the only way to make hotbar space, and it used to have no key at
+## all: `PlayerInventory.stow_selected()` existed, was correct, and was called
+## from nowhere. With a starting kit that fills all eight slots, a player could
+## therefore never put away a block to make room for a manufactured part.
+func stow_selected() -> bool:
+	if inventory == null or not is_instance_valid(inventory):
+		return false
+	if not inventory.stow_selected():
+		return false
+	# Stowing can leave the selected slot empty, so pull the next useful thing
+	# into it rather than leaving the player holding nothing.
+	inventory.fill_hotbar_from_inventory()
+	refresh_hotbar()
+	if audio != null:
+		audio.play("ui_select")
+	return true
+
+
 ## True when placing at `pos` would put a block inside the player's own box.
 func _player_intersects(pos: Vector3i) -> bool:
 	var p := player.position

@@ -22,7 +22,7 @@ const DAY_SKIES := [
 const DUSK_SKIES := ["belfast_sunset_puresky", "venice_sunset"]
 const NIGHT_SKIES := ["dikhololo_night", "moonless_golf", "clarens_night_01"]
 
-const HDRI_DIR := "res://assets/raw/hdri"
+const HDRI_DIR := "res://assets/runtime/hdri"
 
 @export var world_environment: WorldEnvironment
 @export var sun: DirectionalLight3D

@@ -1,0 +1,4795 @@
+{
+ "generated": "2026-09-29",
+ "assets": [
+  {
+   "id": "aerial_grass_rock",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "aerial_grass_rock",
+   "source_page": "https://polyhaven.com/a/aerial_grass_rock",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "4k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "grass"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/aerial_grass_rock/diff_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "dc4dbd56d49f3278d1fcde8e58159a84",
+     "bytes": 9067116,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/aerial_grass_rock/aerial_grass_rock_diff_4k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/aerial_grass_rock/nor_gl_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "06db3e600acd612587f31573b02875d5",
+     "bytes": 16425331,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/aerial_grass_rock/aerial_grass_rock_nor_gl_4k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/aerial_grass_rock/arm_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "9240c4cbe69b8d8c8931ad533adf1f78",
+     "bytes": 4053803,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/aerial_grass_rock/aerial_grass_rock_arm_4k.jpg"
+    }
+   ],
+   "note": "Grass block albedo. 4K source so ULTRA's 2048 is a real downsample. The old forrest_ground_01 was a flat top-down photograph with visible mowing stripes.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/arm_1024.png",
+     "bytes": 2006844
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/arm_512.png",
+     "bytes": 476767
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/diff_1024.jpg",
+     "bytes": 461489
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/diff_2048.jpg",
+     "bytes": 1791309
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/diff_512.jpg",
+     "bytes": 106977
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/height_1024.png",
+     "bytes": 7967
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/nor_gl_1024.png",
+     "bytes": 2247284
+    },
+    {
+     "path": "assets/runtime/textures/aerial_grass_rock/nor_gl_512.png",
+     "bytes": 545065
+    }
+   ],
+   "runtime_bytes": 7643702,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "forest_leaves_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "forest_leaves_02",
+   "source_page": "https://polyhaven.com/a/forest_leaves_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "4k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "vegetation",
+   "blocks": [
+    "leaves"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/forest_leaves_02/diff_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "35672d38fea49e67f87e9fe794255e5a",
+     "bytes": 5749081,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/forest_leaves_02/forest_leaves_02_diffuse_4k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/forest_leaves_02/nor_gl_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "717ee61381feed3e1d668a1c0c8cb528",
+     "bytes": 8627256,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/forest_leaves_02/forest_leaves_02_nor_gl_4k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/forest_leaves_02/arm_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "6cb9296c40ced60e711d6a77a428be56",
+     "bytes": 3455499,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/forest_leaves_02/forest_leaves_02_arm_4k.jpg"
+    }
+   ],
+   "note": "Leaf clusters for the canopy. Replaces brown_mud_leaves_01, which is a ground texture and read as mud on a tree.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/arm_1024.png",
+     "bytes": 2045574
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/arm_512.png",
+     "bytes": 528228
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/diff_1024.jpg",
+     "bytes": 632821
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/diff_2048.jpg",
+     "bytes": 2323194
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/diff_512.jpg",
+     "bytes": 157937
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/height_1024.png",
+     "bytes": 457366
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/nor_gl_1024.png",
+     "bytes": 2730718
+    },
+    {
+     "path": "assets/runtime/textures/forest_leaves_02/nor_gl_512.png",
+     "bytes": 676103
+    }
+   ],
+   "runtime_bytes": 9551941,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "bark_brown_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "bark_brown_02",
+   "source_page": "https://polyhaven.com/a/bark_brown_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "4k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "vegetation",
+   "blocks": [
+    "wood",
+    "cactus"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/bark_brown_02/diff_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "6661ce5ba6acc2071f99d28b9bb8f1d6",
+     "bytes": 7259413,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/bark_brown_02/bark_brown_02_diff_4k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/bark_brown_02/nor_gl_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "348363653e78e5e6197de7e7e0e6868e",
+     "bytes": 12833413,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/bark_brown_02/bark_brown_02_nor_gl_4k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/bark_brown_02/arm_4k.jpg",
+     "resolution": "4k",
+     "format": "jpg",
+     "md5": "8ba2549800bba309c12ef329faf1339b",
+     "bytes": 3075636,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/bark_brown_02/bark_brown_02_arm_4k.jpg"
+    }
+   ],
+   "note": "Trunks and branches. Replaces brown_mud_leaves_01 for wood, so a tree stopped being made of the same texture as the ground under it.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/bark_brown_02/arm_1024.png",
+     "bytes": 1881624
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/arm_512.png",
+     "bytes": 475586
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/diff_1024.jpg",
+     "bytes": 494091
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/diff_2048.jpg",
+     "bytes": 1688881
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/diff_512.jpg",
+     "bytes": 125832
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/height_1024.png",
+     "bytes": 184124
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/nor_gl_1024.png",
+     "bytes": 2298913
+    },
+    {
+     "path": "assets/runtime/textures/bark_brown_02/nor_gl_512.png",
+     "bytes": 595129
+    }
+   ],
+   "runtime_bytes": 7744180,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "forrest_ground_01",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "forrest_ground_01",
+   "source_page": "https://polyhaven.com/a/forrest_ground_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "grass"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/forrest_ground_01/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "236e7d928f5e357a194fd92de189cbe4",
+     "bytes": 833711,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/forrest_ground_01/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "ba4265df25aea293913d004b69ef9ab0",
+     "bytes": 1428763,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/forrest_ground_01/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "0bca8bef07d3c48faea4aae3fac9a757",
+     "bytes": 296969,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_arm_1k.jpg"
+    }
+   ],
+   "note": "Forest-floor detail overlay under the grass albedo.",
+   "hero": false,
+   "role": "detail",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/forrest_ground_01/diff_512.jpg",
+     "bytes": 137619
+    }
+   ],
+   "runtime_bytes": 137619,
+   "measured": {
+    "peak_tier": 512,
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 1048575,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "brown_mud_leaves_01",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "brown_mud_leaves_01",
+   "source_page": "https://polyhaven.com/a/brown_mud_leaves_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "dirt"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/brown_mud_leaves_01/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "5340848384f9bb19bfa6e7ac459683d7",
+     "bytes": 1206953,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/brown_mud_leaves_01/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "3698df51ef8262ddf2248ffca1e73196",
+     "bytes": 1486072,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/brown_mud_leaves_01/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "9d2a6f3c244c177503c5e441fad91a6e",
+     "bytes": 953367,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_leaves_01/brown_mud_leaves_01_arm_1k.jpg"
+    }
+   ],
+   "note": "Dirt. The name says leaves, the scan is forest duff; it is the right brown and the right roughness for turned earth.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/arm_1024.png",
+     "bytes": 1816164
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/arm_512.png",
+     "bytes": 472509
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/diff_1024.jpg",
+     "bytes": 559680
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/diff_512.jpg",
+     "bytes": 146373
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/height_1024.png",
+     "bytes": 358226
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/nor_gl_1024.png",
+     "bytes": 2628214
+    },
+    {
+     "path": "assets/runtime/textures/brown_mud_leaves_01/nor_gl_512.png",
+     "bytes": 653248
+    }
+   ],
+   "runtime_bytes": 6634414,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "rock_06",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "rock_06",
+   "source_page": "https://polyhaven.com/a/rock_06",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "stone",
+    "bedrock",
+    "cobblestone"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/rock_06/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "72a5bd7c0d441c750bf9b7c97e764e33",
+     "bytes": 913680,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_06/rock_06_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/rock_06/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "ff69cca602dd3a3661e9f17cc085e70f",
+     "bytes": 703275,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_06/rock_06_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/rock_06/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "1097b883d27159713e00ddc75ad0ba13",
+     "bytes": 105457,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_06/rock_06_arm_1k.jpg"
+    }
+   ],
+   "note": "Stone, bedrock, and the cobble detail overlay.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/rock_06/arm_1024.png",
+     "bytes": 1000351
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/arm_512.png",
+     "bytes": 318524
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/diff_1024.jpg",
+     "bytes": 532736
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/diff_512.jpg",
+     "bytes": 151618
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/height_1024.png",
+     "bytes": 30068
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/nor_gl_1024.png",
+     "bytes": 1940566
+    },
+    {
+     "path": "assets/runtime/textures/rock_06/nor_gl_512.png",
+     "bytes": 466521
+    }
+   ],
+   "runtime_bytes": 4440384,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "rock_face_04",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "rock_face_04",
+   "source_page": "https://polyhaven.com/a/rock_face_04",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "deepslate",
+    "deepslate_deep",
+    "void_rock"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/rock_face_04/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "4f125d5914b417c740ad798a5803cb7f",
+     "bytes": 954689,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_04/rock_face_04_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/rock_face_04/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "970fb920f2a55fb5e9389685efadcf74",
+     "bytes": 1152864,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_04/rock_face_04_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/rock_face_04/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "a4535a77141e048378fa389fba201a0d",
+     "bytes": 635406,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_04/rock_face_04_arm_1k.jpg"
+    }
+   ],
+   "note": "The Deeps. Also the stone detail overlay.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/rock_face_04/arm_1024.png",
+     "bytes": 1392603
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/arm_512.png",
+     "bytes": 353388
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/diff_1024.jpg",
+     "bytes": 391351
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/diff_512.jpg",
+     "bytes": 95712
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/height_1024.png",
+     "bytes": 91584
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/nor_gl_1024.png",
+     "bytes": 2218960
+    },
+    {
+     "path": "assets/runtime/textures/rock_face_04/nor_gl_512.png",
+     "bytes": 556445
+    }
+   ],
+   "runtime_bytes": 5100043,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "aerial_rocks_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "aerial_rocks_02",
+   "source_page": "https://polyhaven.com/a/aerial_rocks_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "gravel"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/aerial_rocks_02/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "b5795e9b9e43d718ace73448c97d57ab",
+     "bytes": 785923,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_rocks_02/aerial_rocks_02_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/aerial_rocks_02/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "66fcad0f6a7c2ac99bc978685195420b",
+     "bytes": 1177932,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_rocks_02/aerial_rocks_02_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/aerial_rocks_02/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "22ed967ce76d332166ae3abb1cabb465",
+     "bytes": 211113,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_rocks_02/aerial_rocks_02_arm_1k.jpg"
+    }
+   ],
+   "note": "Gravel, and the detail overlay for dirt and sand.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/arm_1024.png",
+     "bytes": 1513259
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/arm_512.png",
+     "bytes": 439841
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/diff_1024.jpg",
+     "bytes": 454169
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/diff_512.jpg",
+     "bytes": 123944
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/height_1024.png",
+     "bytes": 142840
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/nor_gl_1024.png",
+     "bytes": 2394343
+    },
+    {
+     "path": "assets/runtime/textures/aerial_rocks_02/nor_gl_512.png",
+     "bytes": 591364
+    }
+   ],
+   "runtime_bytes": 5659760,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "sand_01",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "sand_01",
+   "source_page": "https://polyhaven.com/a/sand_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "sand"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/sand_01/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "c914c8edb419f040e04224081a3f79a5",
+     "bytes": 485088,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sand_01/sand_01_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/sand_01/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "369b82aa417c77ec85c4c07c4c7b60a0",
+     "bytes": 877821,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sand_01/sand_01_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/sand_01/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "3ab2b7731c0430662bdc4d12425411a3",
+     "bytes": 131275,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sand_01/sand_01_arm_1k.jpg"
+    }
+   ],
+   "note": "Beach sand.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/sand_01/arm_1024.png",
+     "bytes": 1140471
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/arm_512.png",
+     "bytes": 347488
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/diff_1024.jpg",
+     "bytes": 279088
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/diff_512.jpg",
+     "bytes": 76458
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/height_1024.png",
+     "bytes": 185278
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/nor_gl_1024.png",
+     "bytes": 2086341
+    },
+    {
+     "path": "assets/runtime/textures/sand_01/nor_gl_512.png",
+     "bytes": 560483
+    }
+   ],
+   "runtime_bytes": 4675607,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "snow_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "snow_02",
+   "source_page": "https://polyhaven.com/a/snow_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "snow"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/snow_02/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "fc54766c6b36ff298699115a619d440b",
+     "bytes": 325497,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/snow_02/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "f16b5701f9ad521cdd6af10c1d6d2b48",
+     "bytes": 1081858,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/snow_02/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "701fa0f0fa36bc69f3a8f3cde0ad2d95",
+     "bytes": 88100,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_02/snow_02_arm_1k.jpg"
+    }
+   ],
+   "note": "Tundra snow.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/snow_02/arm_1024.png",
+     "bytes": 893502
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/arm_512.png",
+     "bytes": 293062
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/diff_1024.jpg",
+     "bytes": 171326
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/diff_512.jpg",
+     "bytes": 40527
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/height_1024.png",
+     "bytes": 5527
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/nor_gl_1024.png",
+     "bytes": 2295827
+    },
+    {
+     "path": "assets/runtime/textures/snow_02/nor_gl_512.png",
+     "bytes": 535724
+    }
+   ],
+   "runtime_bytes": 4235495,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "coast_sand_rocks_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "coast_sand_rocks_02",
+   "source_page": "https://polyhaven.com/a/coast_sand_rocks_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "ice"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/coast_sand_rocks_02/diff_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "6fa7bee516a8c01a383a782d802b6a3b",
+     "bytes": 839184,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_diff_1k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/coast_sand_rocks_02/nor_gl_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "38045b4c257fb5a87b373e960e3cbb9c",
+     "bytes": 1265458,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_nor_gl_1k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/coast_sand_rocks_02/arm_1k.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "md5": "8335c540a48b9f04cfded1cd4f946e54",
+     "bytes": 867333,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_rocks_02/coast_sand_rocks_02_arm_1k.jpg"
+    }
+   ],
+   "note": "Ice and the snow detail overlay. Ice is mostly a translucent tint over this, so the set is deliberately low-priority.",
+   "hero": false,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/arm_1024.png",
+     "bytes": 1681735
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/arm_512.png",
+     "bytes": 435202
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/diff_1024.jpg",
+     "bytes": 334732
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/diff_512.jpg",
+     "bytes": 88093
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/height_1024.png",
+     "bytes": 77799
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/nor_gl_1024.png",
+     "bytes": 2296133
+    },
+    {
+     "path": "assets/runtime/textures/coast_sand_rocks_02/nor_gl_512.png",
+     "bytes": 592781
+    }
+   ],
+   "runtime_bytes": 5506475,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "oak_wood_planks",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "oak_wood_planks",
+   "source_page": "https://polyhaven.com/a/oak_wood_planks",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "planks"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/oak_wood_planks/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "740160778f1c4b78bac74d96fe3c06ea",
+     "bytes": 2736142,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_diff_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/oak_wood_planks/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "7291b28d1aa5e0002d93b4d419268e98",
+     "bytes": 2125233,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/oak_wood_planks/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "29d201ec076f74fbeb9ce1ca99dc9163",
+     "bytes": 4016413,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/oak_wood_planks/oak_wood_planks_arm_2k.jpg"
+    }
+   ],
+   "note": "Sawn oak: walls, floors, ceilings, roofs, doors, stairs, fences. The single most used building material in the game.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/arm_1024.png",
+     "bytes": 1816721
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/arm_512.png",
+     "bytes": 425537
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/diff_1024.jpg",
+     "bytes": 259750
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/diff_2048.jpg",
+     "bytes": 1023516
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/diff_512.jpg",
+     "bytes": 61073
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/nor_gl_1024.png",
+     "bytes": 1036935
+    },
+    {
+     "path": "assets/runtime/textures/oak_wood_planks/nor_gl_512.png",
+     "bytes": 218933
+    }
+   ],
+   "runtime_bytes": 4845622,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "cobblestone_04",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "cobblestone_04",
+   "source_page": "https://polyhaven.com/a/cobblestone_04",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "cobblestone"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/cobblestone_04/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "b058bdc94fd0f8cfbb17543614255dc5",
+     "bytes": 3492388,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cobblestone_04/cobblestone_04_diff_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/cobblestone_04/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "c737f9246b422ca326ec2d20563224d6",
+     "bytes": 3801239,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cobblestone_04/cobblestone_04_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/cobblestone_04/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "e9111dd908a789d45d2cdcb520958c91",
+     "bytes": 2997850,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cobblestone_04/cobblestone_04_arm_2k.jpg"
+    }
+   ],
+   "note": "Foundations, walls, gates, bridges. 2K source: 2048 is already the ULTRA tier, so no 4K download is needed.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/cobblestone_04/arm_1024.png",
+     "bytes": 1600621
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/arm_512.png",
+     "bytes": 398831
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/diff_1024.jpg",
+     "bytes": 346453
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/diff_2048.jpg",
+     "bytes": 1405608
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/diff_512.jpg",
+     "bytes": 81408
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/height_1024.png",
+     "bytes": 6413
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/nor_gl_1024.png",
+     "bytes": 1934079
+    },
+    {
+     "path": "assets/runtime/textures/cobblestone_04/nor_gl_512.png",
+     "bytes": 500392
+    }
+   ],
+   "runtime_bytes": 6273805,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "brick_wall_003",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "brick_wall_003",
+   "source_page": "https://polyhaven.com/a/brick_wall_003",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "brick"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/brick_wall_003/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "7580e48cb54ed2362b218a42ed0513b1",
+     "bytes": 2524760,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_wall_003/brick_wall_003_diffuse_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/brick_wall_003/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "049bb529c8dfc2908cca47c60e3c019a",
+     "bytes": 4326637,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_wall_003/brick_wall_003_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/brick_wall_003/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "5ef2d044add94999bf09c4db1736357a",
+     "bytes": 810745,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brick_wall_003/brick_wall_003_arm_2k.jpg"
+    }
+   ],
+   "note": "Village and warehouse walls.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/brick_wall_003/arm_1024.png",
+     "bytes": 1657218
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/arm_512.png",
+     "bytes": 442540
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/diff_1024.jpg",
+     "bytes": 401650
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/diff_2048.jpg",
+     "bytes": 1474537
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/diff_512.jpg",
+     "bytes": 100327
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/height_1024.png",
+     "bytes": 77064
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/nor_gl_1024.png",
+     "bytes": 2280402
+    },
+    {
+     "path": "assets/runtime/textures/brick_wall_003/nor_gl_512.png",
+     "bytes": 579690
+    }
+   ],
+   "runtime_bytes": 7013428,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "concrete_floor_02",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "concrete_floor_02",
+   "source_page": "https://polyhaven.com/a/concrete_floor_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "concrete"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/concrete_floor_02/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "769c7bf30050cc57be848a67d5c20270",
+     "bytes": 3310792,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_floor_02/concrete_floor_02_diff_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/concrete_floor_02/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "3cc9918473a0c3d5ecb10f0ddc7e218d",
+     "bytes": 935810,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_floor_02/concrete_floor_02_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/concrete_floor_02/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "3da4d961cbd251e76b7dd34318cf452d",
+     "bytes": 702807,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/concrete_floor_02/concrete_floor_02_arm_2k.jpg"
+    }
+   ],
+   "note": "Workshop and warehouse floors, foundations, industrial decks.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/arm_1024.png",
+     "bytes": 1620197
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/arm_512.png",
+     "bytes": 399185
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/diff_1024.jpg",
+     "bytes": 527164
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/diff_2048.jpg",
+     "bytes": 2166946
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/diff_512.jpg",
+     "bytes": 116918
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/height_1024.png",
+     "bytes": 3358
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/nor_gl_1024.png",
+     "bytes": 1884388
+    },
+    {
+     "path": "assets/runtime/textures/concrete_floor_02/nor_gl_512.png",
+     "bytes": 431964
+    }
+   ],
+   "runtime_bytes": 7150120,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "asphalt_01",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "asphalt_01",
+   "source_page": "https://polyhaven.com/a/asphalt_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "asphalt"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/asphalt_01/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "1a982193e0137381402a60cbd5892474",
+     "bytes": 3118607,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/asphalt_01/asphalt_01_diff_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/asphalt_01/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "8b513a75b434f95ca268436265742638",
+     "bytes": 4845665,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/asphalt_01/asphalt_01_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/asphalt_01/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "ad49fe39a5457449eeddb77701b1f6af",
+     "bytes": 4169097,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/asphalt_01/asphalt_01_arm_2k.jpg"
+    }
+   ],
+   "note": "Roads and hardstanding. The quarry road to the workshop.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/asphalt_01/arm_1024.png",
+     "bytes": 2050569
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/arm_512.png",
+     "bytes": 487720
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/diff_1024.jpg",
+     "bytes": 244310
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/diff_2048.jpg",
+     "bytes": 1115620
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/diff_512.jpg",
+     "bytes": 48117
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/height_1024.png",
+     "bytes": 12032
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/nor_gl_1024.png",
+     "bytes": 2376041
+    },
+    {
+     "path": "assets/runtime/textures/asphalt_01/nor_gl_512.png",
+     "bytes": 591060
+    }
+   ],
+   "runtime_bytes": 6925469,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "corrugated_iron",
+   "kind": "texture",
+   "provider": "polyhaven",
+   "source_id": "corrugated_iron",
+   "source_page": "https://polyhaven.com/a/corrugated_iron",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "2k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "metal_plate"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/polyhaven/corrugated_iron/diff_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "fb7cfe9f978589b8e3d1155a859fed46",
+     "bytes": 2605861,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/corrugated_iron/corrugated_iron_diff_2k.jpg"
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/polyhaven/corrugated_iron/nor_gl_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "ba7b8088897242f5df20ab6fb1fe4124",
+     "bytes": 3453777,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/corrugated_iron/corrugated_iron_nor_gl_2k.jpg"
+    },
+    {
+     "map": "arm",
+     "path": "assets/source/polyhaven/corrugated_iron/arm_2k.jpg",
+     "resolution": "2k",
+     "format": "jpg",
+     "md5": "7349638f91a593c358b158e8bd713c31",
+     "bytes": 1862024,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/corrugated_iron/corrugated_iron_arm_2k.jpg"
+    }
+   ],
+   "note": "Industrial walls, roofs and machine skins. The corrugated silhouette is what makes a workshop read as a workshop.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    2048,
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/corrugated_iron/arm_1024.png",
+     "bytes": 1131514
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/arm_512.png",
+     "bytes": 302160
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/diff_1024.jpg",
+     "bytes": 271481
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/diff_2048.jpg",
+     "bytes": 940365
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/diff_512.jpg",
+     "bytes": 70029
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/nor_gl_1024.png",
+     "bytes": 1686411
+    },
+    {
+     "path": "assets/runtime/textures/corrugated_iron/nor_gl_512.png",
+     "bytes": 365483
+    }
+   ],
+   "runtime_bytes": 4770600,
+   "measured": {
+    "peak_tier": 2048,
+    "2048px": [
+     2048,
+     2048
+    ],
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 16777215,
+   "optimization": "Lanczos resample to 2048, 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "acg_metal_057a",
+   "kind": "texture",
+   "provider": "ambientcg",
+   "source_id": "Metal057A",
+   "source_page": "https://ambientcg.com/view?id=Metal057A",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "ambientCG (https://ambientcg.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "copper_block",
+    "copper_ore"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/ambientcg/Metal057A/Metal057A_1K-JPG_Color.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "3b0a45c61a57299693f362ee8243ffc1763f7026e18fae64f1d6c48642fde9e0",
+     "bytes": 381256
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/ambientcg/Metal057A/Metal057A_1K-JPG_NormalGL.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "0c02e236c550cbf94fe59bc73f44d2782a26dd0302656b7e17c5a8f0b4a6e239",
+     "bytes": 333451
+    },
+    {
+     "map": "rough",
+     "path": "assets/source/ambientcg/Metal057A/Metal057A_1K-JPG_Roughness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "f9cea26fd3b96907fcfee6cb6979502322d31426dd5bc40ae3d93f11654559c0",
+     "bytes": 294475
+    },
+    {
+     "map": "metal",
+     "path": "assets/source/ambientcg/Metal057A/Metal057A_1K-JPG_Metalness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "85f83d76cdc54e2de80cddafff97d9bd178d5ea3ca26ee5453637fce76992cdf",
+     "bytes": 7340
+    }
+   ],
+   "note": "Clean copper. 1K source from ambientCG: it is the only CC0 source in this library that has a copper, and a copper block is one face of a one-metre block.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/arm_1024.png",
+     "bytes": 497650
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/arm_512.png",
+     "bytes": 111583
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/diff_1024.jpg",
+     "bytes": 58402
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/diff_512.jpg",
+     "bytes": 12018
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/nor_gl_1024.png",
+     "bytes": 662006
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_057a/nor_gl_512.png",
+     "bytes": 147979
+    }
+   ],
+   "runtime_bytes": 1492795,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "acg_metal_055a",
+   "kind": "texture",
+   "provider": "ambientcg",
+   "source_id": "Metal055A",
+   "source_page": "https://ambientcg.com/view?id=Metal055A",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "ambientCG (https://ambientcg.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "iron_block",
+    "iron_ore"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/ambientcg/Metal055A/Metal055A_1K-JPG_Color.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "79938ccc3c75aaab3a2b1ed31068a8db3634d512286bb8c3aa6f6205cd59ca3a",
+     "bytes": 813574
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/ambientcg/Metal055A/Metal055A_1K-JPG_NormalGL.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "35b567228bb4f18d231f7767327a6b8a10627045dd4957ecd0fed5ee7017aa3c",
+     "bytes": 598840
+    },
+    {
+     "map": "rough",
+     "path": "assets/source/ambientcg/Metal055A/Metal055A_1K-JPG_Roughness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "b844f4192f74c6160265821da790b764fc941e195d939160ee3e22a07037e860",
+     "bytes": 511418
+    },
+    {
+     "map": "metal",
+     "path": "assets/source/ambientcg/Metal055A/Metal055A_1K-JPG_Metalness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "7d641701d0c31e623de99899816219e09b8b66403224550a24ff3930c70bebc7",
+     "bytes": 77358
+    }
+   ],
+   "note": "Wrought iron.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/arm_1024.png",
+     "bytes": 786515
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/arm_512.png",
+     "bytes": 207347
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/diff_1024.jpg",
+     "bytes": 141615
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/diff_512.jpg",
+     "bytes": 39139
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/nor_gl_1024.png",
+     "bytes": 986709
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_055a/nor_gl_512.png",
+     "bytes": 216726
+    }
+   ],
+   "runtime_bytes": 2381208,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "acg_metal_032",
+   "kind": "texture",
+   "provider": "ambientcg",
+   "source_id": "Metal032",
+   "source_page": "https://ambientcg.com/view?id=Metal032",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "ambientCG (https://ambientcg.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "steel_block"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/ambientcg/Metal032/Metal032_1K-JPG_Color.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "49493d6ade78ccbbbd270c6a15e4b4c9b1a097e66ddf28a1073de3e85712d9af",
+     "bytes": 701900
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/ambientcg/Metal032/Metal032_1K-JPG_NormalGL.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "8537c1015de5cc33d20231e5b6aa27309edcb983e1c37e608d08bb00f733747d",
+     "bytes": 341948
+    },
+    {
+     "map": "rough",
+     "path": "assets/source/ambientcg/Metal032/Metal032_1K-JPG_Roughness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "55d3eee2b69008ad3701b18977495531d0e3515105102e56f40a4d1098d10bce",
+     "bytes": 404875
+    },
+    {
+     "map": "metal",
+     "path": "assets/source/ambientcg/Metal032/Metal032_1K-JPG_Metalness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "843102638fa0a5bf897888868877efab8ccdc4cb84a48e57bdb52bfb30f5e714",
+     "bytes": 4257
+    }
+   ],
+   "note": "Grey rolled steel for the refined steel block.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/acg_metal_032/arm_1024.png",
+     "bytes": 629553
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/arm_512.png",
+     "bytes": 136408
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/diff_1024.jpg",
+     "bytes": 79096
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/diff_512.jpg",
+     "bytes": 10690
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/nor_gl_1024.png",
+     "bytes": 728402
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_032/nor_gl_512.png",
+     "bytes": 140460
+    }
+   ],
+   "runtime_bytes": 1727766,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "acg_metal_048a",
+   "kind": "texture",
+   "provider": "ambientcg",
+   "source_id": "Metal048A",
+   "source_page": "https://ambientcg.com/view?id=Metal048A",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "ambientCG (https://ambientcg.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "brass_block"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/ambientcg/Metal048A/Metal048A_1K-JPG_Color.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "4e0e8652610853900104071d08bc0b25c833bf5ad2f5512d1b8bb4657b7af424",
+     "bytes": 553378
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/ambientcg/Metal048A/Metal048A_1K-JPG_NormalGL.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "34f076458a2fb64db75b3088c3ec011eccf46f390126cf43c7b6af97da20e4a6",
+     "bytes": 314189
+    },
+    {
+     "map": "rough",
+     "path": "assets/source/ambientcg/Metal048A/Metal048A_1K-JPG_Roughness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "88eb1a5dfb1737755e46c9d83a0280a6b9bd5d6db3cb8258ee7592e908828e1d",
+     "bytes": 122269
+    },
+    {
+     "map": "metal",
+     "path": "assets/source/ambientcg/Metal048A/Metal048A_1K-JPG_Metalness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "df8dc61f61f73683f741161c7f8d96ba84d01de62a481e844ed2aad6794f9f50",
+     "bytes": 6631
+    }
+   ],
+   "note": "Brass alloy for the brass block.",
+   "hero": true,
+   "role": "surface",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/arm_1024.png",
+     "bytes": 221772
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/arm_512.png",
+     "bytes": 63124
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/diff_1024.jpg",
+     "bytes": 59878
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/diff_512.jpg",
+     "bytes": 13462
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/height_1024.png",
+     "bytes": 3157
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/nor_gl_1024.png",
+     "bytes": 576510
+    },
+    {
+     "path": "assets/runtime/textures/acg_metal_048a/nor_gl_512.png",
+     "bytes": 147421
+    }
+   ],
+   "runtime_bytes": 1085324,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "acg_metal_063",
+   "kind": "texture",
+   "provider": "ambientcg",
+   "source_id": "Metal063",
+   "source_page": "https://ambientcg.com/view?id=Metal063",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "ambientCG (https://ambientcg.com)",
+   "original_resolution": "1k",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "industrial",
+   "blocks": [
+    "metal_plate"
+   ],
+   "files": [
+    {
+     "map": "diff",
+     "path": "assets/source/ambientcg/Metal063/Metal063_1K-JPG_Color.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "d4122954971c26b529614f39fb12310de00005d44ce103430c35132f61fca077",
+     "bytes": 1259638
+    },
+    {
+     "map": "nor_gl",
+     "path": "assets/source/ambientcg/Metal063/Metal063_1K-JPG_NormalGL.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "51e521e2fafd01387216b52fce315e2f094a1fa6efab77a92e2c79870bb2df01",
+     "bytes": 343987
+    },
+    {
+     "map": "rough",
+     "path": "assets/source/ambientcg/Metal063/Metal063_1K-JPG_Roughness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "e83993283739d0a5d350ecd15cf82969aa59ec6e2293bcc6a14aea8a92ba283d",
+     "bytes": 731180
+    },
+    {
+     "map": "metal",
+     "path": "assets/source/ambientcg/Metal063/Metal063_1K-JPG_Metalness.jpg",
+     "resolution": "1k",
+     "format": "jpg",
+     "sha256": "1bd888a9fa307197fd5eaaa883561cfd8350ae634fce0d378e83b8e05632daf8",
+     "bytes": 737142
+    }
+   ],
+   "note": "Oxidised steel detail overlay on corrugated iron, which is what stops a metal wall reading as new sheet metal.",
+   "hero": false,
+   "role": "detail",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/acg_metal_063/diff_512.jpg",
+     "bytes": 54738
+    }
+   ],
+   "runtime_bytes": 54738,
+   "measured": {
+    "peak_tier": 512,
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 1048575,
+   "optimization": "Lanczos resample to 1024, 512; albedo JPEG q88 4:4:4 baseline, normals and ARM PNG; EXIF/ICC stripped; no interlacing; mipmaps generated at import (project importer_defaults)."
+  },
+  {
+   "id": "ore_copper",
+   "kind": "derived",
+   "provider": "derived",
+   "source_id": "ore_copper",
+   "source_page": "",
+   "licence": "CC0 1.0 Universal, derived from CC0 sources in this manifest",
+   "author": "EMERGENT asset pipeline (tools/process_textures.py)",
+   "original_resolution": "n/a",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "copper_ore"
+   ],
+   "files": [],
+   "note": "Copper vein in host rock.",
+   "host": "rock_06",
+   "metal": "acg_metal_057a",
+   "conversion": "ore_mix_v1: host rock albedo blended with the refined metal's albedo through a deterministic value-noise inclusion mask; ARM rebuilt with the metal's roughness/metalness inside the mask; the host normal map is reused unchanged (ore inclusions are sub-voxel).",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/ore_copper/arm_1024.png",
+     "bytes": 1014501
+    },
+    {
+     "path": "assets/runtime/textures/ore_copper/arm_512.png",
+     "bytes": 318524
+    },
+    {
+     "path": "assets/runtime/textures/ore_copper/diff_1024.jpg",
+     "bytes": 532607
+    },
+    {
+     "path": "assets/runtime/textures/ore_copper/diff_512.jpg",
+     "bytes": 151618
+    },
+    {
+     "path": "assets/runtime/textures/ore_copper/nor_gl_1024.png",
+     "bytes": 1940566
+    },
+    {
+     "path": "assets/runtime/textures/ore_copper/nor_gl_512.png",
+     "bytes": 466521
+    }
+   ],
+   "runtime_bytes": 4424337,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303
+  },
+  {
+   "id": "ore_iron",
+   "kind": "derived",
+   "provider": "derived",
+   "source_id": "ore_iron",
+   "source_page": "",
+   "licence": "CC0 1.0 Universal, derived from CC0 sources in this manifest",
+   "author": "EMERGENT asset pipeline (tools/process_textures.py)",
+   "original_resolution": "n/a",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "iron_ore"
+   ],
+   "files": [],
+   "note": "Iron vein in host rock.",
+   "host": "rock_06",
+   "metal": "acg_metal_055a",
+   "conversion": "ore_mix_v1: host rock albedo blended with the refined metal's albedo through a deterministic value-noise inclusion mask; ARM rebuilt with the metal's roughness/metalness inside the mask; the host normal map is reused unchanged (ore inclusions are sub-voxel).",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/ore_iron/arm_1024.png",
+     "bytes": 1006147
+    },
+    {
+     "path": "assets/runtime/textures/ore_iron/arm_512.png",
+     "bytes": 318524
+    },
+    {
+     "path": "assets/runtime/textures/ore_iron/diff_1024.jpg",
+     "bytes": 532516
+    },
+    {
+     "path": "assets/runtime/textures/ore_iron/diff_512.jpg",
+     "bytes": 151618
+    },
+    {
+     "path": "assets/runtime/textures/ore_iron/nor_gl_1024.png",
+     "bytes": 1940566
+    },
+    {
+     "path": "assets/runtime/textures/ore_iron/nor_gl_512.png",
+     "bytes": 466521
+    }
+   ],
+   "runtime_bytes": 4415892,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303
+  },
+  {
+   "id": "ore_silver",
+   "kind": "derived",
+   "provider": "derived",
+   "source_id": "ore_silver",
+   "source_page": "",
+   "licence": "CC0 1.0 Universal, derived from CC0 sources in this manifest",
+   "author": "EMERGENT asset pipeline (tools/process_textures.py)",
+   "original_resolution": "n/a",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "silver_ore"
+   ],
+   "files": [],
+   "note": "Silver vein in the same host rock, at a brighter inclusion threshold so it reads as rarer than copper.",
+   "host": "rock_06",
+   "metal": "acg_metal_032",
+   "conversion": "ore_mix_v1: host rock albedo blended with the refined metal's albedo through a deterministic value-noise inclusion mask; ARM rebuilt with the metal's roughness/metalness inside the mask; the host normal map is reused unchanged (ore inclusions are sub-voxel).",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/ore_silver/arm_1024.png",
+     "bytes": 1000627
+    },
+    {
+     "path": "assets/runtime/textures/ore_silver/arm_512.png",
+     "bytes": 318524
+    },
+    {
+     "path": "assets/runtime/textures/ore_silver/diff_1024.jpg",
+     "bytes": 532743
+    },
+    {
+     "path": "assets/runtime/textures/ore_silver/diff_512.jpg",
+     "bytes": 151618
+    },
+    {
+     "path": "assets/runtime/textures/ore_silver/nor_gl_1024.png",
+     "bytes": 1940566
+    },
+    {
+     "path": "assets/runtime/textures/ore_silver/nor_gl_512.png",
+     "bytes": 466521
+    }
+   ],
+   "runtime_bytes": 4410599,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303
+  },
+  {
+   "id": "ore_coal",
+   "kind": "derived",
+   "provider": "derived",
+   "source_id": "ore_coal",
+   "source_page": "",
+   "licence": "CC0 1.0 Universal, derived from CC0 sources in this manifest",
+   "author": "EMERGENT asset pipeline (tools/process_textures.py)",
+   "original_resolution": "n/a",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "terrain",
+   "blocks": [
+    "coal_ore"
+   ],
+   "files": [],
+   "note": "Coal seam: host rock with the inclusion value crushed down instead of replaced by a metal, because coal is not metal.",
+   "host": "rock_06",
+   "metal": null,
+   "conversion": "ore_mix_v1: host rock albedo blended with the refined metal's albedo through a deterministic value-noise inclusion mask; ARM rebuilt with the metal's roughness/metalness inside the mask; the host normal map is reused unchanged (ore inclusions are sub-voxel).",
+   "tiers": [
+    1024,
+    512
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/textures/ore_coal/arm_1024.png",
+     "bytes": 1011985
+    },
+    {
+     "path": "assets/runtime/textures/ore_coal/arm_512.png",
+     "bytes": 318623
+    },
+    {
+     "path": "assets/runtime/textures/ore_coal/diff_1024.jpg",
+     "bytes": 528869
+    },
+    {
+     "path": "assets/runtime/textures/ore_coal/diff_512.jpg",
+     "bytes": 151593
+    },
+    {
+     "path": "assets/runtime/textures/ore_coal/nor_gl_1024.png",
+     "bytes": 1940566
+    },
+    {
+     "path": "assets/runtime/textures/ore_coal/nor_gl_512.png",
+     "bytes": 466521
+    }
+   ],
+   "runtime_bytes": 4418157,
+   "measured": {
+    "peak_tier": 1024,
+    "1024px": [
+     1024,
+     1024
+    ],
+    "512px": [
+     512,
+     512
+    ]
+   },
+   "vram_bytes": 4194303
+  },
+  {
+   "id": "glass",
+   "kind": "procedural",
+   "provider": "procedural",
+   "source_id": "glass",
+   "source_page": "",
+   "licence": "Project original, no third-party content",
+   "author": "EMERGENT",
+   "original_resolution": "n/a",
+   "original_format": "",
+   "downloaded": "2026-09-29",
+   "category": "architecture",
+   "blocks": [
+    "glass"
+   ],
+   "files": [],
+   "note": "Translucent StandardMaterial3D, roughness 0.08, alpha 0.28, no texture. Windows and display cases.",
+   "tiers": []
+  },
+  {
+   "id": "Barrel_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "Barrel_01",
+   "source_page": "https://polyhaven.com/a/Barrel_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/Barrel_01/Barrel_01_1k.gltf",
+     "md5": "45c109401126ea3e5df2fe2c6b6f6d39",
+     "bytes": 2711,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Barrel_01/Barrel_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Barrel_01/Barrel_01.bin",
+     "md5": "e9f1036a183a1747aea6d40c556d7410",
+     "bytes": 81756,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/Barrel_01/Barrel_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Barrel_01/textures/Barrel_01_explosive_diff_1k.jpg",
+     "md5": "a36cd738a17cab52dc4c264a03b2848b",
+     "bytes": 179308,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Barrel_01/textures/Barrel_01_explosive_nor_gl_1k.jpg",
+     "md5": "f49be8d1ab465c944380b9d565c6ab47",
+     "bytes": 185578,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Barrel_01/textures/Barrel_01_explosive_arm_1k.jpg",
+     "md5": "ccfe5da162b909fe98f4780e41cc1233",
+     "bytes": 243594,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Barrel_01/Barrel_01_explosive_arm_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 2682,
+    "vertices": 2052,
+    "size_m": [
+     0.563,
+     0.88,
+     0.563
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 2682,
+     "path": "assets/runtime/models/Barrel_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 1187,
+     "path": "assets/runtime/models/Barrel_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 160,
+     "path": "assets/runtime/models/Barrel_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/Barrel_01/lod0.bin",
+     "bytes": 81756
+    },
+    {
+     "path": "assets/runtime/models/Barrel_01/lod0.gltf",
+     "bytes": 1893
+    },
+    {
+     "path": "assets/runtime/models/Barrel_01/lod1.bin",
+     "bytes": 25874
+    },
+    {
+     "path": "assets/runtime/models/Barrel_01/lod1.gltf",
+     "bytes": 1885
+    },
+    {
+     "path": "assets/runtime/models/Barrel_01/lod2.bin",
+     "bytes": 3616
+    },
+    {
+     "path": "assets/runtime/models/Barrel_01/lod2.gltf",
+     "bytes": 1873
+    }
+   ],
+   "destination": "res://assets/runtime/models/Barrel_01"
+  },
+  {
+   "id": "wooden_barrels_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "wooden_barrels_01",
+   "source_page": "https://polyhaven.com/a/wooden_barrels_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/wooden_barrels_01_1k.gltf",
+     "md5": "1228b95423a5430d74d238284fad724e",
+     "bytes": 31017,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_barrels_01/wooden_barrels_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel02_nor_gl_1k.jpg",
+     "md5": "21e88f8d945b0a3b6861debe9db58a9f",
+     "bytes": 555954,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel02_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel02_arm_1k.jpg",
+     "md5": "20a7bccad7bf899a8a4b18c73cd74dc9",
+     "bytes": 848051,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel02_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel01_arm_1k.jpg",
+     "md5": "19e643936381b9ff0b5d3a17f41f590f",
+     "bytes": 852652,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel01_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_pieces_nor_gl_1k.jpg",
+     "md5": "1f580f7f8ce6fa21694c6048bad318c4",
+     "bytes": 620276,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_pieces_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/wooden_barrels_01.bin",
+     "md5": "6c1dbd45bc5f0b1e726a7343fae0fbdb",
+     "bytes": 1243556,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_barrels_01/wooden_barrels_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel01_nor_gl_1k.jpg",
+     "md5": "21c030448f574a298f22a7edd2b5e176",
+     "bytes": 538634,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel01_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_pieces_diff_1k.jpg",
+     "md5": "9469a5822acae4616d98ca5fc2af97d2",
+     "bytes": 672604,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_pieces_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel01_diff_1k.jpg",
+     "md5": "8387b4843c9331f8dd7935a5034d3d38",
+     "bytes": 605063,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel01_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_barrel02_diff_1k.jpg",
+     "md5": "5b3f9026ba99f55e3f9397e2e8818945",
+     "bytes": 618495,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_barrel02_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_barrels_01/textures/wooden_barrels_01_pieces_arm_1k.jpg",
+     "md5": "4dc69d91b60da91029acf8e0706e4b33",
+     "bytes": 904545,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_barrels_01/wooden_barrels_01_pieces_arm_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 19422,
+    "vertices": 32647,
+    "size_m": [
+     0.748,
+     0.92,
+     0.877
+    ],
+    "meshes": 19,
+    "materials": 3,
+    "source_triangles": 33142,
+    "reduced_to_budget": true
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 19422,
+     "path": "assets/runtime/models/wooden_barrels_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 7626,
+     "path": "assets/runtime/models/wooden_barrels_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 952,
+     "path": "assets/runtime/models/wooden_barrels_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod0.bin",
+     "bytes": 331540
+    },
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod0.gltf",
+     "bytes": 22024
+    },
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod1.bin",
+     "bytes": 113692
+    },
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod1.gltf",
+     "bytes": 21959
+    },
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod2.bin",
+     "bytes": 14320
+    },
+    {
+     "path": "assets/runtime/models/wooden_barrels_01/lod2.gltf",
+     "bytes": 16314
+    }
+   ],
+   "destination": "res://assets/runtime/models/wooden_barrels_01"
+  },
+  {
+   "id": "wine_barrel_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "wine_barrel_01",
+   "source_page": "https://polyhaven.com/a/wine_barrel_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/wine_barrel_01/wine_barrel_01_1k.gltf",
+     "md5": "5397e6d959dd3ef20d1fc14436d0eb70",
+     "bytes": 6673,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wine_barrel_01/wine_barrel_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wine_barrel_01/wine_barrel_01.bin",
+     "md5": "84f578460020912056a1e3fbe3ec1b97",
+     "bytes": 385912,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wine_barrel_01/wine_barrel_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wine_barrel_01/textures/wine_barrel_01_diff_1k.jpg",
+     "md5": "fdea9538acf01a04a61626919a84b3fb",
+     "bytes": 195980,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wine_barrel_01/wine_barrel_01_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wine_barrel_01/textures/wine_barrel_01_arm_1k.jpg",
+     "md5": "2f0cc81ac07fdbe8c22927feac722927",
+     "bytes": 172531,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wine_barrel_01/wine_barrel_01_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wine_barrel_01/textures/wine_barrel_01_nor_gl_1k.jpg",
+     "md5": "6b3ce558fa74d3760fa0192dfc4564a3",
+     "bytes": 163587,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wine_barrel_01/wine_barrel_01_nor_gl_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 10820,
+    "vertices": 10031,
+    "size_m": [
+     0.742,
+     0.871,
+     0.742
+    ],
+    "meshes": 4,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 10820,
+     "path": "assets/runtime/models/wine_barrel_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 4694,
+     "path": "assets/runtime/models/wine_barrel_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 676,
+     "path": "assets/runtime/models/wine_barrel_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod0.bin",
+     "bytes": 385912
+    },
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod0.gltf",
+     "bytes": 4716
+    },
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod1.bin",
+     "bytes": 85252
+    },
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod1.gltf",
+     "bytes": 4679
+    },
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod2.bin",
+     "bytes": 10488
+    },
+    {
+     "path": "assets/runtime/models/wine_barrel_01/lod2.gltf",
+     "bytes": 4659
+    }
+   ],
+   "destination": "res://assets/runtime/models/wine_barrel_01"
+  },
+  {
+   "id": "wooden_crate_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "wooden_crate_01",
+   "source_page": "https://polyhaven.com/a/wooden_crate_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_01/wooden_crate_01_1k.gltf",
+     "md5": "33df4d2ae00186d4b64e878466c9e22e",
+     "bytes": 5612,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_crate_01/wooden_crate_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_01/textures/wooden_crate_01_diff_1k.jpg",
+     "md5": "266e0462d06e77c5745f66e89820544f",
+     "bytes": 711292,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_01/textures/wooden_crate_01_nor_gl_1k.jpg",
+     "md5": "e31626a1fcf6f7062c2ffd9fc982b942",
+     "bytes": 594076,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_01/wooden_crate_01.bin",
+     "md5": "8318f76b0c24b5538ce23051dbcb79a0",
+     "bytes": 189408,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_crate_01/wooden_crate_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_01/textures/wooden_crate_01_arm_1k.jpg",
+     "md5": "67c4aeb1154af98f95516b21ef62291c",
+     "bytes": 776699,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_01/wooden_crate_01_arm_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 6576,
+    "vertices": 4686,
+    "size_m": [
+     0.825,
+     0.322,
+     0.408
+    ],
+    "meshes": 3,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 6576,
+     "path": "assets/runtime/models/wooden_crate_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 2890,
+     "path": "assets/runtime/models/wooden_crate_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 348,
+     "path": "assets/runtime/models/wooden_crate_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod0.bin",
+     "bytes": 189408
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod0.gltf",
+     "bytes": 3770
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod1.bin",
+     "bytes": 59356
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod1.gltf",
+     "bytes": 3758
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod2.bin",
+     "bytes": 7528
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_01/lod2.gltf",
+     "bytes": 3724
+    }
+   ],
+   "destination": "res://assets/runtime/models/wooden_crate_01"
+  },
+  {
+   "id": "wooden_crate_02",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "wooden_crate_02",
+   "source_page": "https://polyhaven.com/a/wooden_crate_02",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_02/wooden_crate_02_1k.gltf",
+     "md5": "a69eb62fd20e6badb6bb56f052930e06",
+     "bytes": 4150,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_crate_02/wooden_crate_02_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_02/textures/wooden_crate_02_diff_1k.jpg",
+     "md5": "45bca8f49da9d541e06bc926ab001c81",
+     "bytes": 716110,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_02/textures/wooden_crate_02_arm_1k.jpg",
+     "md5": "a7537612dbfb7fd25e756074eec5624e",
+     "bytes": 819577,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_02/wooden_crate_02.bin",
+     "md5": "08d98507231cdeda1070d1a2d0646254",
+     "bytes": 150064,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_crate_02/wooden_crate_02.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_crate_02/textures/wooden_crate_02_nor_gl_1k.jpg",
+     "md5": "314226b31765168cd8070898f8a7e18e",
+     "bytes": 546319,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_crate_02/wooden_crate_02_nor_gl_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 5176,
+    "vertices": 3719,
+    "size_m": [
+     0.529,
+     0.445,
+     1.166
+    ],
+    "meshes": 2,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 5176,
+     "path": "assets/runtime/models/wooden_crate_02/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 2258,
+     "path": "assets/runtime/models/wooden_crate_02/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 337,
+     "path": "assets/runtime/models/wooden_crate_02/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod0.bin",
+     "bytes": 150064
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod0.gltf",
+     "bytes": 2915
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod1.bin",
+     "bytes": 48524
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod1.gltf",
+     "bytes": 2905
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod2.bin",
+     "bytes": 8136
+    },
+    {
+     "path": "assets/runtime/models/wooden_crate_02/lod2.gltf",
+     "bytes": 2883
+    }
+   ],
+   "destination": "res://assets/runtime/models/wooden_crate_02"
+  },
+  {
+   "id": "old_military_crate",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "old_military_crate",
+   "source_page": "https://polyhaven.com/a/old_military_crate",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/old_military_crate/old_military_crate_1k.gltf",
+     "md5": "4c83b9887a0db6ecd5af18293012c3f0",
+     "bytes": 10126,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/old_military_crate/old_military_crate_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/old_military_crate/textures/old_military_crate_nor_gl_1k.jpg",
+     "md5": "4403c6773bcc7c0182fac32e750c7231",
+     "bytes": 742682,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/old_military_crate/textures/old_military_crate_diff_1k.jpg",
+     "md5": "a679925cb14dbb3ffc39a5d152d23114",
+     "bytes": 709506,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/old_military_crate/textures/old_military_crate_arm_1k.jpg",
+     "md5": "5e877bd1644fe490e9450794aadc3dd7",
+     "bytes": 704105,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/old_military_crate/old_military_crate_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/old_military_crate/old_military_crate.bin",
+     "md5": "4aa204ebcc401c38206677a808aebea6",
+     "bytes": 329004,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/old_military_crate/old_military_crate.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 10476,
+    "vertices": 8317,
+    "size_m": [
+     0.805,
+     0.258,
+     0.497
+    ],
+    "meshes": 5,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 10476,
+     "path": "assets/runtime/models/old_military_crate/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 4635,
+     "path": "assets/runtime/models/old_military_crate/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 653,
+     "path": "assets/runtime/models/old_military_crate/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/old_military_crate/lod0.bin",
+     "bytes": 329002
+    },
+    {
+     "path": "assets/runtime/models/old_military_crate/lod0.gltf",
+     "bytes": 6728
+    },
+    {
+     "path": "assets/runtime/models/old_military_crate/lod1.bin",
+     "bytes": 101474
+    },
+    {
+     "path": "assets/runtime/models/old_military_crate/lod1.gltf",
+     "bytes": 6688
+    },
+    {
+     "path": "assets/runtime/models/old_military_crate/lod2.bin",
+     "bytes": 14640
+    },
+    {
+     "path": "assets/runtime/models/old_military_crate/lod2.gltf",
+     "bytes": 5717
+    }
+   ],
+   "destination": "res://assets/runtime/models/old_military_crate"
+  },
+  {
+   "id": "metal_tool_chest",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "metal_tool_chest",
+   "source_page": "https://polyhaven.com/a/metal_tool_chest",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/metal_tool_chest/metal_tool_chest_1k.gltf",
+     "md5": "21cb18a2e84ed49f23a98578c543e5ad",
+     "bytes": 12256,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/metal_tool_chest/metal_tool_chest_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/metal_tool_chest/metal_tool_chest.bin",
+     "md5": "b62c394a4f6764df8993a8965564b390",
+     "bytes": 434496,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/metal_tool_chest/metal_tool_chest.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/metal_tool_chest/textures/metal_tool_chest_nor_gl_1k.jpg",
+     "md5": "1d53f8a77b5789f6b4e5d72a004bb5bd",
+     "bytes": 604781,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_tool_chest/metal_tool_chest_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/metal_tool_chest/textures/metal_tool_chest_arm_1k.jpg",
+     "md5": "981d128104104cdb6ab86c648e1d7f46",
+     "bytes": 755794,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_tool_chest/metal_tool_chest_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/metal_tool_chest/textures/metal_tool_chest_diff_1k.jpg",
+     "md5": "4deaf0af07e8cadbfbd4975b49f597df",
+     "bytes": 552016,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/metal_tool_chest/metal_tool_chest_diff_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 13360,
+    "vertices": 11073,
+    "size_m": [
+     0.685,
+     0.348,
+     0.316
+    ],
+    "meshes": 7,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 13360,
+     "path": "assets/runtime/models/metal_tool_chest/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 5911,
+     "path": "assets/runtime/models/metal_tool_chest/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 738,
+     "path": "assets/runtime/models/metal_tool_chest/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod0.bin",
+     "bytes": 434496
+    },
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod0.gltf",
+     "bytes": 8283
+    },
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod1.bin",
+     "bytes": 124972
+    },
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod1.gltf",
+     "bytes": 8241
+    },
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod2.bin",
+     "bytes": 16748
+    },
+    {
+     "path": "assets/runtime/models/metal_tool_chest/lod2.gltf",
+     "bytes": 7265
+    }
+   ],
+   "destination": "res://assets/runtime/models/metal_tool_chest"
+  },
+  {
+   "id": "treasure_chest",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "treasure_chest",
+   "source_page": "https://polyhaven.com/a/treasure_chest",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/treasure_chest/treasure_chest_1k.gltf",
+     "md5": "7bfc4b335cff3e2641c8b9e55dbee0a2",
+     "bytes": 8584,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/treasure_chest/treasure_chest_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/treasure_chest/textures/treasure_chest_arm_1k.jpg",
+     "md5": "ffb1a453af7e91fb63c1ec51da29832a",
+     "bytes": 958484,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/treasure_chest/treasure_chest_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/treasure_chest/textures/treasure_chest_diff_1k.jpg",
+     "md5": "59a684377b91eed5cb0cf44fad6b1089",
+     "bytes": 812089,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/treasure_chest/treasure_chest_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/treasure_chest/textures/treasure_chest_nor_gl_1k.jpg",
+     "md5": "5ce2977f7417f17575b92873a56a3c4f",
+     "bytes": 893221,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/treasure_chest/treasure_chest_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/treasure_chest/treasure_chest.bin",
+     "md5": "c955b1084bb3f7c8cea414bdf1a89845",
+     "bytes": 2811372,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/treasure_chest/treasure_chest.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 19341,
+    "vertices": 68481,
+    "size_m": [
+     0.959,
+     0.426,
+     0.523
+    ],
+    "meshes": 5,
+    "materials": 1,
+    "source_triangles": 103330,
+    "reduced_to_budget": true
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 19341,
+     "path": "assets/runtime/models/treasure_chest/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 8695,
+     "path": "assets/runtime/models/treasure_chest/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 1205,
+     "path": "assets/runtime/models/treasure_chest/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/treasure_chest/lod0.bin",
+     "bytes": 446670
+    },
+    {
+     "path": "assets/runtime/models/treasure_chest/lod0.gltf",
+     "bytes": 6037
+    },
+    {
+     "path": "assets/runtime/models/treasure_chest/lod1.bin",
+     "bytes": 200012
+    },
+    {
+     "path": "assets/runtime/models/treasure_chest/lod1.gltf",
+     "bytes": 6023
+    },
+    {
+     "path": "assets/runtime/models/treasure_chest/lod2.bin",
+     "bytes": 28222
+    },
+    {
+     "path": "assets/runtime/models/treasure_chest/lod2.gltf",
+     "bytes": 5975
+    }
+   ],
+   "destination": "res://assets/runtime/models/treasure_chest"
+  },
+  {
+   "id": "street_lamp_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "street_lamp_01",
+   "source_page": "https://polyhaven.com/a/street_lamp_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/street_lamp_01/street_lamp_01_1k.gltf",
+     "md5": "d29d1fc30bbdad99a58371754f144e65",
+     "bytes": 6419,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/street_lamp_01/street_lamp_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/street_lamp_01/textures/street_lamp_01_arm_1k.jpg",
+     "md5": "63d980174db10cf22a1b175743c465c9",
+     "bytes": 664324,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/street_lamp_01/street_lamp_01_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/street_lamp_01/textures/street_lamp_01_diff_1k.jpg",
+     "md5": "82efb7531a25cda3ef8af2aff8ecccf7",
+     "bytes": 307889,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/street_lamp_01/street_lamp_01_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/street_lamp_01/textures/street_lamp_01_nor_gl_1k.jpg",
+     "md5": "c27d8102c7e851a8f0f654bb959b9d67",
+     "bytes": 438623,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/street_lamp_01/street_lamp_01_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/street_lamp_01/street_lamp_01.bin",
+     "md5": "324bc6295e3962322514ddcfc7037b23",
+     "bytes": 748908,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/street_lamp_01/street_lamp_01.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 14123,
+    "vertices": 17664,
+    "size_m": [
+     0.704,
+     3.871,
+     0.386
+    ],
+    "meshes": 1,
+    "materials": 3,
+    "source_triangles": 30610,
+    "reduced_to_budget": true
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 14123,
+     "path": "assets/runtime/models/street_lamp_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 6140,
+     "path": "assets/runtime/models/street_lamp_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 899,
+     "path": "assets/runtime/models/street_lamp_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod0.bin",
+     "bytes": 310082
+    },
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod0.gltf",
+     "bytes": 2536
+    },
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod1.bin",
+     "bytes": 134728
+    },
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod1.gltf",
+     "bytes": 2534
+    },
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod2.bin",
+     "bytes": 19026
+    },
+    {
+     "path": "assets/runtime/models/street_lamp_01/lod2.gltf",
+     "bytes": 2523
+    }
+   ],
+   "destination": "res://assets/runtime/models/street_lamp_01"
+  },
+  {
+   "id": "Lantern_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "Lantern_01",
+   "source_page": "https://polyhaven.com/a/Lantern_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/Lantern_01/Lantern_01_1k.gltf",
+     "md5": "61fbf9f6e215ab4ff1123d6cbfd337a6",
+     "bytes": 4866,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/Lantern_01/Lantern_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Lantern_01/textures/Lantern_01_brass_arm_1k.jpg",
+     "md5": "cad411a300663678f546ed8b1c9b97f1",
+     "bytes": 229054,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Lantern_01/Lantern_01_brass_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Lantern_01/Lantern_01.bin",
+     "md5": "857a868798e7e5f40d78c2d09e6f8ea0",
+     "bytes": 864852,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/Lantern_01/Lantern_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Lantern_01/textures/Lantern_01_brass_nor_gl_1k.jpg",
+     "md5": "6d6805ac7932d9927f7ec817db77b5d5",
+     "bytes": 180646,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Lantern_01/Lantern_01_brass_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/Lantern_01/textures/Lantern_01_brass_diff_1k.jpg",
+     "md5": "e8abf88b7ac60649c54c8d0a639f0713",
+     "bytes": 140998,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/Lantern_01/Lantern_01_brass_diff_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 19662,
+    "vertices": 20670,
+    "size_m": [
+     0.207,
+     0.5,
+     0.165
+    ],
+    "meshes": 2,
+    "materials": 2,
+    "baked_scale": 1.7007,
+    "baked_height_m": 0.5,
+    "source_triangles": 33902,
+    "reduced_to_budget": true
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 19662,
+     "path": "assets/runtime/models/Lantern_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 8840,
+     "path": "assets/runtime/models/Lantern_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 1194,
+     "path": "assets/runtime/models/Lantern_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/Lantern_01/lod0.bin",
+     "bytes": 403540
+    },
+    {
+     "path": "assets/runtime/models/Lantern_01/lod0.gltf",
+     "bytes": 3341
+    },
+    {
+     "path": "assets/runtime/models/Lantern_01/lod1.bin",
+     "bytes": 170704
+    },
+    {
+     "path": "assets/runtime/models/Lantern_01/lod1.gltf",
+     "bytes": 3338
+    },
+    {
+     "path": "assets/runtime/models/Lantern_01/lod2.bin",
+     "bytes": 18972
+    },
+    {
+     "path": "assets/runtime/models/Lantern_01/lod2.gltf",
+     "bytes": 3305
+    }
+   ],
+   "destination": "res://assets/runtime/models/Lantern_01"
+  },
+  {
+   "id": "wooden_lantern_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "wooden_lantern_01",
+   "source_page": "https://polyhaven.com/a/wooden_lantern_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/wooden_lantern_01_1k.gltf",
+     "md5": "e31edca6461023e076183cb74721b0b9",
+     "bytes": 9540,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/wooden_lantern_01/wooden_lantern_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_nor_gl_1k.jpg",
+     "md5": "9db1fa975880b3cf6da5e6c30853e0cf",
+     "bytes": 747945,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_diff_1k.jpg",
+     "md5": "8f9f537ab312b1ec85acb1f5aaf7ad17",
+     "bytes": 712250,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_glass_nor_gl_1k.jpg",
+     "md5": "38549e36957f90dc61587010c3a8ff3a",
+     "bytes": 216436,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_glass_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_glass_arm_1k.jpg",
+     "md5": "890c1dd6ad9c37521f9f0a0d9d08fba2",
+     "bytes": 561615,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_glass_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_arm_1k.jpg",
+     "md5": "87b5bdc9f3d5853caef38a00589541ae",
+     "bytes": 842111,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/textures/wooden_lantern_01_glass_diff_1k.jpg",
+     "md5": "c1e45d48f344f86726d02c81679af6a4",
+     "bytes": 410747,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_lantern_01/wooden_lantern_01_glass_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/wooden_lantern_01/wooden_lantern_01.bin",
+     "md5": "3784667126369ce5c21db3c7436409cb",
+     "bytes": 268136,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/wooden_lantern_01/wooden_lantern_01.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 8321,
+    "vertices": 6819,
+    "size_m": [
+     0.221,
+     0.404,
+     0.221
+    ],
+    "meshes": 3,
+    "materials": 2
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 8321,
+     "path": "assets/runtime/models/wooden_lantern_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 3463,
+     "path": "assets/runtime/models/wooden_lantern_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 351,
+     "path": "assets/runtime/models/wooden_lantern_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod0.bin",
+     "bytes": 268136
+    },
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod0.gltf",
+     "bytes": 4740
+    },
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod1.bin",
+     "bytes": 74028
+    },
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod1.gltf",
+     "bytes": 4719
+    },
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod2.bin",
+     "bytes": 7772
+    },
+    {
+     "path": "assets/runtime/models/wooden_lantern_01/lod2.gltf",
+     "bytes": 4683
+    }
+   ],
+   "destination": "res://assets/runtime/models/wooden_lantern_01"
+  },
+  {
+   "id": "painted_wooden_bench",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "painted_wooden_bench",
+   "source_page": "https://polyhaven.com/a/painted_wooden_bench",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_bench/painted_wooden_bench_1k.gltf",
+     "md5": "784a49250144aa5299a93c1f3b6968d7",
+     "bytes": 2835,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/painted_wooden_bench/painted_wooden_bench_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_bench/textures/painted_wooden_bench_diff_1k.jpg",
+     "md5": "60c7d0f34f52b1003345d318e35f468d",
+     "bytes": 545216,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_bench/textures/painted_wooden_bench_nor_gl_1k.jpg",
+     "md5": "08b74bebcff262c14beae35a4f7b3405",
+     "bytes": 830104,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_bench/textures/painted_wooden_bench_arm_1k.jpg",
+     "md5": "754ecc7f47b1e5d032e45e22334954f1",
+     "bytes": 586040,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_bench/painted_wooden_bench_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_bench/painted_wooden_bench.bin",
+     "md5": "ed331b50f955852f007313c1a75c2e2d",
+     "bytes": 25444,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/painted_wooden_bench/painted_wooden_bench.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 630,
+    "vertices": 677,
+    "size_m": [
+     1.165,
+     0.889,
+     0.497
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 630,
+     "path": "assets/runtime/models/painted_wooden_bench/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 212,
+     "path": "assets/runtime/models/painted_wooden_bench/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 10,
+     "path": "assets/runtime/models/painted_wooden_bench/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod0.bin",
+     "bytes": 25444
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod0.gltf",
+     "bytes": 1901
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod1.bin",
+     "bytes": 4568
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod1.gltf",
+     "bytes": 1896
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod2.bin",
+     "bytes": 220
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_bench/lod2.gltf",
+     "bytes": 1873
+    }
+   ],
+   "destination": "res://assets/runtime/models/painted_wooden_bench"
+  },
+  {
+   "id": "painted_wooden_stool",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "painted_wooden_stool",
+   "source_page": "https://polyhaven.com/a/painted_wooden_stool",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_stool/painted_wooden_stool_1k.gltf",
+     "md5": "d234ba7a3ce1cc2a68847cea4e405b34",
+     "bytes": 2848,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/painted_wooden_stool/painted_wooden_stool_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_stool/textures/painted_wooden_stool_nor_gl_1k.jpg",
+     "md5": "4518ff0d1d7dbf0c5cc2d06777e92a97",
+     "bytes": 489911,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_stool/painted_wooden_stool_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_stool/textures/painted_wooden_stool_arm_1k.jpg",
+     "md5": "9ffee9bb29a95f4ef24efb415b14f0b6",
+     "bytes": 751171,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_stool/painted_wooden_stool_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_stool/textures/painted_wooden_stool_diff_1k.jpg",
+     "md5": "3118c86c770a6907d0347276deebd96c",
+     "bytes": 607519,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/painted_wooden_stool/painted_wooden_stool_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/painted_wooden_stool/painted_wooden_stool.bin",
+     "md5": "cf312e0df28055cbbf174584a01943c5",
+     "bytes": 23384,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/painted_wooden_stool/painted_wooden_stool.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 676,
+    "vertices": 604,
+    "size_m": [
+     0.385,
+     0.579,
+     0.406
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 676,
+     "path": "assets/runtime/models/painted_wooden_stool/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 302,
+     "path": "assets/runtime/models/painted_wooden_stool/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 28,
+     "path": "assets/runtime/models/painted_wooden_stool/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod0.bin",
+     "bytes": 23384
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod0.gltf",
+     "bytes": 1914
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod1.bin",
+     "bytes": 7860
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod1.gltf",
+     "bytes": 1910
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod2.bin",
+     "bytes": 680
+    },
+    {
+     "path": "assets/runtime/models/painted_wooden_stool/lod2.gltf",
+     "bytes": 1896
+    }
+   ],
+   "destination": "res://assets/runtime/models/painted_wooden_stool"
+  },
+  {
+   "id": "chinese_stool",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "chinese_stool",
+   "source_page": "https://polyhaven.com/a/chinese_stool",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/chinese_stool/chinese_stool_1k.gltf",
+     "md5": "260547e2e492af393aedd6a6a460c3a1",
+     "bytes": 2883,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/chinese_stool/chinese_stool_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/chinese_stool/textures/chinese_stool_diff_1k.jpg",
+     "md5": "10519c09d42b36c461540f3e727df211",
+     "bytes": 542758,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/chinese_stool/chinese_stool_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/chinese_stool/textures/chinese_stool_arm_1k.jpg",
+     "md5": "d73e325e36b12467d98283648bf98c10",
+     "bytes": 578268,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/chinese_stool/chinese_stool_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/chinese_stool/chinese_stool.bin",
+     "md5": "a2951579ea0f4421b754331fb748d6f2",
+     "bytes": 40172,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/chinese_stool/chinese_stool.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/chinese_stool/textures/chinese_stool_nor_gl_1k.jpg",
+     "md5": "8b15a90085107867de316844cf03b3d7",
+     "bytes": 629035,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/chinese_stool/chinese_stool_nor_gl_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 1090,
+    "vertices": 1051,
+    "size_m": [
+     0.506,
+     0.631,
+     0.599
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 1090,
+     "path": "assets/runtime/models/chinese_stool/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 392,
+     "path": "assets/runtime/models/chinese_stool/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 24,
+     "path": "assets/runtime/models/chinese_stool/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/chinese_stool/lod0.bin",
+     "bytes": 40172
+    },
+    {
+     "path": "assets/runtime/models/chinese_stool/lod0.gltf",
+     "bytes": 1911
+    },
+    {
+     "path": "assets/runtime/models/chinese_stool/lod1.bin",
+     "bytes": 9264
+    },
+    {
+     "path": "assets/runtime/models/chinese_stool/lod1.gltf",
+     "bytes": 1903
+    },
+    {
+     "path": "assets/runtime/models/chinese_stool/lod2.bin",
+     "bytes": 1424
+    },
+    {
+     "path": "assets/runtime/models/chinese_stool/lod2.gltf",
+     "bytes": 1892
+    }
+   ],
+   "destination": "res://assets/runtime/models/chinese_stool"
+  },
+  {
+   "id": "ceramic_pot",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "ceramic_pot",
+   "source_page": "https://polyhaven.com/a/ceramic_pot",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/ceramic_pot/ceramic_pot_1k.gltf",
+     "md5": "8777fd3f023e6f83371786b195ac665b",
+     "bytes": 2990,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/ceramic_pot/ceramic_pot_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/ceramic_pot/textures/ceramic_pot_nor_gl_1k.jpg",
+     "md5": "a40c80e5e4f9fa107d2c2dc8983d2867",
+     "bytes": 252874,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/ceramic_pot/ceramic_pot_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/ceramic_pot/textures/ceramic_pot_diff_1k.jpg",
+     "md5": "85746a999ed333628143b3ad2c0b7f42",
+     "bytes": 664480,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/ceramic_pot/ceramic_pot_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/ceramic_pot/textures/ceramic_pot_arm_1k.jpg",
+     "md5": "e45cd9ad939172ae7b94fd455bc44c08",
+     "bytes": 633246,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/ceramic_pot/ceramic_pot_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/ceramic_pot/ceramic_pot.bin",
+     "md5": "dab3afea04454ad1fbb1108afe764489",
+     "bytes": 87952,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/ceramic_pot/ceramic_pot.bin"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 3592,
+    "vertices": 2075,
+    "size_m": [
+     0.656,
+     0.372,
+     0.502
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 3592,
+     "path": "assets/runtime/models/ceramic_pot/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 1580,
+     "path": "assets/runtime/models/ceramic_pot/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 214,
+     "path": "assets/runtime/models/ceramic_pot/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod0.bin",
+     "bytes": 87952
+    },
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod0.gltf",
+     "bytes": 1912
+    },
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod1.bin",
+     "bytes": 34280
+    },
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod1.gltf",
+     "bytes": 1905
+    },
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod2.bin",
+     "bytes": 4452
+    },
+    {
+     "path": "assets/runtime/models/ceramic_pot/lod2.gltf",
+     "bytes": 1878
+    }
+   ],
+   "destination": "res://assets/runtime/models/ceramic_pot"
+  },
+  {
+   "id": "planter_pot_clay",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "planter_pot_clay",
+   "source_page": "https://polyhaven.com/a/planter_pot_clay",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/planter_pot_clay/planter_pot_clay_1k.gltf",
+     "md5": "1c78fcfd6144747c97e2b822a6229c0d",
+     "bytes": 2813,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/planter_pot_clay/planter_pot_clay_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/planter_pot_clay/textures/planter_pot_clay_diff_1k.jpg",
+     "md5": "6823eb18ca73c8cdcb3cbc04704c443b",
+     "bytes": 596319,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/planter_pot_clay/planter_pot_clay_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/planter_pot_clay/planter_pot_clay.bin",
+     "md5": "93aa55f6378a47c3e2d03eb5b98da8b0",
+     "bytes": 78096,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/planter_pot_clay/planter_pot_clay.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/planter_pot_clay/textures/planter_pot_clay_arm_1k.jpg",
+     "md5": "ec397ae29f1f52292cbc9482037c11c4",
+     "bytes": 613484,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/planter_pot_clay/planter_pot_clay_arm_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/planter_pot_clay/textures/planter_pot_clay_nor_gl_1k.jpg",
+     "md5": "269b48d6a5038e97acf9d670b7381b3a",
+     "bytes": 506446,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/planter_pot_clay/planter_pot_clay_nor_gl_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 3080,
+    "vertices": 1863,
+    "size_m": [
+     0.266,
+     0.222,
+     0.263
+    ],
+    "meshes": 1,
+    "materials": 1
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 3080,
+     "path": "assets/runtime/models/planter_pot_clay/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 1322,
+     "path": "assets/runtime/models/planter_pot_clay/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 160,
+     "path": "assets/runtime/models/planter_pot_clay/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod0.bin",
+     "bytes": 78096
+    },
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod0.gltf",
+     "bytes": 1878
+    },
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod1.bin",
+     "bytes": 27580
+    },
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod1.gltf",
+     "bytes": 1871
+    },
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod2.bin",
+     "bytes": 2528
+    },
+    {
+     "path": "assets/runtime/models/planter_pot_clay/lod2.gltf",
+     "bytes": 1855
+    }
+   ],
+   "destination": "res://assets/runtime/models/planter_pot_clay"
+  },
+  {
+   "id": "potted_plant_01",
+   "kind": "model",
+   "provider": "polyhaven",
+   "source_id": "potted_plant_01",
+   "source_page": "https://polyhaven.com/a/potted_plant_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "gltf",
+   "downloaded": "2026-09-29",
+   "category": "props",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/potted_plant_01_1k.gltf",
+     "md5": "199e9e3d68f5447142db4066d60ae3f0",
+     "bytes": 7969,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/potted_plant_01/potted_plant_01_1k.gltf"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_pot_rough_1k.jpg",
+     "md5": "8f2e400f94843a9239229bfe99d16688",
+     "bytes": 173192,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_pot_rough_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_leaves_nor_gl_1k.jpg",
+     "md5": "0a7ea996bb2a4e9e19a5299a5b654406",
+     "bytes": 177105,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_leaves_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_pot_diff_1k.jpg",
+     "md5": "67114dcd68232a6da88c627e144e65c4",
+     "bytes": 204900,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_pot_diff_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/potted_plant_01.bin",
+     "md5": "18377bd8d99b20a8d5fc5cf03cbf94b2",
+     "bytes": 5345188,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/potted_plant_01/potted_plant_01.bin"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_leaves_rough_1k.jpg",
+     "md5": "6251bfd59ced0360c16d9c286adbb131",
+     "bytes": 91706,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_leaves_rough_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_pot_nor_gl_1k.jpg",
+     "md5": "7388c8cba421175fd70969df077988a1",
+     "bytes": 200349,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_pot_nor_gl_1k.jpg"
+    },
+    {
+     "path": "assets/source/polyhaven/models/potted_plant_01/textures/potted_plant_01_leaves_diff_1k.jpg",
+     "md5": "8cbaaa24c18c61be4201c473773dbffc",
+     "bytes": 124730,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/potted_plant_01/potted_plant_01_leaves_diff_1k.jpg"
+    }
+   ],
+   "note": "Village prop, 1K glTF bundle (container + .bin + external textures). Static, so it gets LOD1/LOD2.",
+   "lod_targets": [
+    [
+     1,
+     0.45
+    ],
+    [
+     2,
+     0.15
+    ]
+   ],
+   "format": "gltf + external textures",
+   "validation": "ok",
+   "mesh": {
+    "triangles": 19765,
+    "vertices": 113951,
+    "size_m": [
+     0.587,
+     0.856,
+     0.634
+    ],
+    "meshes": 4,
+    "materials": 2,
+    "source_triangles": 176226,
+    "reduced_to_budget": true
+   },
+   "lods": [
+    {
+     "lod": 0,
+     "triangles": 19765,
+     "path": "assets/runtime/models/potted_plant_01/lod0.gltf"
+    },
+    {
+     "lod": 1,
+     "triangles": 8844,
+     "path": "assets/runtime/models/potted_plant_01/lod1.gltf"
+    },
+    {
+     "lod": 2,
+     "triangles": 1053,
+     "path": "assets/runtime/models/potted_plant_01/lod2.gltf"
+    }
+   ],
+   "runtime": [
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod0.bin",
+     "bytes": 325438
+    },
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod0.gltf",
+     "bytes": 5572
+    },
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod1.bin",
+     "bytes": 162280
+    },
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod1.gltf",
+     "bytes": 5552
+    },
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod2.bin",
+     "bytes": 20750
+    },
+    {
+     "path": "assets/runtime/models/potted_plant_01/lod2.gltf",
+     "bytes": 5532
+    }
+   ],
+   "destination": "res://assets/runtime/models/potted_plant_01"
+  },
+  {
+   "id": "kloofendal_48d_partly_cloudy_puresky",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "kloofendal_48d_partly_cloudy_puresky",
+   "source_page": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+     "md5": "c69498687e876bf68d2a8b8a62234eb9",
+     "bytes": 1435119,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "quarry_01_puresky",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "quarry_01_puresky",
+   "source_page": "https://polyhaven.com/a/quarry_01_puresky",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/quarry_01_puresky_1k.hdr",
+     "md5": "dca1ba0cc540ed15cfdbbaabf78a4bba",
+     "bytes": 1195169,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/quarry_01_puresky_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "autumn_field_puresky",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "autumn_field_puresky",
+   "source_page": "https://polyhaven.com/a/autumn_field_puresky",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/autumn_field_puresky_1k.hdr",
+     "md5": "f9a6bd6d95a55e2d677b8a84b7f53673",
+     "bytes": 1092974,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/autumn_field_puresky_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "farm_field_puresky",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "farm_field_puresky",
+   "source_page": "https://polyhaven.com/a/farm_field_puresky",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/farm_field_puresky_1k.hdr",
+     "md5": "d9bb5cb9cbdbf253fd062846e1ec196a",
+     "bytes": 1341057,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/farm_field_puresky_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "dikhololo_night",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "dikhololo_night",
+   "source_page": "https://polyhaven.com/a/dikhololo_night",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/dikhololo_night_1k.hdr",
+     "md5": "4a760813214ec4d97da8e1739bb616a5",
+     "bytes": 1745132,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/dikhololo_night_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "moonless_golf",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "moonless_golf",
+   "source_page": "https://polyhaven.com/a/moonless_golf",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/moonless_golf_1k.hdr",
+     "md5": "da9edde9ad39465900a7935dc15ab8d7",
+     "bytes": 1672754,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/moonless_golf_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "clarens_night_01",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "clarens_night_01",
+   "source_page": "https://polyhaven.com/a/clarens_night_01",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/clarens_night_01_1k.hdr",
+     "md5": "f6d7e43aed2cc4bd943dcaac9cdbc300",
+     "bytes": 1691137,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/clarens_night_01_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "belfast_sunset_puresky",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "belfast_sunset_puresky",
+   "source_page": "https://polyhaven.com/a/belfast_sunset_puresky",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/belfast_sunset_puresky_1k.hdr",
+     "md5": "38890f597727936a44d17a97f7f73354",
+     "bytes": 1190247,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/belfast_sunset_puresky_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "venice_sunset",
+   "kind": "hdri",
+   "provider": "polyhaven",
+   "source_id": "venice_sunset",
+   "source_page": "https://polyhaven.com/a/venice_sunset",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Poly Haven (https://polyhaven.com)",
+   "original_resolution": "1k",
+   "original_format": "hdr",
+   "downloaded": "2026-09-29",
+   "category": "sky",
+   "blocks": [],
+   "files": [
+    {
+     "path": "assets/source/polyhaven/hdri/venice_sunset_1k.hdr",
+     "md5": "a5ec4d30fc3421c214a17b208fb66d5f",
+     "bytes": 1440400,
+     "source_url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr"
+    }
+   ],
+   "note": "Sky/environment probe for the day/night cycle."
+  },
+  {
+   "id": "kaykit_knight",
+   "kind": "character",
+   "provider": "kaykit",
+   "source_id": "Knight",
+   "source_page": "https://kaylousberg.itch.io/kaykitKnight",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Kay Lousberg (https://kaylousberg.itch.io/kaykit)",
+   "original_resolution": "n/a",
+   "original_format": "glb",
+   "downloaded": "2026-09-29",
+   "category": "characters",
+   "blocks": [],
+   "files": [
+    {
+     "path": "addons/kaykit_character_pack_adventures/Characters/gltf/Knight.glb",
+     "md5": "f75a3d81e3eb145a64e77684f7e44840",
+     "bytes": 3659532
+    }
+   ],
+   "note": "Villager body. Skinned + animated, so no LODs; see ART_DIRECTION.md. CC0."
+  },
+  {
+   "id": "kaykit_mage",
+   "kind": "character",
+   "provider": "kaykit",
+   "source_id": "Mage",
+   "source_page": "https://kaylousberg.itch.io/kaykitMage",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Kay Lousberg (https://kaylousberg.itch.io/kaykit)",
+   "original_resolution": "n/a",
+   "original_format": "glb",
+   "downloaded": "2026-09-29",
+   "category": "characters",
+   "blocks": [],
+   "files": [
+    {
+     "path": "addons/kaykit_character_pack_adventures/Characters/gltf/Mage.glb",
+     "md5": "3ba55d626d8cb673b50ca0b811c17869",
+     "bytes": 3589240
+    }
+   ],
+   "note": "Villager body. CC0."
+  },
+  {
+   "id": "kaykit_barbarian",
+   "kind": "character",
+   "provider": "kaykit",
+   "source_id": "Barbarian",
+   "source_page": "https://kaylousberg.itch.io/kaykitBarbarian",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Kay Lousberg (https://kaylousberg.itch.io/kaykit)",
+   "original_resolution": "n/a",
+   "original_format": "glb",
+   "downloaded": "2026-09-29",
+   "category": "characters",
+   "blocks": [],
+   "files": [
+    {
+     "path": "addons/kaykit_character_pack_adventures/Characters/gltf/Barbarian.glb",
+     "md5": "e65950b54afaebd873ddda94549aaafa",
+     "bytes": 3613268
+    }
+   ],
+   "note": "Villager body. CC0."
+  },
+  {
+   "id": "kaykit_skeleton_warrior",
+   "kind": "character",
+   "provider": "kaykit",
+   "source_id": "Skeleton_Warrior",
+   "source_page": "https://kaylousberg.itch.io/kaykitSkeleton_Warrior",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Kay Lousberg (https://kaylousberg.itch.io/kaykit)",
+   "original_resolution": "n/a",
+   "original_format": "glb",
+   "downloaded": "2026-09-29",
+   "category": "characters",
+   "blocks": [],
+   "files": [
+    {
+     "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Warrior.glb",
+     "md5": "00ece1318b7b87d399f36b996ecb019f",
+     "bytes": 4863620
+    }
+   ],
+   "note": "Mob body. CC0."
+  },
+  {
+   "id": "kaykit_skeleton_minion",
+   "kind": "character",
+   "provider": "kaykit",
+   "source_id": "Skeleton_Minion",
+   "source_page": "https://kaylousberg.itch.io/kaykitSkeleton_Minion",
+   "licence": "CC0 1.0 Universal (public domain dedication)",
+   "author": "Kay Lousberg (https://kaylousberg.itch.io/kaykit)",
+   "original_resolution": "n/a",
+   "original_format": "glb",
+   "downloaded": "2026-09-29",
+   "category": "characters",
+   "blocks": [],
+   "files": [
+    {
+     "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Minion.glb",
+     "md5": "3607d8f84adff46b98b86f7a3884d54f",
+     "bytes": 4814296
+    }
+   ],
+   "note": "Mob body. CC0."
+  }
+ ],
+ "licences": {
+  "polyhaven": "CC0 1.0 Universal (public domain dedication)",
+  "ambientcg": "CC0 1.0 Universal (public domain dedication)",
+  "kaykit": "CC0 1.0 Universal (public domain dedication)",
+  "derived": "CC0 1.0 Universal, derived from CC0 sources in this manifest",
+  "procedural": "Project original, no third-party content"
+ }
+}

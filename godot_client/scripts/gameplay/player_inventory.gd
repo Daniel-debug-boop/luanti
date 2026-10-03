@@ -135,7 +135,7 @@ static func eng_item_of(proto_id: String) -> String:
 ## entities need (name, colour, hardness, stack size).
 func _build_protoset() -> JSON:
 	var data := {}
-	for id in range(1, 32):
+	for id in range(1, ContentDB.MAX_ID + 1):
 		var entry := ContentDB.get_entry(id)
 		if entry == null or entry.name == "air":
 			continue
@@ -414,7 +414,7 @@ func selected_eng_item() -> String:
 ## ContentDB id for a block name, or -1. Lets a bill of materials be written
 ## in readable names ("copper", "steel") rather than magic numbers.
 static func block_id_by_name(block_name: String) -> int:
-	for id in range(1, 32):
+	for id in range(1, ContentDB.MAX_ID + 1):
 		if ContentDB.get_entry(id) != null and ContentDB.get_entry(id).name == block_name:
 			return id
 	return -1
@@ -473,30 +473,49 @@ func stow_selected() -> bool:
 	return true
 
 
-## Fill empty hotbar slots with carried blocks that are not already held.
+## Fill empty hotbar slots with carried items that are not already held.
 ## Without the "already held" filter a block that give_block() already auto-
 ## equipped (it fills the selected slot first) is picked again here and
 ## crowds out the block that would otherwise have taken the last free slot.
+##
+## Engineering parts are offered before blocks, deliberately. Stowing a block
+## (Q) puts it in the backpack, where it is still "not held" -- so a block-first
+## fill hands the freed slot straight back to the block that was just put
+## away, and the player can never make room for anything. At startup the
+## backpack holds no parts, so this ordering changes nothing about the
+## starting kit; it only decides what wins a slot that was just freed.
 func fill_hotbar_from_inventory() -> void:
 	var held := {}
 	for slot in hotbar:
 		var item := slot.get_item()
 		if item != null:
 			held[item.get_prototype().get_id()] = true
-	# Filter *before* consuming, so a block that is already held neither takes
-	# a slot nor shifts every later block one slot to the left.
-	var pending: Array[int] = []
+	# Filter *before* consuming, so an item that is already held neither takes
+	# a slot nor shifts every later one slot to the left.
+	var eng_pending: Array[String] = []
+	for eid in available_eng():
+		if not held.has(eng_prototype_id(eid)):
+			eng_pending.append(eid)
+	var block_pending: Array[int] = []
 	for bid in available_blocks():
 		if not held.has(prototype_id(bid)):
-			pending.append(bid)
+			block_pending.append(bid)
 	for i in hotbar.size():
-		if pending.is_empty():
-			return
 		if hotbar[i].get_item() != null:
 			continue
-		var item: InventoryItem = inventory.create_item(prototype_id(pending.pop_front()))
-		if item != null:
-			hotbar[i].equip(item)
+		if not eng_pending.is_empty():
+			var e: InventoryItem = inventory.create_item(
+				eng_prototype_id(eng_pending.pop_front()))
+			if e != null:
+				hotbar[i].equip(e)
+			continue
+		if not block_pending.is_empty():
+			var b: InventoryItem = inventory.create_item(
+				prototype_id(block_pending.pop_front()))
+			if b != null:
+				hotbar[i].equip(b)
+			continue
+		return
 
 
 ## One of every placeable block. Starting kit and test fixture.
@@ -523,14 +542,30 @@ func serialize() -> Dictionary:
 
 
 ## Restores a serialize() payload. Returns false when the shape is wrong.
+##
+## The backpack is rebuilt item by item rather than handed to GLoot's own
+## `Inventory.deserialize()`. Two reasons, both learned the hard way:
+##
+## 1. GLoot's `protoset` setter calls `clear()`. Restoring first and then
+##    re-applying the protoset -- which is what this used to do, and what
+##    GLoot's own docs suggest -- deletes every item it just restored. The
+##    symptom was silent and total: F5 then F9 left the player with an empty
+##    backpack and a cheerful "loaded slot 1". Restoring through the shared
+##    protoset from the start means there is never a second protoset to swap.
+## 2. GLoot's `InventoryItem.deserialize()` rebuilds each item's protoset from
+##    a JSON string embedded in the save, so restored items belong to a
+##    private protoset. GLoot compares protosets by identity in
+##    `can_hold_item()`, so those items can never be equipped to a slot or
+##    stacked again afterwards. Reading `count` out of the payload and
+##    rebuilding against the live protoset keeps one protoset in the process.
 func deserialize(data: Dictionary) -> bool:
 	if typeof(data.get("backpack")) != TYPE_DICTIONARY:
 		return false
-	if not inventory.deserialize(data["backpack"]):
+	if not _restore_backpack(data["backpack"]):
 		return false
-	# deserialize() rebuilds from scratch, so re-apply the protoset and clear
-	# the slots before reading them back.
-	inventory.protoset = protoset
+	# The slots are cleared after the backpack, so the items a slot is holding
+	# are still in the container while it releases them, and the released
+	# stacks are not lost.
 	for slot in hotbar:
 		slot.protoset = protoset
 		slot.clear()
@@ -557,6 +592,47 @@ func deserialize(data: Dictionary) -> bool:
 			if n != 1:
 				item.set_property("count", n)
 	select_slot(int(data.get("selected", 0)))
+	return true
+
+
+## Rebuild the backpack container from a serialized `backpack` section.
+## Returns false only when the payload is not shaped like a backpack.
+func _restore_backpack(pack: Dictionary) -> bool:
+	# A missing "items" key is not a broken payload -- GLoot omits it when the
+	# container is empty, and an empty backpack is a perfectly good thing to
+	# load. Treating that as a failure meant loading any save made with an
+	# empty pack reported "inventory could not be restored", which is how a
+	# healthy save gets reported as a broken one.
+	if pack.has("items") and not (pack["items"] is Array):
+		return false
+	var items: Array = pack.get("items", [])
+	# Assigning the protoset first: the setter clears the container, and we
+	# want the live protoset in place before anything is added back.
+	inventory.protoset = protoset
+	inventory.clear()
+	var restored := 0
+	for d in items:
+		if not (d is Dictionary):
+			continue
+		var pid := str((d as Dictionary).get("prototype_id", ""))
+		if pid == "" or not protoset.data.has(pid):
+			# An item from a prototype this build does not have -- a removed
+			# mod, or an older save. Skipping it loses that stack, but
+			# refusing the whole load would lose everything.
+			continue
+		var item: InventoryItem = inventory.create_item(pid)
+		if item == null:
+			continue
+		var n := _count_from_serialized(d as Dictionary)
+		if n != 1:
+			item.set_property("count", n)
+		if not inventory.add_item(item):
+			# The backpack is full. That is a real state, not a failure of
+			# the load, so the rest of the save still applies.
+			push_warning("[inventory] backpack full; %d item(s) not restored"
+				% (items.size() - restored))
+			break
+		restored += 1
 	return true
 
 

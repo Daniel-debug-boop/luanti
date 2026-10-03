@@ -21,6 +21,11 @@ func _init() -> void:
 
 func _run() -> void:
 	# --- Materials: triplanar, POM (heightmap), detail ---
+	# POM is an ULTRA-only effect (assets/ART_DIRECTION.md): it costs a ray
+	# march per fragment on faces that are flat by construction, so paying
+	# for it below ULTRA buys relief nobody can see at the frame rate the
+	# lower tiers are there to hold. The default library is HIGH, so POM is
+	# expected to be OFF here and is asserted at ULTRA further down.
 	var lib := MaterialLibrary.new()
 	lib.prime()
 	print("materials: ", lib.describe())
@@ -28,8 +33,9 @@ func _run() -> void:
 	print("material effects: ", fx)
 
 	check(fx.materials > 0, "no textured materials were built")
-	check(fx.pom > 0,
-		"parallax occlusion (heightmap) is on for no materials")
+	check(fx.pom == 0,
+		"POM is on for %d materials at the default tier; it is ULTRA-only"
+			% int(fx.pom))
 	check(fx.detail > 0, "the detail layer is on for no materials")
 	# Godot silently discards the heightmap on a triplanar material, so POM
 	# and triplanar must never be on the same material at the same time.
@@ -45,19 +51,39 @@ func _run() -> void:
 		print("\nrender-settings: FAILURES (no grass material)")
 		quit(1)
 		return
-	check(grass.heightmap_enabled,
-		"grass has no heightmap, so no parallax occlusion")
-	check(grass.heightmap_texture != null,
-		"grass heightmap has no displacement texture bound")
-	check(grass.heightmap_deep_parallax,
-		"grass is not using the occlusion-marched POM variant")
-	check(not grass.uv1_triplanar,
-		"grass has both POM and triplanar on at once")
+	check(grass.albedo_texture != null,
+		"grass has no albedo texture, so it is rendering as flat vertex colour")
+	check(not grass.heightmap_enabled,
+		"grass has a heightmap at the default tier; POM is ULTRA-only")
 	check(grass.detail_enabled, "grass has no detail layer")
 	check(grass.detail_albedo != null, "grass detail layer has no texture")
 	# The detail layer reads UV2, which the mesher must be emitting.
 	check(grass.detail_uv_layer == BaseMaterial3D.DETAIL_UV_2,
 		"the detail layer is not reading UV2")
+
+	# --- ULTRA is where POM lives ---
+	var ultra := MaterialLibrary.new()
+	ultra.apply_quality(MaterialLibrary.Quality.ULTRA)
+	ultra.prime()
+	var ultra_fx := ultra.effect_counts()
+	print("ultra material effects: ", ultra_fx)
+	check(int(ultra_fx.pom) > 0,
+		"POM is on for no materials at ULTRA, so the only tier that pays "
+			+ "for it does not get it")
+	check(ultra.texture_tier() == 2048,
+		"ULTRA is not standing on the 2048 rung (%d)"
+			% ultra.texture_tier())
+	var ugrass := ultra.material_for(ContentDB.GRASS) as StandardMaterial3D
+	check(ugrass != null, "grass has no material at ULTRA")
+	if ugrass != null:
+		check(ugrass.heightmap_enabled,
+			"grass has no heightmap at ULTRA, so no parallax occlusion")
+		check(ugrass.heightmap_texture != null,
+			"grass heightmap has no displacement texture bound")
+		check(ugrass.heightmap_deep_parallax,
+			"grass is not using the occlusion-marched POM variant")
+		check(not ugrass.uv1_triplanar,
+			"grass has both POM and triplanar on at once")
 
 	# --- Switching to triplanar turns the heightmap off, not on alongside it ---
 	var tri := MaterialLibrary.new()
@@ -112,6 +138,18 @@ func _run() -> void:
 		check(code.contains("acegiak"),
 			"the upstream attribution was dropped from the shader")
 
+	# --- The stochastic shader needs POM off, which is now the default ---
+	# POM is ULTRA-only and the stochastic path is a ShaderMaterial that
+	# samples its own maps, so a ULTRA stochastic material must not also be
+	# carrying a heightmap property that would never be read.
+	var stoch_ultra := MaterialLibrary.new()
+	stoch_ultra.apply_quality(MaterialLibrary.Quality.ULTRA)
+	stoch_ultra.set_mapping(MaterialLibrary.Mapping.STOCHASTIC)
+	stoch_ultra.prime()
+	var su := stoch_ultra.material_for(ContentDB.GRASS)
+	check(su is ShaderMaterial,
+		"grass is not a stochastic ShaderMaterial at ULTRA")
+
 	# The mesher has to actually produce that UV2 set.
 	var block := VoxelBlock.new()
 	block.is_loaded = true
@@ -144,6 +182,18 @@ func _run() -> void:
 	print("low tier material effects: ", low_fx)
 	check(low_fx.pom == 0, "POM is still on at the low tier")
 	check(low_fx.detail == 0, "the detail layer is still on at the low tier")
+	check(low.texture_tier() == 512,
+		"the low tier is not on the 512 rung (%d)" % low.texture_tier())
+
+	# HIGH must stand on a higher rung than LOW or the ladder does nothing.
+	var high := MaterialLibrary.new()
+	high.apply_quality(MaterialLibrary.Quality.HIGH)
+	high.prime()
+	check(high.texture_tier() > low.texture_tier(),
+		"HIGH (%d) and LOW (%d) stand on the same rung; the ladder is flat"
+			% [high.texture_tier(), low.texture_tier()])
+	check(high.texture_vram_mb() > 0.0,
+		"HIGH reports 0 MB of texture VRAM, so nothing was bound")
 
 	# --- Environment: SSAO, SSIL, volumetric fog, glow ---
 	var settings := RenderSettings.new()
@@ -213,7 +263,12 @@ func _run() -> void:
 	var main: Node3D = load("res://scenes/main.tscn").instantiate()
 	main.set("world_dir", "/tmp/testchunks")
 	main.set("view_radius", 2)
-	main.set("render_quality", 2)
+	# ULTRA, not HIGH: POM is an ULTRA-only effect (the same contract asserted
+	# above), so a scene driven at HIGH can never have a heightmap on a live
+	# surface. Driving it at ULTRA is what makes the POM assertions below
+	# end-to-end -- they check the materials the real scene actually built,
+	# not a library primed in isolation.
+	main.set("render_quality", 3)
 	root.add_child(main)
 
 	var scene_settings: RenderSettings = main.get("settings")
