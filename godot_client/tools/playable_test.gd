@@ -123,6 +123,13 @@ func _step() -> void:
 func _step_tree(node: Node) -> void:
 	if node.has_method("_process"):
 		node.call("_process", 1.0 / 60.0)
+	# `_physics_process` too. It used to be skipped, which was invisible while
+	# mining credited the inventory directly: the drops that fell out of reach
+	# did not matter. Now that the drop is the only acquisition path, a player
+	# who does not fall and land under gravity never reaches their own drops,
+	# and the test walks the player in mid-air.
+	if node.has_method("_physics_process"):
+		node.call("_physics_process", 1.0 / 60.0)
 	for child in node.get_children():
 		_step_tree(child)
 
@@ -191,6 +198,54 @@ func _mine_through(world: VoxelWorld, player: Player,
 	return false
 
 
+## The nearest drop of `id` in the world, whatever its distance. Null if there
+## is none.
+func _nearest_drop(player: Player, id: int) -> BlockDrop:
+	var best: BlockDrop = null
+	var best_d := INF
+	for n in get_nodes_in_group("drops"):
+		var d := n as BlockDrop
+		if d == null or not is_instance_valid(d) or d.block_id != id:
+			continue
+		var dist: float = d.world_position().distance_to(player.global_position)
+		if dist < best_d:
+			best_d = dist
+			best = d
+	return best
+
+
+## Walk the player over to their drops until the count of `id` rises above
+## `before`, or `max_frames` frames have passed. Returns whether it did.
+##
+## The drop is the only path a mined block has into the backpack, so this has
+## to stand in for the player walking over to it. It genuinely has to: a
+## player can chop a block most of a reach away, the item lands where the
+## block was, and `BlockDrop.PICKUP_RADIUS` is a body and a half -- so the
+## drop routinely settles outside it of whoever mined it. Waiting in place
+## for the count to change is not a stricter version of this test, it is a
+## different one that can never pass.
+##
+## Position is set the same way `_walk_to` sets it, and for the same reason:
+## a headless run reads no key state, so the walk cannot be synthesised
+## without measuring the synthesiser instead of the game.
+func _gather_drops(player: Player, inventory: PlayerInventory, id: int,
+		before: int, max_frames: int) -> bool:
+	for _i in max_frames:
+		_step()
+		if inventory.count_of(id) > before:
+			return true
+		var d := _nearest_drop(player, id)
+		if d == null:
+			continue
+		# Hover above it rather than at its height. The item settles on top of
+		# whatever is below it, which may be a block face the player cannot
+		# occupy, and where the player stands vertically is not what this is
+		# testing.
+		var p := d.world_position()
+		player.position = Vector3(p.x, maxf(player.position.y, p.y), p.z)
+	return false
+
+
 ## The nearest block of `id` within `max_dist` of the player, scanning a box
 ## around them.
 func _nearest_block(world: VoxelWorld, player: Player, id: int,
@@ -249,26 +304,32 @@ func _mine(world: VoxelWorld, player: Player, interaction: PlayerInteraction,
 	_walk_to(player, tree)
 	check(player.get_block_position().distance_to(tree) < 8,
 		"the player can walk to the tree")
+	# The baseline is whatever the starting kit holds, so the assertion is
+	# "the count went up by the time the player has walked over the drop",
+	# not "the count is at least one".
 	var wood_before := inventory.count_of(ContentDB.WOOD)
 	var got := _mine_through(world, player, interaction, tree, ContentDB.WOOD)
 	check(got, "the player can break the wood at %s" % str(tree))
 	check(interaction.mined > 0, "holding the mouse mines blocks")
 
-	# The block must reach the backpack, or mining is a light show. The drop
-	# entity falls, and main._collect_drops() picks it up.
-	var collected := false
-	for i in 900:
-		_step()
-		if inventory.count_of(ContentDB.WOOD) > wood_before:
-			collected = true
-			break
+	# The drop is the only way a mined block reaches the backpack, so both
+	# halves have to hold: the block became an item lying in the world, and
+	# that item is what the player picks up.
+	check(_nearest_drop(player, ContentDB.WOOD) != null,
+		"the broken block is lying in the world as an item")
+	var collected := _gather_drops(player, inventory, ContentDB.WOOD,
+		wood_before, 900)
 	check(collected, "the chopped wood reaches the backpack")
 
 	# Chop the rest of what the workbench needs, so the next stage is reached
 	# by playing rather than by handing the player materials.
-	var need := 8 - EngItems.count_bill_item(inventory, "wood")
 	var chopped := 0
-	while EngItems.count_bill_item(inventory, "wood") < 8 and chopped < 24:
+	# Every iteration counts, including the ones that only move the player.
+	# The bound used to be `chopped`, which the "walk to the next trunk" branch
+	# reached with `continue` and so never incremented: a player who could
+	# see wood but never reach it looped forever.
+	while EngItems.count_bill_item(inventory, "wood") < 8 and chopped < 32:
+		chopped += 1
 		var more := _nearest_block(world, player, ContentDB.WOOD, 6.0)
 		if more == Vector3i.ZERO:
 			# Out of arm's reach: walk to the next trunk and carry on.
@@ -278,14 +339,11 @@ func _mine(world: VoxelWorld, player: Player, interaction: PlayerInteraction,
 			tree = far
 			_walk_to(player, far)
 			continue
+		var had := EngItems.count_bill_item(inventory, "wood")
 		_mine_through(world, player, interaction, more, ContentDB.WOOD)
-		for i in 400:
-			_step()
-			if EngItems.count_bill_item(inventory, "wood") >= 8:
-				break
-		chopped += 1
+		_gather_drops(player, inventory, ContentDB.WOOD, had, 400)
 	print("  wood now: ", EngItems.count_bill_item(inventory, "wood"),
-		" after chopping ", chopped + 1, " logs")
+		" after ", chopped, " attempts")
 
 
 ## Drop the player onto the surface below them, which is what

@@ -165,16 +165,27 @@ func _build_protoset() -> JSON:
 # --- stacking helpers -------------------------------------------------------
 
 ## Find an item carrying `block_id` anywhere: hotbar first, then backpack.
-func _find_item(block_id: int) -> InventoryItem:
+## Every stack of one block id, hotbar first then the backpack.
+##
+## The single-stack finder this replaces returned only the first match, which
+## made every count wrong once an item occupied two stacks: a player with a
+## half-full stack and a nearly-full one was reported as holding the first.
+func _items_of(block_id: int) -> Array[InventoryItem]:
 	var proto := prototype_id(block_id)
+	var out: Array[InventoryItem] = []
 	for slot in hotbar:
 		var held := slot.get_item()
 		if held != null and held.get_prototype().get_id() == proto:
-			return held
+			out.append(held)
 	for item in inventory.get_items():
 		if item.get_prototype().get_id() == proto:
-			return item
-	return null
+			out.append(item)
+	return out
+
+
+func _find_item(block_id: int) -> InventoryItem:
+	var all := _items_of(block_id)
+	return all[0] if all.size() > 0 else null
 
 
 # --- mining / placing -------------------------------------------------------
@@ -188,14 +199,16 @@ func give_block(block_id: int) -> int:
 	if not protoset.data.has(prototype_id(block_id)):
 		return -1
 
-	var existing := _find_item(block_id)
-	if existing != null:
-		var n := int(existing.get_property("count", 1))
+	# Top up every matching stack that has room before opening a new one. It
+	# used to top up the first stack and then refuse outright, so a player
+	# with a full stack and a part-full one lost the block even though there
+	# was room for it.
+	for item in _items_of(block_id):
+		var n := int(item.get_property("count", 1))
 		if n < MAX_STACK:
-			existing.set_property("count", n + 1)
+			item.set_property("count", n + 1)
 			item_gained.emit(block_id, n + 1)
 			return block_id
-		return -1   # that stack is full; refuse rather than lose the block
 
 	var item: InventoryItem = inventory.create_and_add_item(prototype_id(block_id))
 	if item == null:
@@ -259,11 +272,16 @@ func consume_block(block_id: int, n: int = 1) -> int:
 
 
 ## How many of a block the player is carrying, hotbar and backpack together.
+##
+## Summed across every matching stack. It used to return the count of the first
+## one found, so a player holding 400 blocks as a partial stack and a full one
+## was told they had the partial stack's worth -- which is fewer blocks than
+## they can actually place, and more than any single stack holds.
 func count_of(block_id: int) -> int:
-	var item := _find_item(block_id)
-	if item == null:
-		return 0
-	return int(item.get_property("count", 1))
+	var total := 0
+	for item in _items_of(block_id):
+		total += int(item.get_property("count", 1))
+	return total
 
 
 ## Distinct block ids the player is carrying, ascending.
@@ -292,16 +310,23 @@ func available_blocks() -> Array[int]:
 # The same GLoot machinery, the same backpack, the same save. Only the id
 # scheme differs, and the block helpers above are untouched by it.
 
-func _find_eng(item: String) -> InventoryItem:
+## Every stack of one engineering item, hotbar first then the backpack.
+func _eng_items(item: String) -> Array[InventoryItem]:
 	var proto := eng_prototype_id(item)
+	var out: Array[InventoryItem] = []
 	for slot in hotbar:
 		var held := slot.get_item()
 		if held != null and held.get_prototype().get_id() == proto:
-			return held
+			out.append(held)
 	for it in inventory.get_items():
 		if it.get_prototype().get_id() == proto:
-			return it
-	return null
+			out.append(it)
+	return out
+
+
+func _find_eng(item: String) -> InventoryItem:
+	var all := _eng_items(item)
+	return all[0] if all.size() > 0 else null
 
 
 ## Add engineering items to the backpack. Returns how many were actually
@@ -310,24 +335,41 @@ func give_eng(item: String, n: int = 1) -> int:
 	if n <= 0 or not protoset.data.has(eng_prototype_id(item)):
 		return 0
 	var stored := 0
+	# Walk the existing stacks with a moving index rather than re-finding the
+	# first one each time. Re-finding returned the same full stack forever, so
+	# a `break` on it ended the whole operation while a second stack sat right
+	# there with room in it.
+	var stacks := _eng_items(item)
+	var si := 0
 	while stored < n:
-		var existing := _find_eng(item)
-		if existing != null:
+		while si < stacks.size():
+			var existing := stacks[si]
 			var count := int(existing.get_property("count", 1))
 			if count >= MAX_STACK:
+				si += 1
+				continue
+			# Fill this stack to the brim in one go rather than one per
+			# iteration; the loop below only has to handle the remainder.
+			var room := MAX_STACK - count
+			var take := mini(room, n - stored)
+			existing.set_property("count", count + take)
+			stored += take
+			if stored >= n:
 				break
-			existing.set_property("count", count + 1)
-			stored += 1
-			continue
+			si += 1
+		if stored >= n:
+			break
 		var made: InventoryItem = inventory.create_and_add_item(
 			eng_prototype_id(item))
 		if made == null:
 			break
-		made.set_property("count", 1)
+		var start := mini(MAX_STACK, n - stored)
+		made.set_property("count", start)
+		stored += start
+		stacks.append(made)
 		var slot := get_selected_slot()
 		if slot != null and slot.get_item() == null:
 			slot.equip(made)
-		stored += 1
 	return stored
 
 
@@ -357,10 +399,15 @@ func consume_eng(item: String, n: int = 1) -> int:
 	return removed
 
 
-## How many of an engineering item the player is carrying.
+## How many of an engineering item the player is carrying, summed across every
+## matching stack. It used to report the first stack only, so a bill of
+## materials could be judged unaffordable while the parts were in fact sitting
+## in the backpack in two piles.
 func count_eng(item: String) -> int:
-	var found := _find_eng(item)
-	return 0 if found == null else int(found.get_property("count", 1))
+	var total := 0
+	for it in _eng_items(item):
+		total += int(it.get_property("count", 1))
+	return total
 
 
 ## Can the player actually afford a bill of materials? Used before a

@@ -23,6 +23,9 @@ var block_id := 0
 var world: VoxelWorld = null
 
 var _velocity := Vector3.ZERO
+## Set the moment this drop is credited to an inventory, so it can only ever be
+## collected once. See `try_collect`.
+var _taken := false
 var _age := 0.0
 var _base_y := 0.0
 var _settled := false
@@ -92,13 +95,29 @@ func _process(delta: float) -> void:
 		_velocity.y -= GRAVITY * delta
 		position += _velocity * delta
 		# Settle on the first solid block below.
+		#
+		# This checks the single cell under the drop's *current* position, and
+		# only after it has already moved there. A drop that is falling fast
+		# moves several blocks in one frame, so it steps clean over the surface
+		# that should have caught it and keeps going: mining a tree trunk left
+		# the drop falling through the world 20 m past the player who mined it,
+		# and since the drop is the authoritative acquisition path the block was
+		# simply gone. The column from the drop down to the world floor is
+		# searched instead, and the drop is placed on the topmost solid cell.
 		if world != null and is_instance_valid(world) and _velocity.y < 0.0:
-			var below := Vector3i(floori(position.x), floori(position.y) - 1,
-				floori(position.z))
-			if world.solid_at(below) or position.y < 1.0:
+			var cx := floori(position.x)
+			var cz := floori(position.z)
+			var found := -2147483648
+			# Bounded so a drop in unloaded space does not scan to y = -2^31.
+			var scan_from := clampi(floori(position.y), -64, 512)
+			for y in range(scan_from, -64, -1):
+				if world.solid_at(Vector3i(cx, y, cz)):
+					found = y
+					break
+			if found > -2147483647 or position.y < 1.0:
 				_settled = true
-				_base_y = floorf(position.y)
-				position.y = maxf(position.y, _base_y + 0.15)
+				_base_y = float(found) if found > -2147483647 else 0.0
+				position.y = _base_y + 0.85
 		if position.y < 0.0:
 			_settled = true
 			_base_y = 0.0
@@ -109,12 +128,25 @@ func _process(delta: float) -> void:
 
 
 ## Called by the player when within reach. Returns true when collected.
+##
+## The `_taken` latch is the whole point. `queue_free()` is deferred to the end
+## of the frame, so without it a second collection in the same frame -- a
+## player standing still in a pickup radius while the game checks twice, or
+## two systems both noticing the same drop -- credits the inventory again and
+## the drop is duplicated. It is set before the give, not after, so even a
+## re-entrant call cannot slip past it.
 func try_collect(player_pos: Vector3, inv: PlayerInventory) -> bool:
+	if _taken:
+		return false
 	if inv == null or not is_instance_valid(inv):
 		return false
 	if world_position().distance_to(player_pos) > PICKUP_RADIUS:
 		return false
+	_taken = true
 	if inv.give_block(block_id) < 0:
+		# The inventory was full. Un-latch, so the drop survives to be picked
+		# up once there is room, rather than vanishing along with the item.
+		_taken = false
 		return false
 	queue_free()
 	return true

@@ -131,11 +131,12 @@ func _advance_break(id: int, delta: float) -> void:
 	if break_progress >= 1.0:
 		if world.break_block(_mine_pos):
 			mined += 1
-			# Mining now produces an item rather than vanishing.
-			if inventory != null and is_instance_valid(inventory):
-				inventory.give_block(id)
-			# ...and also a physical drop to walk over, so mining is worth
-			# walking to rather than free.
+			# Exactly one acquisition path. Mining used to both credit the
+			# inventory directly and spawn a drop, and the drop credited the
+			# inventory again when walked over -- so every block mined yielded
+			# two. The drop is the authoritative path: it is what makes mining
+			# worth walking to, and `BlockDrop.try_collect` is the only place a
+			# mined block becomes an item.
 			BlockDrop.spawn(_drops_node(), world, id,
 				Vector3(_mine_pos) + Vector3(0.5, 0.3, 0.5))
 			if audio != null:
