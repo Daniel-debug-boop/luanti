@@ -22,9 +22,10 @@ import argparse
 import json
 import os
 import sqlite3
-import struct
 import sys
 import zlib
+
+import chunk_format
 
 try:
     import zstandard as zstd
@@ -198,29 +199,24 @@ def fetch_blob(con: sqlite3.Connection, x: int, y: int, z: int) -> bytes | None:
 
 
 def write_chunk(path: str, block: dict) -> int:
-    """Write one chunk file: a small header plus the three node arrays.
+    """Write one chunk file: a 10-byte header plus the three node arrays.
 
-    Layout (all little-endian):
-        magic   u32  'LVXC'
-        version u16  1
-        flags   u16  block flags
-        cwidth  u8   content array width (1 or 2)
-        reserved u8
-        content content_width * 4096 bytes
-        light   4096 bytes
-        param2  4096 bytes
+    The layout lives in `chunk_format`, which `chunk_files.gd` also follows.
+    It used to be spelled out here with a `struct.pack("<IHHBB", ...)` and a
+    hardcoded 9, and those two disagreed: the struct is 10 bytes, so every
+    file was written one byte longer than the reader expected and every chunk
+    was read one byte out of step.
     """
     content = block["content"]
+    header = chunk_format.pack_header(chunk_format.VERSION,
+                                      block["flags"],
+                                      block["content_width"])
     with open(path, "wb") as fh:
-        # 9-byte header: no implicit padding in struct.pack, so the reserved
-        # byte is written explicitly.
-        fh.write(struct.pack("<IHHBB", 0x4358564C, 1,
-                             block["flags"] & 0xFFFF, block["content_width"],
-                             0))
+        fh.write(header)
         fh.write(content)
         fh.write(block["light"])
         fh.write(block["param2"])
-    return len(content) + len(block["light"]) + len(block["param2"]) + 9
+    return len(header) + len(content) + len(block["light"]) + len(block["param2"])
 
 
 def main() -> int:

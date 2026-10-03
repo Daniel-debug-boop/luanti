@@ -199,6 +199,10 @@ func _ready() -> void:
 	player = Player.new()
 	player.name = "Player"
 	player.world = world
+	# The player's respawn point, so a fatal fall returns them to the same
+	# place they started rather than to a hardcoded default that happens to
+	# match today.
+	player.spawn = spawn
 	add_child(player)
 	player.position = spawn
 
