@@ -39,7 +39,13 @@ static func register(system: System, owner_object: Object = null,
 		name_override := "") -> String:
 	var key := name_override if name_override != "" else system.system_name
 	if owner_object != null:
-		system.owner_object = owner_object
+		if owner_object == system:
+			# Registering a System as its own owner. The flag, rather than
+			# `owner_object = system`, because a RefCounted holding itself
+			# never frees -- see `System.owns_self`.
+			system.owns_self = true
+		else:
+			system.owner_object = owner_object
 	if key == "":
 		system.last_error = "a system must have a name"
 		return system.last_error
@@ -54,9 +60,14 @@ static func register(system: System, owner_object: Object = null,
 
 ## The object a system owns, or null. This is what callers want: the world,
 ## not the wrapper around the world.
+##
+## A system that owns itself answers with itself, so `get_owner("emergent")`
+## resolves to the live layer rather than to null.
 static func get_owner(key: String) -> Object:
 	var s := get_system(key)
-	return null if s == null else s.owner_object
+	if s == null:
+		return null
+	return s if s.owns_self else s.owner_object
 
 
 static func get_system(key: String) -> System:

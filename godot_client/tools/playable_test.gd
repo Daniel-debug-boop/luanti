@@ -100,12 +100,71 @@ func _run() -> void:
 		_finish()
 		return
 
+	_registry_drives_the_real_systems(main, persistence)
+
 	_mine(world, player, interaction, inventory)
 	_place(world, player, interaction, inventory)
 	_engineering(player, engineering, inventory)
 	_save_and_reload(main, world, player, engineering, inventory, persistence)
 
 	_finish()
+
+
+## The registry must drive the REAL system objects, not stand-ins for them.
+##
+## This is the check that would have caught the emergent layer being dead in
+## the shipped game. `main.gd` builds its lifecycle handle from
+## `_system(...)`, which used to wrap every owner in a brand-new `System` --
+## including the two owners that are already `System`s. The wrapper carried
+## the state, the registry happily reported it RUNNING, and the real
+## `EmergentSystem` behind it was never `initialize()`d: `graph` and `causal`
+## stayed null for the whole session. Every unit test that constructed the
+## layer itself passed, the health report said everything was fine, and in
+## play the first swing raised `entities_near in base 'Nil'` and the first
+## save raised `serialize in base 'Nil'`.
+##
+## So the assertions are about identity and liveness, not about state: the
+## object in the registry is the object main holds, it was actually
+## initialized, it actually ticked during the 120 frames above, and it can
+## produce a save payload without a null dereference.
+func _registry_drives_the_real_systems(main: Node3D, persistence: Persistence) -> void:
+	print("-- the registry drives the real systems --")
+	var em: EmergentSystem = main.get("emergent")
+	check(em != null, "the composition root built an emergent layer")
+	if em == null:
+		return
+	check(SystemRegistry.get_system("emergent") == em,
+		"the registered emergent system IS main's layer, not a stand-in")
+	check(SystemRegistry.get_owner("emergent") == em,
+		"and the registry resolves its owner back to that same object")
+	check(em.state == System.State.RUNNING,
+		"the real layer reached RUNNING (state %s)" % em._state_name())
+	check(em.graph != null and em.causal != null,
+		"initialize() really ran: graph and causal are both live")
+	check(em.tick_count > 0,
+		"and it ticked during the session (tick_count %d)" % em.tick_count)
+
+	# The identity check is structural; this is the behaviour it protects. A
+	# layer that is registered but never initialized serializes to a null
+	# dereference, which is exactly what the first F5 used to do.
+	var payload := em.serialize()
+	check(payload.has("graph") and payload.has("rules"),
+		"the live layer can be captured for a save")
+
+	check(persistence != null, "the persistence layer exists")
+	if persistence == null:
+		return
+	check(SystemRegistry.get_system("persistence") == persistence,
+		"and the registered persistence system is the real one too")
+	check(persistence.state == System.State.RUNNING,
+		"so it reached RUNNING (state %s)" % persistence._state_name())
+
+	# A layer that owns itself must not hold a RefCounted reference to itself:
+	# that cycle never reaches zero and the process reports resources still in
+	# use at exit. `owns_self` is the flag `get_owner` answers from instead.
+	check(em.owns_self == true, "the emergent layer declares itself self-owned")
+	check(em.owner_object == null,
+		"and holds no self-reference, which would leak at exit")
 
 
 ## Step every node's own _process by hand, so the test is deterministic and

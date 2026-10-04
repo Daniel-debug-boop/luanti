@@ -1055,11 +1055,30 @@ func _register_systems() -> void:
 	api = GameApi.new()
 
 
-## A lifecycle wrapper for something `main.gd` already owns. The wrapper does
-## not take ownership of the node -- `main.gd` still frees it -- it only
-## carries the state, the error and the teardown accounting.
+## The lifecycle handle for something `main.gd` already owns, ready to register.
+##
+## If the owner IS a `System` -- the emergent layer and the persistence layer
+## both are -- it registers as itself, so the registry drives the real object's
+## `initialize()`, `run()` and `tick()` and tears down the real object's
+## resources. It used to be wrapped unconditionally, which was invisible and
+## total: the wrapper carried the state while the layer behind it was never
+## initialized and never ticked. `EmergentSystem.graph` and `.causal` stayed
+## null for the whole session, so a player's first swing hit
+## `entities_near in base 'Nil'` and the first save hit `serialize in base
+## 'Nil'` -- and the entire emergent layer, the golf holes and causal rules the
+## architecture document is built around, silently did nothing in the shipped
+## game while every test that constructed the layer itself passed.
+##
+## A node that is not a `System` (the world, the player, the village) still
+## gets a wrapper: there is nothing else for the registry to drive, and the
+## wrapper carries the state, the error and the teardown accounting without
+## taking ownership -- `main.gd` still frees the node.
 func _system(key: String, owns: String, owner_object: Object) -> System:
-	var s := System.new()
+	var s: System
+	if owner_object is System:
+		s = owner_object as System
+	else:
+		s = System.new()
 	s.system_name = key
 	s.owns = owns
 	return s

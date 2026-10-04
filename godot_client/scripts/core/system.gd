@@ -55,6 +55,15 @@ var last_error := ""
 ## so a typed base class here would mean every system had to be one or the
 ## other, and the world is a `Node3D` while the authority is not.
 var owner_object: Object = null
+## True when this system IS the thing it owns, so there is no separate
+## `owner_object` to point at. Set by the composition root when it registers
+## something that is already a `System`.
+##
+## It is a flag rather than `owner_object = self` on purpose: a reference from
+## a `RefCounted` to itself never reaches zero, so the system would outlive the
+## scene that made it and the process would report resources still in use at
+## exit. `get_owner` answers from this instead.
+var owns_self := false
 
 ## What this system created and therefore must release. A subclass appends to
 ## these in `initialize()` and drains them in `_release()`; there is no path

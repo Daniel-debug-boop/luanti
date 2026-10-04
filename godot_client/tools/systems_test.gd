@@ -13,6 +13,7 @@ var _fails := 0
 
 func _init() -> void:
 	_test_one_owner_per_system()
+	_test_a_system_may_own_itself()
 	_test_lifecycle_is_enforced()
 	_test_teardown_is_idempotent_and_total()
 	_test_teardown_drops_connections()
@@ -100,6 +101,44 @@ func _test_one_owner_per_system() -> void:
 	_eq(why.contains("exactly one"), true, "and the reason names the rule")
 	_eq(SystemRegistry.get_owner("world") == node, true,
 		"and the first world is still the owner")
+	SystemRegistry.clear()
+
+
+## Registering a System that IS its own owner -- which is what the emergent
+## and persistence layers are.
+##
+## This is the seam the composition root broke: it wrapped every owner in a
+## fresh `System`, including the two that already were one, so the registry
+## drove a stand-in while the real layer never initialized. The flag exists so
+## that mistake has a correct shape to be made in -- and the reason it is a
+## flag rather than `owner_object = system` is that a RefCounted pointing at
+## itself never frees.
+func _test_a_system_may_own_itself() -> void:
+	SystemRegistry.clear()
+	var em := EmergentSystem.new()
+	em.system_name = "emergent"
+	em.owns = "capabilities"
+	_eq(SystemRegistry.register(em, em), "",
+		"a System registered as its own owner registers")
+	_eq(SystemRegistry.get_system("emergent") == em, true,
+		"the registry holds that exact object, not a wrapper around it")
+	_eq(SystemRegistry.get_owner("emergent") == em, true,
+		"and get_owner resolves back to it rather than to null")
+	_eq(em.owner_object == null, true,
+		"without self-referencing, which would keep it alive forever")
+	_eq(em.owns_self, true, "and says so")
+
+	# The part the dead layer was missing: the registry must initialize,
+	# start and tick the object it holds.
+	_eq(SystemRegistry.start_all().is_empty(), true,
+		"start_all initializes the real layer")
+	_eq(em.state == System.State.RUNNING, true,
+		"so the real layer is RUNNING, not a stand-in reporting it")
+	_eq(em.graph != null, true, "and its graph exists")
+	var before := em.tick_count
+	SystemRegistry.tick_all(0.05)
+	_eq(em.tick_count - before, 1, "and one registry tick reaches the real layer")
+	SystemRegistry.shutdown_all()
 	SystemRegistry.clear()
 
 
