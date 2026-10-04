@@ -77,6 +77,34 @@ rejects a file whose length does not match its declared `cwidth`, and why
 The length check is the important one. It is what turns "this file does not
 match the format" into a refusal instead of a plausible-looking wrong answer.
 
+## Content ids: the other half of the bridge
+
+The binary format says how ids are *stored*; it does not say what they
+*mean*. Luanti numbers content ids per world, from that world's own
+`content_ids.txt`, while `ContentDB` has its own 0..31 table, and the two do
+not agree. Nothing used to translate between them: a converted world arrived
+full of foreign ids that read as whatever foreign id happened to mean, and
+only the generated fixture -- whose ids were aligned by hand -- ever looked
+right. (`CONTENT_WATER = 9` in the fixture, which is ContentDB's *wood*, was
+exactly this, and the check that now catches it asserts the fixture's table
+against ContentDB.)
+
+So the converter records the names:
+
+```json
+"content_names": {"3": "default:water", "9": "default:stone"}
+```
+
+and `ChunkFiles.content_map()` maps them through `ContentDB.name_to_id`,
+stripping the mod namespace (`default:stone` -> `stone`). A node EMERGENT has
+no block for becomes air and is listed by `ChunkFiles.unmapped_names()`,
+because a block from a mod we do not ship is not something to guess at, and
+"it disappeared" is only acceptable if the game says so.
+
+A manifest with **no** `content_names` means the ids are already ContentDB's,
+and they pass through untouched. That is the generated fixture, and it is why
+the two conventions can coexist without either one guessing.
+
 ## Versioning
 
 `version` is checked, not ignored. A future format change must either stay

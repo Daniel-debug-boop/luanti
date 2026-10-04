@@ -52,6 +52,84 @@ static func load_manifest(dir: String) -> Dictionary:
 	return parsed if parsed is Dictionary else {}
 
 
+# --- the id bridge ----------------------------------------------------------
+#
+# The binary format is only half of a converted world. Luanti numbers content
+# ids per world -- they come from that world's own `content_ids.txt` -- while
+# ContentDB has its own 0..31 table, and nothing used to translate between the
+# two: a converted world arrived full of foreign ids that read as whatever
+# foreign id happened to mean, and only the generated fixture (whose ids were
+# aligned by hand) ever looked right.
+#
+# So the converter records each id's node name in the manifest and the reader
+# maps the names through the one ContentDB table. A name EMERGENT has no block
+# for becomes air, and is reported: a block from a mod we do not ship is not
+# something to guess at, and "it disappeared" is only acceptable if the game
+# says so. A manifest with no `content_names` means the world is already in
+# ContentDB ids, and its ids pass through untouched.
+
+## Built once per directory: dir -> (Luanti id -> ContentDB id).
+static var _id_maps := {}
+## dir -> the node names that had no ContentDB block.
+static var _unmapped := {}
+
+
+## Luanti content id -> ContentDB id for this converted world. Empty when the
+## manifest carries no names (the ids are already ContentDB's).
+static func content_map(dir: String) -> Dictionary:
+	if _id_maps.has(dir):
+		return _id_maps[dir]
+	var map := {}
+	var unmapped: Array[String] = []
+	var names: Variant = load_manifest(dir).get("content_names", null)
+	if names is Dictionary:
+		for key in (names as Dictionary).keys():
+			var name := String((names as Dictionary)[key])
+			var mapped := _contentdb_id(name)
+			if mapped >= 0:
+				map[int(key)] = mapped
+			else:
+				unmapped.append(name)
+		if not unmapped.is_empty():
+			push_warning("ChunkFiles: %d node(s) in %s have no EMERGENT "
+				% [unmapped.size(), dir]
+				+ "block and read as air: %s" % ", ".join(unmapped))
+	_id_maps[dir] = map
+	_unmapped[dir] = unmapped
+	return map
+
+
+## The node names in this converted world that have no ContentDB block.
+static func unmapped_names(dir: String) -> Array[String]:
+	content_map(dir)
+	return _unmapped.get(dir, [])
+
+
+## ContentDB's id for a Luanti node name. Luanti names are namespaced
+## ("default:stone") and ContentDB's are not, so the tail is what the one
+## table can answer.
+static func _contentdb_id(name: String) -> int:
+	var direct := ContentDB.name_to_id(name)
+	if direct >= 0:
+		return direct
+	var tail := name
+	var colon := name.rfind(":")
+	if colon >= 0:
+		tail = name.substr(colon + 1)
+	return ContentDB.name_to_id(tail)
+
+
+## Forget a directory's cached mapping. Only the tests need this: a converted
+## world is written once and then read for the life of the process.
+static func forget(dir: String = "") -> void:
+	if dir == "":
+		_id_maps.clear()
+		_unmapped.clear()
+		return
+	_id_maps.erase(dir)
+	_unmapped.erase(dir)
+
+
 ## Load one chunk from disk. Returns null when absent or malformed.
 ##
 ## Every rejection here is loud on purpose. A truncated or mis-headed chunk
@@ -115,6 +193,13 @@ static func load_chunk(dir: String, bx: int, by: int, bz: int) -> VoxelBlock:
 		for i in n:
 			block.content[i] = (data[p + i * 2] << 8) | data[p + i * 2 + 1]
 		p += n * 2
+
+	# Translate foreign content ids through the one ContentDB table, when
+	# this world has names to translate them by.
+	var id_map := content_map(dir)
+	if not id_map.is_empty():
+		for i in n:
+			block.content[i] = int(id_map.get(block.content[i], ContentDB.AIR))
 
 	for i in n:
 		block.light[i] = data[p + i]

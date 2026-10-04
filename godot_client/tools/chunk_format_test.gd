@@ -31,6 +31,7 @@ func _init() -> void:
 	_test_every_node_index_is_written_and_read_back()
 	_test_reader_refuses_malformed_files()
 	_test_reader_agrees_with_the_python_writer()
+	_test_luanti_ids_are_mapped_to_content_db()
 	# tools/run_tests.sh matches a verdict line at column 0.
 	print("chunk_format: %s" % ("PASS" if failures == 0 else "FAIL"))
 	quit(0 if failures == 0 else 1)
@@ -299,3 +300,81 @@ func _test_reader_agrees_with_the_python_writer() -> void:
 	check(found > 0, "the converted-world fixture has chunks to read")
 	check(bad == 0, "every converted chunk matches the declared layout "
 		+ "(%d of %d bad)" % [bad, found])
+
+
+## The format is only half of the bridge. Luanti numbers content ids per
+## world -- the ids in a converted world come from that world's own
+## content_ids.txt -- while ContentDB has its own 0..31 table, and nothing
+## used to translate between them. A converted world therefore arrived full
+## of foreign ids that read as whatever foreign id happens to mean; the
+## generated fixture hid that by hand-aligning its ids to ours.
+##
+## So the converter records each id's node name in the manifest, and the
+## reader maps the names through the one ContentDB table. A name EMERGENT
+## has no block for becomes air (with a report), because "a block from a mod
+## we do not ship" is not something to guess at -- and ContentDB is the only
+## table that decides what a name means.
+func _test_luanti_ids_are_mapped_to_content_db() -> void:
+	var dir := "user://chunkfmt_map"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var content := PackedInt32Array()
+	content.resize(4096)
+	var light := PackedByteArray()
+	light.resize(4096)
+	light.fill(15)
+	var param2 := PackedByteArray()
+	param2.resize(4096)
+	# Voxel 0 is Luanti id 9, voxel 1 is a mod node with no EMERGENT block,
+	# voxel 2 is Luanti id 3.
+	content[0] = 9
+	content[1] = 40
+	content[2] = 3
+	_write(dir, "c_1_2_3.chunk", _make_chunk(1, 0, content, light, param2))
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify({
+		"format": 1,
+		"content_names": {"9": "default:stone", "40": "default:unobtainium",
+			"3": "default:water"},
+	}).to_utf8_buffer()))
+	var block := _load(dir)
+	check(block != null, "the chunk with a name table loads")
+	if block != null:
+		check(block.content[0] == ContentDB.STONE,
+			"Luanti id 9 (default:stone) reads as ContentDB stone, not as "
+			+ "raw 9 (got %d)" % block.content[0])
+		check(block.content[1] == ContentDB.AIR,
+			"a node EMERGENT has no block for reads as air, not as a "
+			+ "foreign id (got %d)" % block.content[1])
+		check(block.content[2] == ContentDB.WATER,
+			"Luanti id 3 (water) reads as ContentDB water (got %d)"
+			% block.content[2])
+	var unmapped := ChunkFiles.unmapped_names(dir)
+	check(unmapped.has("default:unobtainium"),
+		"the node that could not be mapped is named in the report: %s"
+		% str(unmapped))
+
+	# A manifest with no name table means the world is already in ContentDB
+	# ids -- that is the generated fixture, and the reader must not remap it.
+	var raw_dir := "user://chunkfmt_raw"
+	DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(raw_dir))
+	_write(raw_dir, "c_1_2_3.chunk", _make_chunk(1, 0, content, light, param2))
+	_write(raw_dir, "manifest.json",
+		PackedByteArray(JSON.stringify({"format": 1}).to_utf8_buffer()))
+	var raw_block := _load(raw_dir)
+	check(raw_block != null, "the chunk without a name table loads")
+	if raw_block != null:
+		check(raw_block.content[0] == 9,
+			"ids pass through raw when the manifest carries no names "
+			+ "(got %d)" % raw_block.content[0])
+		check(raw_block.content[2] == ContentDB.STONE,
+			"and a raw id that is a ContentDB id still means that block: "
+			+ "Luanti 3 here is ContentDB's stone, read untouched (got %d)"
+			% raw_block.content[2])
+
+	# The converter has to be the one recording the names: a manifest field
+	# nothing writes is a bridge that only works on hand-made files.
+	var src := FileAccess.get_file_as_string("res://tools/convert_world.py")
+	check(src.contains("\"content_names\":"),
+		"the converter never writes the manifest's content_names field")
+	check(src.contains("content_ids.txt"),
+		"the converter never reads the world's content_ids.txt")

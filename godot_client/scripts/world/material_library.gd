@@ -511,8 +511,23 @@ func material_for(id: int) -> Material:
 	if id == ContentDB.GLOWSTONE:
 		return _emissive
 	if _mapping == Mapping.STOCHASTIC:
-		if MaterialLibrary.texture_set_for(id) != "" \
-				and not ContentDB.is_translucent(id):
+		# The vendored shader writes ALBEDO from vertex_tint.rgb and never
+		# touches the alpha channel, so a translucent block put through it is
+		# opaque. Glass and water therefore take the engine materials that
+		# can do transparency, exactly as they do in the other modes -- the
+		# plain material they used to fall back to made every window in the
+		# world a white brick.
+		if ContentDB.is_translucent(id):
+			if MaterialLibrary.texture_set_for(id) in PROCEDURAL:
+				var pm := _get_procedural(id)
+				if pm != null:
+					return pm
+			if MaterialLibrary.texture_set_for(id) != "":
+				var tm := _get_material(id, true)
+				if tm != null:
+					return tm
+			return _water
+		if MaterialLibrary.texture_set_for(id) != "":
 			var smat := _get_shader_material(id, false)
 			if smat != null:
 				return smat
@@ -667,14 +682,29 @@ func texture_vram_mb() -> float:
 			for tex in [m.albedo_texture, m.normal_texture,
 					m.roughness_texture, m.metallic_texture,
 					m.heightmap_texture, m.detail_albedo]:
-				if tex == null:
-					continue
-				var key: String = tex.resource_path
-				if key == "" or seen.has(key):
-					continue
-				seen[key] = true
-				bytes += tex.get_width() * tex.get_height() * 4 / 3
+				bytes += _texture_bytes(tex, seen)
+	# Stochastic mode binds its maps as shader parameters instead of material
+	# properties, so an estimate that only walked the engine materials
+	# reported 0 MB for a world with every texture set loaded.
+	for id in _shader_materials.keys():
+		var sm := _shader_materials[id] as ShaderMaterial
+		if sm == null:
+			continue
+		for key in ["albedo_tex", "detail_tex", "normal_tex", "arm_tex"]:
+			bytes += _texture_bytes(sm.get_shader_parameter(key), seen)
 	return float(bytes) / (1024.0 * 1024.0)
+
+
+## Estimated VRAM for one texture, counted once per resource path.
+static func _texture_bytes(tex: Variant, seen: Dictionary) -> int:
+	if tex == null or not (tex is Texture2D):
+		return 0
+	var t := tex as Texture2D
+	var key := t.resource_path
+	if key == "" or seen.has(key):
+		return 0
+	seen[key] = true
+	return t.get_width() * t.get_height() * 4 / 3
 
 
 ## How many live materials have each advanced effect switched on. Used by the

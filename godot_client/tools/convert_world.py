@@ -198,6 +198,33 @@ def fetch_blob(con: sqlite3.Connection, x: int, y: int, z: int) -> bytes | None:
     return row[0] if row else None
 
 
+def load_content_names(world_dir: str) -> dict[int, str]:
+    """Map each Luanti content id to its node name, from content_ids.txt.
+
+    This is the only bridge between Luanti's per-world id numbering and
+    EMERGENT's own ContentDB table: the reader maps the names through
+    ContentDB, so a converted world means what it looks like it means. A
+    world with no content_ids.txt (a generated fixture, or a converter run
+    against a format that never wrote one) simply has no names, and its ids
+    pass through untouched.
+    """
+    path = os.path.join(world_dir, "content_ids.txt")
+    if not os.path.isfile(path):
+        return {}
+    out: dict[int, str] = {}
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, _, raw = line.partition("=")
+            try:
+                out[int(raw.strip())] = name.strip()
+            except ValueError:
+                continue
+    return out
+
+
 def write_chunk(path: str, block: dict) -> int:
     """Write one chunk file: a 10-byte header plus the three node arrays.
 
@@ -282,6 +309,11 @@ def main() -> int:
         "blocks_failed": failed,
         "serialization_versions": {str(k): v for k, v in versions.items()},
         "origin": [0, 0, 0],
+        # Luanti ids -> node names, so the reader can translate them into
+        # ContentDB ids. Absent or empty means "these ids are already
+        # ContentDB's", which is what the generated fixture is.
+        "content_names": {str(k): v
+                          for k, v in sorted(load_content_names(args.world).items())},
     }
     with open(os.path.join(args.out, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)

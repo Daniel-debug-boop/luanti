@@ -138,6 +138,29 @@ func _run() -> void:
 		check(code.contains("acegiak"),
 			"the upstream attribution was dropped from the shader")
 
+	# Glass and water have to stay glass and water in every mode. The
+	# vendored shader carries no alpha -- it writes ALBEDO from
+	# vertex_tint.rgb and never touches the alpha channel -- so
+	# translucent blocks cannot go through it at all, and the fallback
+	# has to be the translucent material rather than the plain opaque
+	# one that turned every window in the world into a white brick.
+	var sglass := stoch.material_for(ContentDB.GLASS)
+	check(sglass is StandardMaterial3D,
+		"glass is not a StandardMaterial3D fallback in stochastic mode")
+	if sglass is StandardMaterial3D:
+		check((sglass as StandardMaterial3D).transparency \
+			== BaseMaterial3D.TRANSPARENCY_ALPHA,
+			"glass renders opaque in stochastic mode")
+	var snow_mat := stoch.material_for(ContentDB.SNOW)
+	check(sglass != snow_mat,
+		"glass shares stone's plain material, so the fallback is the plain one")
+	# The mode's textures are shader parameters, not StandardMaterial3D
+	# properties, so a VRAM estimate that only walks the engine materials
+	# reports 0 MB for a world that has every texture set bound.
+	check(stoch.texture_vram_mb() > 0.0,
+		"stochastic mode reports 0 MB of texture VRAM: the estimate counts "
+		+ "only the engine materials")
+
 	# --- The stochastic shader needs POM off, which is now the default ---
 	# POM is ULTRA-only and the stochastic path is a ShaderMaterial that
 	# samples its own maps, so a ULTRA stochastic material must not also be

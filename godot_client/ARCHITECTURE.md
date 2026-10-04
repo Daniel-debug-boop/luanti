@@ -263,6 +263,8 @@ Failure is a return value, not an exception and not a crash.
 | Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
 | A thread that finished before teardown | `System.teardown` | joined via `is_started()`, not skipped via `is_alive()` |
 | A content id or name collision | `ContentDB.validate_table` | named at table build; lookups are by index, so a collision fails silently otherwise |
+| A converted node with no EMERGENT block | `ChunkFiles.content_map` | reads as air, and `unmapped_names()` lists it |
+| Glass or water in stochastic mapping | `MaterialLibrary.material_for` | takes the engine translucent materials; the shader carries no alpha |
 | Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
 | Chunk generation failed | `StreamScheduler.step` | the job is cancelled, not fatal |
 | A queued chunk left the view | `StreamScheduler.select` | the job is pruned before the generator is asked -- cancellation is the scheduler's decision, never the generator's |
