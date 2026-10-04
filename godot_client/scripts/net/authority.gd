@@ -36,23 +36,17 @@ extends RefCounted
 ## Everything the server accepts is recorded in `log()`, so a disputed build can
 ## be replayed after the fact.
 
-## Commands a client may issue. Anything else is rejected by schema, which is
-## what stops a client from reaching a method that was never meant to be
-## networked.
+## Commands a client may issue: every request in `NetProtocol` except the
+## handshake. Anything else is rejected by schema, which is what stops a client
+## from reaching a method that was never meant to be networked.
 ##
-## This list and `SCHEMA` below describe the same set of commands, and
-## `multiplayer_test` asserts they agree. They used to be kept in step by hand,
-## which is exactly how they stop agreeing.
-const ALLOWED := [
-	"place", "remove", "connect", "disconnect", "manufacture",
-	"operate", "set_interaction_level", "capture_blueprint", "place_blueprint",
-	# The emergent layer's own mutations. They are here rather than bypassing
-	# the authority because a client that could place an entity without a
-	# reach check could place one anywhere on the map, and a client that could
-	# author a rule without a session check could author one the server never
-	# agreed to. Same door as everything else.
-	"emergent_place", "emergent_remove", "emergent_rule",
-]
+## This used to be a list here *and* a table in `NetProtocol`, and they
+## disagreed: `disconnect` wanted an `a` in one and an `edge` in the other, and
+## the emergent ops existed in only one of them. The protocol table is now the
+## only description of the wire and this reads out of it.
+static func allowed_ops() -> Array[String]:
+	return NetProtocol.command_ops()
+
 
 ## Tokens refilled per second, and the bucket depth. Sized so a player doing
 ## a legitimate construction burst (a pump is ~9 placements) is never throttled,
@@ -60,66 +54,31 @@ const ALLOWED := [
 const TOKENS_PER_SECOND := 12.0
 const BUCKET_DEPTH := 24.0
 
-## Every op's fields: which are required, which are allowed, and what each one
-## has to look like.
+## How much of the wire a single peer may spend on a refused command before
+## the refusal rate itself is treated as an attack.
 ##
-## One table, not a name list plus a required-fields list. An allow-list of op
-## names is not enough on its own -- `{"op": "place"}` passes a name check and
-## is still meaningless, and a server that has to defend itself against
-## nonsense in every downstream handler is a server with the bug already
-## written. Nor is "is it present" enough: `{"op": "remove", "node": {}}` is
-## present, and is still nonsense.
-##
-## The kinds, and what they reject:
-##
-##   name    non-empty String, at most `MAX_NAME` characters
-##   text    non-empty String, at most `MAX_TEXT` characters
-##   id      integer, 0 .. `MAX_ID`. Zero is a real id and is ownership-checked
-##           like any other; the id-zero-is-unset assumption it used to encode
-##           let `{"op":"remove","node":0}` skip the check entirely.
-##   vector  a Vector3, range-checked against `MAX_WORLD_EXTENT`
-##   angle   a finite number, so a NaN rotation cannot reach a transform
-##   count   integer, 1 .. `MAX_COUNT`, so one packet cannot build 4000 motors
-##   cost    a Dictionary of name -> positive integer. See `_check_cost`.
-const SCHEMA := {
-	"place": {
-		"required": {"component": "name"},
-		"optional": {"position": "vector", "rotation_y": "angle",
-			"cost": "cost", "interaction_level": "level"},
-	},
-	"remove": {"required": {"node": "id"}, "optional": {}},
-	"connect": {
-		"required": {"a": "id", "b": "id"},
-		"optional": {"a_port": "name", "b_port": "name", "cost": "cost"},
-	},
-	"disconnect": {"required": {"a": "id"}, "optional": {}},
-	"manufacture": {
-		"required": {"component": "name"},
-		"optional": {"cost": "cost", "count": "count"},
-	},
-	"operate": {"required": {}, "optional": {"node": "id", "enabled": "flag"}},
-	"set_interaction_level": {"required": {"level": "level"}, "optional": {}},
-	"capture_blueprint": {
-		"required": {"name": "name"},
-		"optional": {"nodes": "count"},
-	},
-	"place_blueprint": {
-		"required": {"blueprint": "name"},
-		"optional": {"position": "vector", "rotation_y": "angle",
-			"cost": "cost"},
-	},
-	"emergent_place": {
-		"required": {"kind": "name", "position": "vector"},
-		"optional": {"node": "id"},
-	},
-	"emergent_remove": {"required": {"entity": "id"}, "optional": {}},
-	"emergent_rule": {"required": {"text": "text"}, "optional": {}},
-}
+## A token bucket alone bounds the damage one command can do; it does not
+## bound the cost of *being wrong*. A peer that sends a hundred malformed
+## packets a second spends nothing, and on a server where validation is
+## expensive -- a schema check, a reach check, an audit-log write -- that is a
+## free denial of service. So a second, slower bucket runs alongside: the first
+## costs the ordinary one, the second is refilled at `TOKENS_PER_SECOND` and
+## drains on every command, accepted or not, so a flood converges on refusal.
+const REFUSE_TOKENS_PER_SECOND := 6.0
+const REFUSE_BUCKET_DEPTH := 32.0
+## Above this share of refusals over a whole session, the peer is reported.
+## Not a ban -- the server decides that -- but a number an operator can alert
+## on instead of reading the log.
+const GRIEF_THRESHOLD := 0.5
 
 ## Length limits. A 64 kB component name is not a bug that shows up as a
 ## crash; it is a 64 kB log line in every downstream error message.
 const MAX_NAME := 64
 const MAX_TEXT := 512
+## How deep a payload may nest. A client is not supposed to be able to make
+## the server recurse through its own checker; every level here is a stack
+## frame the server did not choose to spend.
+const MAX_DEPTH := 8
 ## How many items one command may be billed for, and how much of any one of
 ## them. Both exist because the number came from the client.
 const MAX_COST_ITEMS := 32
@@ -154,13 +113,24 @@ const MAX_TICK := 0.25
 
 var _tokens := {}          # peer id -> float
 var _last_refill := {}     # peer id -> seconds
+## The second bucket: command budget spent on being wrong. See
+## `REFUSE_TOKENS_PER_SECOND`.
+var _refuse_tokens := {}   # peer id -> float
+var _refuse_refill := {}   # peer id -> seconds
 var _sessions := {}        # peer id -> {"name": String, "position": Vector3, "revoked": bool}
 var _owned := {}           # node id -> peer id
 var _ledger := {}          # peer id -> {item_id: int}
+var _sequences := {}       # peer id -> NetProtocol.Sequence
 var _log: Array[Dictionary] = []
 var _now := 0.0
 var _rejected := 0
 var _accepted := 0
+var _replays := 0
+var _gaps := 0
+## The server's own price list, if one has been installed. See `set_pricer`.
+var _pricer: Callable = Callable()
+## peer id -> {"sent": int, "refused": int}
+var _tally := {}
 
 
 func _init() -> void:
@@ -183,6 +153,10 @@ func join(peer_id: int, name: String, position: Vector3, now: float) -> bool:
 	}
 	_tokens[peer_id] = BUCKET_DEPTH
 	_last_refill[peer_id] = now
+	_refuse_tokens[peer_id] = REFUSE_BUCKET_DEPTH
+	_refuse_refill[peer_id] = now
+	_sequences[peer_id] = NetProtocol.Sequence.new()
+	_tally[peer_id] = {"sent": 0, "refused": 0}
 	return true
 
 
@@ -190,6 +164,13 @@ func leave(peer_id: int) -> void:
 	_sessions.erase(peer_id)
 	_tokens.erase(peer_id)
 	_last_refill.erase(peer_id)
+	_refuse_tokens.erase(peer_id)
+	_refuse_refill.erase(peer_id)
+	# The sequence tracker goes with the session: a peer that leaves and comes
+	# back starts a new stream, and replaying the old one across the gap is
+	# not something the new session should inherit.
+	_sequences.erase(peer_id)
+	_tally.erase(peer_id)
 
 
 ## Kick mid-session. Anything already in flight for this peer is refused from
@@ -342,6 +323,7 @@ func advance_clock(now: float) -> void:
 func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 	var fail := func(reason: String) -> Dictionary:
 		_rejected += 1
+		_count_refusal(peer_id)
 		_record(peer_id, command, false, reason)
 		return {"ok": false, "reason": reason, "result": null, "peer": peer_id}
 
@@ -355,33 +337,57 @@ func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 			# Refused, not ignored. A server that quietly drops the field has
 			# taught the client that the field exists.
 			return fail.call("'%s' is not something a client may ask for" % field)
-	if not ALLOWED.has(op):
+	if not allowed_ops().has(op):
 		return fail.call("unknown op '%s'" % op)
 
-	# 1. schema -- before anything else, because every later check reads fields
-	# that may not be there, and reads them as the types they are supposed to be.
+	# 1. session
+	if not is_joined(peer_id):
+		return fail.call("peer %d is not in a valid session" % peer_id)
+
+	# 2. rate limiting, twice, and *before* the payload is looked at. The
+	# ordinary bucket bounds how much a peer can build; the second one bounds
+	# how much of the server's time it can spend on commands that are going to
+	# be refused. Rate limiting after the schema check would be no rate limit at
+	# all for the cheapest attack there is, which is the one where every packet
+	# is malformed.
+	_refill(peer_id)
+	_refill_refuse(peer_id)
+	if float(_tokens.get(peer_id, 0.0)) < 1.0:
+		return fail.call("rate limited")
+	if float(_refuse_tokens.get(peer_id, 0.0)) < 1.0:
+		return fail.call("rate limited: too many refused commands")
+	_tokens[peer_id] = float(_tokens[peer_id]) - 1.0
+	_refuse_tokens[peer_id] = float(_refuse_tokens[peer_id]) - 1.0
+
+	# 3. nesting depth, before anything walks the payload. A checker that
+	# recurses is a stack the client chooses the depth of.
+	if _depth(cmd, 0) > MAX_DEPTH:
+		return fail.call("payload nests deeper than %d levels" % MAX_DEPTH)
+
+	# 4. schema -- after the checks that do not read fields, and before every
+	# check that does, because they read them as the types they should be.
 	var shape := _check_shape(op, cmd)
 	if not bool(shape["ok"]):
 		return fail.call(String(shape["reason"]))
 
-	# 2. session
-	if not is_joined(peer_id):
-		return fail.call("peer %d is not in a valid session" % peer_id)
-
-	# 3. rate limit
-	_refill(peer_id)
-	if float(_tokens.get(peer_id, 0.0)) < 1.0:
-		return fail.call("rate limited")
-	_tokens[peer_id] = float(_tokens[peer_id]) - 1.0
-
-	# 4. economy -- charged from the server's ledger, never the client's claim.
-	# The shape check above has already refused a malformed or negative cost,
-	# so `can_afford` here is comparing two numbers that both make sense.
-	var cost: Dictionary = cmd.get("cost", {})
+	# 5. economy. The price is the server's. When a pricer is installed its
+	# figure replaces whatever the client claimed, and a client whose claim
+	# disagrees is refused rather than quietly corrected -- a client that is
+	# wrong about the price is a client running a different build, and that
+	# is worth knowing about rather than papering over.
+	var quoted: Dictionary = cmd.get("cost", {})
+	var priced := _price(op, cmd)
+	if not priced.is_empty():
+		if not quoted.is_empty() and not _same_cost(quoted, priced):
+			return fail.call("price mismatch: the server charges %s, the "
+				% [JSON.stringify(priced)] + "client sent %s"
+				% JSON.stringify(quoted))
+		quoted = priced
+	var cost: Dictionary = quoted
 	if not cost.is_empty() and not can_afford(peer_id, cost):
 		return fail.call("insufficient resources")
 
-	# 5. ownership, for every node the op touches. Zero is a node like any
+	# 6. ownership, for every node the op touches. Zero is a node like any
 	# other; it used to be skipped on the assumption that it meant "none", which
 	# meant `{"op":"remove","node":0}` never reached the ownership check.
 	for field in ["node", "a", "b", "entity"]:
@@ -391,7 +397,7 @@ func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 		if not may_modify(peer_id, id):
 			return fail.call("node %d belongs to peer %d" % [id, owner_of(id)])
 
-	# 6. reach
+	# 7. reach
 	if cmd.has("position"):
 		var p: Vector3 = cmd["position"]
 		var origin := peer_position(peer_id)
@@ -399,7 +405,7 @@ func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 			return fail.call("out of reach: %.1f m away (limit %.1f)" % [
 				origin.distance_to(p), MAX_REACH])
 
-	# 7. a handler, before the charge rather than after it. Without this a
+	# 8. a handler, before the charge rather than after it. Without this a
 	# command with a dead closure still succeeded: the player was billed, the
 	# result was null, and `ok` was true. A server with no handler for an op
 	# has a bug in it, and the fix is to say so rather than to take the money.
@@ -421,8 +427,133 @@ func submit(peer_id: int, command: Variant, apply: Callable) -> Dictionary:
 			set_ledger(peer_id, ledger_before)
 		return fail.call(_handler_reason(result))
 	_accepted += 1
+	_count_sent(peer_id)
 	_record(peer_id, command, true, "")
 	return {"ok": true, "reason": "", "result": result, "peer": peer_id}
+
+
+# --- ordering and replay ----------------------------------------------------
+
+## Submit a command that arrived from the wire, with the sequence number the
+## client put on it.
+##
+## `submit` is the trusted in-process entry point: the host, or a caller that
+## has already sequenced the command. This one is what a peer on a socket goes
+## through, and it adds the rule that makes ordering mean anything -- a
+## sequence number that is not newer than the last one this peer got through
+## is a replay, not a command.
+##
+## A *gap* is refused rather than tolerated. `NetProtocol.Sequence` alone
+## reports a gap and carries on, which is right for a stream of observations;
+## it is wrong for a stream of mutations. "Place a motor" and "connect the wire
+## to it" only mean anything in order, so a lost command in the middle means
+## the server and the client no longer agree about the world, and the honest
+## response is to say so and let the next snapshot resynchronise them. The
+## tracker still advances, so one gap does not wedge the peer's stream
+## forever.
+func submit_sequenced(peer_id: int, seq: int, command: Variant,
+		apply: Callable) -> Dictionary:
+	var tracker: NetProtocol.Sequence = _sequences.get(peer_id, null)
+	if tracker == null:
+		tracker = NetProtocol.Sequence.new()
+		_sequences[peer_id] = tracker
+	var fail := func(reason: String) -> Dictionary:
+		_rejected += 1
+		_count_refusal(peer_id)
+		_record(peer_id, command, false, reason)
+		return {"ok": false, "reason": reason, "result": null, "peer": peer_id}
+
+	if seq < 0:
+		return fail.call("negative sequence number")
+	if seq <= tracker.last_seen:
+		_replays += 1
+		return fail.call("replayed: sequence %d is not newer than %d"
+			% [seq, tracker.last_seen])
+	var gap := seq - tracker.last_seen - 1
+	if gap > 0:
+		_gaps += gap
+		# Advance so the peer is not permanently wedged, but do not run the
+		# command: the world state it assumed may never have been built.
+		tracker.last_seen = seq
+		return fail.call("sequence gap: %d message(s) lost before %d"
+			% [gap, seq])
+	var r := submit(peer_id, command, apply)
+	if bool(r["ok"]):
+		tracker.last_seen = seq
+		tracker.accepted += 1
+	else:
+		# A refused command still consumed its slot on the wire. Not counting
+		# it would let a peer re-send a refused command under a fresh number
+		# for ever, which is what the second token bucket is for but not what
+		# it should have to be relied on for.
+		tracker.last_seen = seq
+		tracker.rejected += 1
+	return r
+
+
+## What this peer's stream looks like: how far it has got, how much was lost,
+## how much was replayed.
+func sequence_stats(peer_id: int) -> Dictionary:
+	var tracker: NetProtocol.Sequence = _sequences.get(peer_id, null)
+	var out := {"last_seen": -1, "gaps": 0, "accepted": 0, "rejected": 0,
+		"in_order": true, "replays": _replays}
+	if tracker != null:
+		var s := tracker.stats()
+		for k in s:
+			out[k] = s[k]
+	out["gaps"] = int(out["gaps"]) + _gaps
+	out["in_order"] = int(out["gaps"]) == 0
+	return out
+
+
+func replay_count() -> int:
+	return _replays
+
+
+func gap_count() -> int:
+	return _gaps
+
+
+## The refuse-side token bucket. See `REFUSE_TOKENS_PER_SECOND`.
+func _refill_refuse(peer_id: int) -> void:
+	var t := float(_refuse_refill.get(peer_id, _now))
+	if _now > t:
+		_refuse_tokens[peer_id] = minf(REFUSE_BUCKET_DEPTH,
+			float(_refuse_tokens.get(peer_id, REFUSE_BUCKET_DEPTH))
+			+ (_now - t) * REFUSE_TOKENS_PER_SECOND)
+		_refuse_refill[peer_id] = _now
+
+
+func _count_sent(peer_id: int) -> void:
+	var t: Dictionary = _tally.get(peer_id, {"sent": 0, "refused": 0})
+	t["sent"] = int(t["sent"]) + 1
+	_tally[peer_id] = t
+
+
+func _count_refusal(peer_id: int) -> void:
+	var t: Dictionary = _tally.get(peer_id, {"sent": 0, "refused": 0})
+	t["refused"] = int(t["refused"]) + 1
+	_tally[peer_id] = t
+
+
+## What this peer has sent, and how much of it was refused.
+##
+## A peer above `GRIEF_THRESHOLD` is not banned -- that is the operator's
+## call -- but the number is here so an operator can be told rather than left
+## to read a log.
+func grief_report() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for peer in _tally:
+		var t: Dictionary = _tally[peer]
+		var sent := int(t["sent"]) + int(t["refused"])
+		if sent == 0:
+			continue
+		var share := float(t["refused"]) / float(sent)
+		if share < GRIEF_THRESHOLD:
+			continue
+		out.append({"peer": int(peer), "sent": sent,
+			"refused": int(t["refused"]), "refusal_share": share})
+	return out
 
 
 ## Did the mutation this command describes actually happen?
@@ -455,7 +586,7 @@ func _handler_reason(result: Variant) -> String:
 ## optional ones must be absent or correct. A present-but-unknown field is
 ## accepted: adding one must not break an older server.
 func _check_shape(op: String, cmd: Dictionary) -> Dictionary:
-	var spec: Dictionary = SCHEMA[op]
+	var spec: Dictionary = NetProtocol.MESSAGES[op]
 	var required: Dictionary = spec["required"]
 	var optional: Dictionary = spec["optional"]
 	for field in required:
@@ -488,7 +619,7 @@ func _check_value(field: String, value: Variant, kind: String) -> String:
 				return "must not be empty"
 			if s.length() > cap:
 				return "must be at most %d characters" % cap
-		"id":
+		"id", "int":
 			if not _is_int(value):
 				return "must be an integer"
 			var n := int(value)
@@ -541,9 +672,10 @@ func _check_value(field: String, value: Variant, kind: String) -> String:
 ## The two exploits a bounds check alone does not catch: a negative amount,
 ## which `charge` happily applies as a *credit* -- `{"cost": {"iron": -5}}`
 ## is a money printer -- and an empty cost, which is simply "build it for
-## free". The second one is the reason the server must eventually price the
-## order itself rather than believe the client; until it does, refusing the
-## malformed shapes is the part that can be done here.
+## free". The second one is what `set_pricer` exists to close: until the
+## server knows what things cost, the client's own figure is the only one
+## there is, and the honest thing is to say so rather than to check it
+## carefully and believe it anyway.
 func _check_cost(value: Variant) -> String:
 	if not (value is Dictionary):
 		return "must be a dictionary"
@@ -565,6 +697,89 @@ func _check_cost(value: Variant) -> String:
 		if int(amount) > MAX_COST_PER_ITEM:
 			return "is implausibly large"
 	return ""
+
+
+# --- pricing ----------------------------------------------------------------
+
+## Install the server's own price list: `pricer(op: String, command:
+## Dictionary) -> {item: count}`. Returns what the command costs here, or an
+## empty Dictionary for something free.
+##
+## This is the difference between a server that trusts a client's arithmetic
+## and a server that has arithmetic of its own. Before it existed the only
+## number in the system came from the client, so `{"cost": {}}` built a motor
+## for nothing: the ledger was authoritative about *whether* the player could
+## pay, and not at all about *how much* it was.
+##
+## With a pricer installed the client's figure is a claim to be checked rather
+## than a figure to be charged. A client that sends the right price is never
+## penalised for it, and one that sends the wrong one is refused -- which is
+## also how a build mismatch shows up.
+func set_pricer(pricer: Callable) -> void:
+	_pricer = pricer
+
+
+func has_pricer() -> bool:
+	return _pricer.is_valid()
+
+
+func _price(op: String, cmd: Dictionary) -> Dictionary:
+	if not _pricer.is_valid():
+		return {}
+	var v: Variant = _pricer.call(op, cmd)
+	if not (v is Dictionary):
+		# A pricer that answers with something else is a bug in the server,
+		# and it must not be read as "free".
+		push_error("[net] pricer for '%s' did not return a dictionary" % op)
+		return {}
+	var priced: Dictionary = v
+	if priced.is_empty():
+		return {}
+	var complaint := _check_cost(priced)
+	if not complaint.is_empty():
+		push_error("[net] pricer for '%s' returned an unusable cost: %s"
+			% [op, complaint])
+		return {}
+	return priced
+
+
+## Do two bills say the same thing?
+##
+## Compared key by key rather than with `==`: `Dictionary` equality in
+## GDScript is structural but its exact behaviour across engine versions is
+## not something a security check should be resting on.
+func _same_cost(a: Dictionary, b: Dictionary) -> bool:
+	if a.size() != b.size():
+		return false
+	for item in a:
+		if not b.has(item):
+			return false
+		if int(a[item]) != int(b[item]):
+			return false
+	return true
+
+
+## How deeply a payload nests, so the checkers do not have to trust it.
+func _depth(value: Variant, level: int) -> int:
+	if level > 64:
+		# A cycle, or a structure deep enough that counting further is
+		# pointless. Either way this is not a command.
+		return level
+	if value is Dictionary:
+		var deepest := level
+		for k in value:
+			deepest = maxi(deepest, _depth(value[k], level + 1))
+			if deepest > 4096:
+				return deepest
+		return deepest
+	if value is Array:
+		var deepest2 := level
+		for v in value:
+			deepest2 = maxi(deepest2, _depth(v, level + 1))
+			if deepest2 > 4096:
+				return deepest2
+		return deepest2
+	return level
 
 
 ## An integer, or a float that is exactly an integer.

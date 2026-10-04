@@ -31,7 +31,7 @@ for t in mesher_test seam_test chunk_format_test player_physics_test \
     e2e_test features_test render_test zylann_test gameplay_test creature_test \
     crafting_ui_test engineering_test engineering_sim_test \
     engineering_world_test diagnostics_test render_diagnostics_test \
-    adaptive_quality_test multiplayer_test \
+    adaptive_quality_test multiplayer_test network_test \
     robustness_test architecture_test systems_test ui_test render_test_test \
     emergent_test playable_test asset_test; do
   printf "%-22s " "$t"

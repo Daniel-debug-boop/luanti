@@ -73,13 +73,14 @@ func _server() -> NetAuthority:
 func _test_join_required() -> void:
 	var a := NetAuthority.new()
 	_reset()
-	var r := a.submit(99, {"op": "place", "component": "beam"}, _apply)
+	var cmd := {"op": "place", "component": "beam", "position": Vector3.ONE}
+	var r := a.submit(99, cmd, _apply)
 	_eq(bool(r["ok"]), false, "a peer that never joined is refused")
 	_eq(_applied, 0, "and the world did not change")
 	_eq(String(r["reason"]).contains("session"), true,
 		"the reason names the session, so the client knows to re-handshake")
 	a.join(1, "alice", Vector3.ZERO, 0.0)
-	_eq(bool(a.submit(1, {"op": "place", "component": "beam"}, _apply)["ok"]), true,
+	_eq(bool(a.submit(1, cmd, _apply)["ok"]), true,
 		"and is accepted once it has")
 	_eq(_applied, 1, "exactly once")
 
@@ -107,7 +108,7 @@ func _test_unknown_op_rejected() -> void:
 	_eq(String(r["reason"]).contains("unknown op"), true, "naming the op")
 	# The point of the allow-list: a method that exists on the object but was
 	# never meant to be networked is unreachable.
-	_eq(a.ALLOWED.has("execute"), false, "arbitrary code is not an op")
+	_eq(a.allowed_ops().has("execute"), false, "arbitrary code is not an op")
 	_eq(_applied, 0, "and nothing was applied")
 
 
@@ -117,33 +118,32 @@ func _test_unknown_op_rejected() -> void:
 ## existed only in one of them. Two tables are two things to forget to update,
 ## so there is one now and this is what keeps it one.
 func _test_one_schema_for_both_ends() -> void:
-	var a := _server()
-	_reset()
-	var from_table: Array[String] = []
-	for op in NetAuthority.SCHEMA:
-		from_table.append(String(op))
-	from_table.sort()
-	var from_list: Array[String] = []
-	for op in NetAuthority.ALLOWED:
-		from_list.append(String(op))
-	from_list.sort()
-	_eq(from_table, from_list,
-		"the op allow-list and the field schema name the same commands")
-	_eq(NetAuthority.SCHEMA.has("REQUIRED"), false,
-		"and there is no second, separate required-field list")
-	# Every field the schema knows about is one it can actually validate.
-	for op in NetAuthority.SCHEMA:
-		var spec: Dictionary = NetAuthority.SCHEMA[op]
+	_eq(NetAuthority.allowed_ops(), NetProtocol.command_ops(),
+		"the authority accepts exactly the protocol's post-handshake requests")
+	# The handshake is a request too, and it is the one that creates the
+	# session, so it is not something a session check can admit.
+	_eq(NetProtocol.command_ops().has("hello"), false,
+		"the handshake is not one of the commands")
+	_eq(bool(NetProtocol.spec_of("hello").get("pre_session", false)), true,
+		"and it says why, in the table rather than in the code")
+	# Every command the authority accepts is one the protocol can describe,
+	# and every field the table names is one the authority can check.
+	for op in NetAuthority.allowed_ops():
+		var spec: Dictionary = NetProtocol.MESSAGES[op]
+		_eq(String(spec["dir"]), NetProtocol.CLIENT_TO_SERVER,
+			"%s travels client to server" % op)
 		for group in ["required", "optional"]:
 			for field in spec[group]:
-				# `operate` legitimately carries no fields of its own; every
-				# other kind must be one the checker knows.
 				_eq(bool(_known_kind(String(spec[group][field]))), true,
 					"%s.%s names a kind the checker understands" % [op, field])
+	# The two disagreeing fields are now one field, named the same way by
+	# both ends because there is only one table to name it in.
+	_eq(NetProtocol.field_names("disconnect"), ["a"] as Array[String],
+		"disconnect names the same field the authority checks")
 
 
 func _known_kind(kind: String) -> bool:
-	return ["name", "text", "id", "count", "flag", "vector", "angle",
+	return ["name", "text", "id", "int", "count", "flag", "vector", "angle",
 		"level", "cost"].has(kind)
 
 
@@ -510,8 +510,10 @@ func _test_replication_filters_by_distance() -> void:
 func _test_audit_log() -> void:
 	var a := _server()
 	_reset()
-	a.submit(1, {"op": "place", "component": "beam"}, _apply)
-	a.submit(1, {"op": "place", "position": Vector3(9999, 0, 0)}, _apply)
+	a.submit(1, {"op": "place", "component": "beam",
+		"position": Vector3(1, 0, 0)}, _apply)
+	a.submit(1, {"op": "place", "component": "beam",
+		"position": Vector3(9999, 0, 0)}, _apply)
 	var log := a.log()
 	_eq(log.size(), 2, "every command is recorded, accepted or not")
 	_eq(bool(log[0]["ok"]), true, "the accepted one is marked accepted")

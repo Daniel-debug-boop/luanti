@@ -255,6 +255,8 @@ Failure is a return value, not an exception and not a crash.
 | Invalid port/op/field | `NetProtocol.validate` | refused, `rule` says which check |
 | Out of reach / not owned | `NetAuthority.submit` | refused, apply never called |
 | Billed for a change that then failed | `NetAuthority.submit` | the ledger is restored before the refusal is returned |
+| Replayed or out-of-order command | `NetAuthority.submit_sequenced` | refused; the sequence number has already been applied |
+| A quote the server does not sell at | `NetAuthority.submit` | refused as a price mismatch |
 | Truncated or spliced save | `SaveMigration.read_resilient` | recovered from `.bak`, and says so |
 | Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
 | Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
@@ -302,16 +304,21 @@ Checked at every startup (`main.gd` → `EngArch.verify_runtime`) and by
 
 Two files, two jobs:
 
-* `NetAuthority` — **is this allowed?** Op allow-list, per-field schema,
-  session check, per-peer token bucket, server-side economy charge, ownership
-  on every node the command touches, and reach against the server's own
-  clamped belief about where the player is. Charging and mutating are one
-  event: a handler that reports failure is rolled back before the refusal is
-  returned. There is no flag that disables any of it — a client that sends a
-  field naming a check to skip (`ignore_reach` and friends) is refused, not
-  obeyed.
+* `NetAuthority` — **is this allowed?** The op allow-list and the per-field
+  schema are read out of `NetProtocol` rather than kept alongside it; on top of
+  that it runs the session check, two token buckets per peer (one bounding how
+  much a peer can build, one bounding how much of the server's time it can
+  spend on commands that are going to be refused), ownership on every node the
+  command touches, and reach against the server's own clamped belief about
+  where the player is. Charging and mutating are one event: a handler that
+  reports failure is rolled back before the refusal is returned. With a pricer
+  installed the *price* is the server's too, and a client whose quote disagrees
+  is refused rather than corrected. There is no flag that disables any of it —
+  a client that sends a field naming a check to skip (`ignore_reach` and
+  friends) is refused, not obeyed.
 * `NetProtocol` — **what is a message?** The envelope, the directions, the
-  field requirements, the ordering rules.
+  field requirements, the ordering rules. Its table is the only description of
+  the wire, and `NetAuthority.allowed_ops()` is derived from it.
 
 ### The envelope
 
@@ -352,6 +359,18 @@ transport. They are **not wired to a `MultiplayerAPI` peer transport** — a
 loopback host/client pair cannot be stood up in a headless sandbox to prove
 the handshake, and shipping an untested handshake would be worse than an
 honest gap. Everything the handshake would call is done and tested.
+
+Two things are deliberately *not* done, and are named here rather than left to
+be discovered:
+
+* `GameApi.request` has no local entry point to call, so the engineering verbs
+  the host player triggers still bypass the authority in single player. The
+  gate is correct; what is missing is a `submit_local` that puts the host
+  through it.
+* No price list is installed in `main.gd`, so until one is, the ledger is
+  authoritative about whether a player can pay and not about what it costs:
+  the client's own figure is charged. `NetAuthority.set_pricer` is the seam,
+  and `network_test` covers both sides of it.
 
 ---
 

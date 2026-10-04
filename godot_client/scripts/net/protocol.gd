@@ -43,94 +43,173 @@ const ENVELOPE := ["v", "t", "from", "to", "seq", "op", "payload"]
 
 ## Every message, what it may carry, and who may send it.
 ##
-## `fields` are required inside `payload`. `optional` may be present. A client
-## that sends an unknown field is fine -- adding one must not break an older
-## server -- but a client that omits a required one is refused, which is what
-## keeps a message from being half-understood.
+## `required` and `optional` map each payload field to the kind of value it
+## must be. A client that sends an unknown field is fine -- adding one must not
+## break an older server -- but a client that omits a required one, or sends a
+## required one with the wrong type, is refused: a message that is
+## half-understood is worse than one that never arrived.
+##
+## This table is the *only* description of the wire. `NetAuthority` reads its
+## op allow-list and its field checks out of here rather than keeping a second
+## copy, because two copies of a schema disagree: `disconnect` wanted an `a`
+## in one and an `edge` in the other, and the emergent ops existed in only one
+## of them, so a client could send a command the server had never heard of.
+##
+## The kinds are `name`, `text`, `id`, `count`, `flag`, `vector`, `angle`,
+## `level`, `cost` and `int` -- see `NetAuthority._check_value`, which is what
+## enforces them.
 const MESSAGES := {
 	# --- client to server: requests ---
 	"hello": {
-		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["name", "protocol"], "optional": ["position"],
+		"dir": CLIENT_TO_SERVER, "kind": "request", "pre_session": true,
+		"required": {"name": "name", "protocol": "int"},
+		"optional": {"position": "vector"},
 		"doc": "handshake. The first thing a client sends, and the only thing "
-			+ "it may send before the server has accepted it.",
+			+ "it may send before the server has accepted it. Marked "
+			+ "pre_session because it is what creates the session, so it "
+			+ "cannot itself pass the session check.",
 	},
 	"place": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["component", "position"],
-		"optional": ["rotation_y", "cost", "interaction_level"],
+		"required": {"component": "name", "position": "vector"},
+		"optional": {"rotation_y": "angle", "cost": "cost",
+			"interaction_level": "level"},
 		"doc": "place a component. The server re-derives reach and ownership.",
 	},
 	"remove": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["node"], "optional": [],
+		"required": {"node": "id"}, "optional": {},
 		"doc": "dismantle a component the sender owns.",
 	},
 	"connect": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["a", "a_port", "b", "b_port"], "optional": ["cost"],
+		"required": {"a": "id", "b": "id"},
+		"optional": {"a_port": "name", "b_port": "name", "cost": "cost"},
 		"doc": "join two ports. Both ends are ownership-checked.",
 	},
 	"disconnect": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["edge"], "optional": [],
-		"doc": "break a connection.",
+		"required": {"a": "id"}, "optional": {},
+		"doc": "break a connection by its id.",
 	},
 	"manufacture": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["component"], "optional": ["cost", "count"],
-		"doc": "manufacture a component. Charged from the server's ledger.",
+		"required": {"component": "name"},
+		"optional": {"cost": "cost", "count": "count"},
+		"doc": "manufacture a component. Priced by the server, charged from "
+			+ "the server's ledger.",
 	},
 	"operate": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["node"], "optional": ["enabled"],
+		"required": {"node": "id"},
+		"optional": {"enabled": "flag"},
 		"doc": "toggle or adjust a machine the sender owns.",
+	},
+	"set_interaction_level": {
+		"dir": CLIENT_TO_SERVER, "kind": "request",
+		"required": {"level": "level"}, "optional": {},
+		"doc": "choose how much help the cursor gives. Presentation only: "
+			+ "precision mode does not extend reach.",
 	},
 	"capture_blueprint": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["name", "nodes"], "optional": [],
+		"required": {"name": "name"}, "optional": {"nodes": "count"},
 		"doc": "save a build the sender owns as a reusable blueprint.",
 	},
 	"place_blueprint": {
 		"dir": CLIENT_TO_SERVER, "kind": "request",
-		"fields": ["blueprint", "position"], "optional": ["rotation_y"],
+		"required": {"blueprint": "name", "position": "vector"},
+		"optional": {"rotation_y": "angle", "cost": "cost"},
 		"doc": "rebuild a blueprint at a position the sender can reach.",
+	},
+	# The emergent layer's own mutations. They are on the wire rather than
+	# bypassing the authority because a client that could place an entity
+	# without a reach check could place one anywhere on the map, and a client
+	# that could author a rule without a session check could author one the
+	# server never agreed to. Same door as everything else.
+	"emergent_place": {
+		"dir": CLIENT_TO_SERVER, "kind": "request",
+		"required": {"kind": "name", "position": "vector"},
+		"optional": {"node": "id"},
+		"doc": "place an entity the player can reach.",
+	},
+	"emergent_remove": {
+		"dir": CLIENT_TO_SERVER, "kind": "request",
+		"required": {"entity": "id"}, "optional": {},
+		"doc": "remove an entity.",
+	},
+	"emergent_rule": {
+		"dir": CLIENT_TO_SERVER, "kind": "request",
+		"required": {"text": "text"}, "optional": {},
+		"doc": "author a behaviour rule. Parsed and refused on the server if "
+			+ "it does not compile.",
 	},
 	# --- server to client: derived state, never instructions ---
 	"welcome": {
 		"dir": SERVER_TO_CLIENT, "kind": "state",
-		"fields": ["peer", "protocol", "world_version"], "optional": [],
+		"required": {"peer": "id", "protocol": "int", "world_version": "id"},
+		"optional": {},
 		"doc": "handshake accepted. Carries the world version so the client "
 			+ "can tell whether its cached snapshot is usable.",
 	},
 	"snapshot": {
 		"dir": SERVER_TO_CLIENT, "kind": "state",
-		"fields": ["nodes", "base_seq"], "optional": ["players"],
+		"required": {"nodes": "count", "base_seq": "id"},
+		"optional": {"players": "count"},
 		"doc": "server-derived world state. The client renders it and does "
 			+ "not modify it.",
 	},
 	"delta": {
 		"dir": SERVER_TO_CLIENT, "kind": "state",
-		"fields": ["changes", "base_seq"], "optional": [],
+		"required": {"changes": "count", "base_seq": "id"}, "optional": {},
 		"doc": "an incremental snapshot. Same rule: derived, not authoritative.",
 	},
 	"ack": {
 		"dir": SERVER_TO_CLIENT, "kind": "state",
-		"fields": ["seq", "accepted", "reason"], "optional": [],
+		"required": {"seq": "id", "accepted": "flag", "reason": "text"},
+		"optional": {},
 		"doc": "the outcome of a request, keyed by its sequence number.",
 	},
 	"reject": {
 		"dir": SERVER_TO_CLIENT, "kind": "state",
-		"fields": ["seq", "reason", "rule"], "optional": [],
+		"required": {"seq": "id", "reason": "text", "rule": "text"},
+		"optional": {},
 		"doc": "a refusal, naming the rule that refused it so a grief report "
 			+ "and a bug report are distinguishable.",
 	},
 	"broadcast": {
 		"dir": SERVER_BROADCAST, "kind": "state",
-		"fields": ["text"], "optional": [],
+		"required": {"text": "text"}, "optional": {},
 		"doc": "chat and world events.",
 	},
 }
+
+
+## Every request a joined client may issue: the protocol's request ops, minus
+## the handshake. The handshake is excluded because it is what *creates* the
+## session -- asking it to pass a session check is asking it to have already
+## arrived.
+static func command_ops() -> Array[String]:
+	var out: Array[String] = []
+	for k in MESSAGES:
+		var spec: Dictionary = MESSAGES[k]
+		if String(spec["kind"]) != "request":
+			continue
+		if bool(spec.get("pre_session", false)):
+			continue
+		out.append(String(k))
+	out.sort()
+	return out
+
+
+## The field list, in table order. Derived rather than stored, so the array
+## consumers have always read cannot drift from the table they came from.
+static func field_names(op: String, group := "required") -> Array[String]:
+	var spec: Dictionary = MESSAGES.get(op, {})
+	var out: Array[String] = []
+	for field in spec.get(group, {}):
+		out.append(String(field))
+	return out
 
 
 # --- encoding ----------------------------------------------------------------
@@ -195,18 +274,28 @@ static func validate(message: Variant, expect_dir: String) -> Dictionary:
 	if not (payload is Dictionary):
 		return {"ok": false, "reason": "payload is not a dictionary",
 			"rule": "envelope"}
-	for field in spec["fields"]:
-		if not (payload as Dictionary).has(field) \
-				or (payload as Dictionary)[field] == null:
+	var p: Dictionary = payload
+	for field in spec["required"]:
+		if not p.has(field) or p[field] == null:
 			return {"ok": false,
 				"reason": "op '%s' requires payload field '%s'" % [op, field],
 				"rule": "schema"}
 	# Optional fields that are present must still be the right shape. A
 	# message with `"cost": "free"` is not a message with a free cost.
-	var cost: Variant = (payload as Dictionary).get("cost", null)
-	if cost != null and not (cost is Dictionary):
-		return {"ok": false, "reason": "cost must be a dictionary",
-			"rule": "schema"}
+	#
+	# Only the shape is checked here -- "is this a dictionary" -- and not the
+	# value, because value checks are the authority's job and it has the
+	# world. Two layers that each do one thing is better than one that does
+	# half of each.
+	for field in spec["optional"]:
+		if not p.has(field) or p[field] == null:
+			continue
+		if String(spec["optional"][field]) == "cost" \
+				and not (p[field] is Dictionary):
+			return {"ok": false,
+				"reason": "op '%s' field '%s' must be a dictionary"
+					% [op, field],
+				"rule": "schema"}
 	return {"ok": true, "reason": "", "rule": ""}
 
 
@@ -261,7 +350,17 @@ static func ops_in_direction(dir: String) -> Array[String]:
 
 
 static func spec_of(op: String) -> Dictionary:
-	return MESSAGES.get(op, {})
+	var spec: Dictionary = MESSAGES.get(op, {})
+	if spec.is_empty():
+		return {}
+	# The stored form is the two maps; the derived `fields`/`optional` arrays
+	# are what callers have always read. Handing back one dictionary with both
+	# shapes keeps the table single-sourced without changing what the docs and
+	# the tests consume.
+	var out := spec.duplicate(true)
+	out["fields"] = field_names(op, "required")
+	out["optional"] = field_names(op, "optional")
+	return out
 
 
 ## The table rendered as text, for ARCHITECTURE.md and for a `--dump-protocol`
@@ -272,9 +371,9 @@ static func describe() -> String:
 	lines.append("NetProtocol v%d" % VERSION)
 	lines.append("envelope: %s" % ", ".join(ENVELOPE))
 	for op in ops():
-		var spec: Dictionary = MESSAGES[op]
+		var spec: Dictionary = spec_of(op)
 		lines.append("")
-		lines.append("  %-18s %s/%s" % [op, spec["dir"], spec["kind"]])
+		lines.append("  %-22s %s/%s" % [op, spec["dir"], spec["kind"]])
 		lines.append("    required: %s" % ", ".join(spec["fields"]))
 		var opt: Array = spec["optional"]
 		if not opt.is_empty():
