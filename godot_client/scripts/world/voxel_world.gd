@@ -208,8 +208,8 @@ func ensure_region(focus: Vector3i, radius: int) -> int:
 				var p := centre + Vector3i(dx, dy, dz)
 				if _blocks.has(_key(p)):
 					continue
-				_load_chunk(p)
-				loaded += 1
+				if _load_chunk(p):
+					loaded += 1
 	return loaded
 
 
@@ -232,20 +232,9 @@ func _generate_block(pos: Vector3i) -> VoxelBlock:
 ## The scheduler's generate callback. Returns false when the chunk could not
 ## be produced, which the scheduler counts as a cancellation.
 func _generate_job(p: Vector3i) -> bool:
-	var key := _key(p)
-	if _blocks.has(key):
+	if _blocks.has(_key(p)):
 		return true
-	var block: VoxelBlock = stream.cache_take(key) as VoxelBlock
-	if block == null:
-		block = _generate_block(p)
-	if block == null:
-		return false
-	# A cached chunk still needs its player edits replayed.
-	_apply_edits(block, p)
-	_blocks[key] = block
-	_mark_neighbours_dirty(p)
-	chunk_loaded.emit(p)
-	return true
+	return _load_chunk(p)
 
 
 ## The scheduler's mesh callback: the nearest chunk that is ready to be meshed.
@@ -260,12 +249,26 @@ func _mesh_job() -> bool:
 	return true
 
 
-## The scheduler's "is there anything worth meshing" probe. A chunk waits
-## until all 26 neighbours have terrain, because a mesh built against missing
-## neighbours guesses which faces are interior -- and the guess is wrong, and
-## the player sees through the world.
+## The scheduler's "is anything waiting to be meshed" probe: true while a
+## dirty, resident, in-view chunk exists, whether or not its neighbours are
+## there yet. The distinction is what makes `deferred` mean something: this
+## false is an idle world, while this true with `_mesh_job` returning false
+## is a world blocked on terrain that has not been generated. A probe that
+## only ever reported "ready work exists" collapsed the two into one number.
 func _has_mesh_work() -> bool:
-	return _nearest_meshable() != ""
+	if _dirty.is_empty():
+		return false
+	var centre := _block_pos(_last_focus)
+	var r2 := view_radius * view_radius + view_radius
+	for key in _dirty.keys():
+		if not _blocks.has(key):
+			continue
+		var p := _key_pos(key)
+		var d := p - centre
+		if d.x * d.x + d.y * d.y + d.z * d.z > r2:
+			continue
+		return true
+	return false
 
 
 ## A candidate is dirty, resident, inside the view sphere, and has all 26
@@ -297,12 +300,6 @@ func _nearest_meshable() -> String:
 var _last_focus := Vector3i.ZERO
 
 
-func _rehydrate(block: VoxelBlock, pos: Vector3i) -> VoxelBlock:
-	# A cached chunk still needs its player edits replayed, or walking back
-	# over a hole you dug undoes it.
-	_apply_edits(block, pos)
-	return block
-
 
 func _mark_neighbours_dirty(pos: Vector3i) -> void:
 	for dx in [-1, 0, 1]:
@@ -332,18 +329,27 @@ func drop_distant(centre: Vector3i) -> void:
 			_unload_chunk(p, String(key))
 
 
-## Force a chunk resident, outside the scheduler. Used by the tests and by
-## anything that needs a specific chunk *now* rather than in queue order.
-func _load_chunk(pos: Vector3i) -> void:
-	if _blocks.has(_key(pos)):
-		return
-	var block := _generate_block(pos)
+## Load one chunk: reclaim it from the streamer's cache if the player was
+## here recently, otherwise generate it. This is the single acquisition
+## path -- `ensure_region` and the budgeted queue both come through here, so
+## a forced load can never regenerate terrain the cache is still holding a
+## copy of (which used to leave two objects for one chunk: one being edited,
+## one going stale, and double the memory the cache was budgeted for).
+## Returns true when the chunk became resident.
+func _load_chunk(pos: Vector3i) -> bool:
+	var key := _key(pos)
+	if _blocks.has(key):
+		return false
+	var block: VoxelBlock = stream.cache_take(key) as VoxelBlock
 	if block == null:
-		return
+		block = _generate_block(pos)
+	if block == null:
+		return false
 	_apply_edits(block, pos)
-	_blocks[_key(pos)] = block
+	_blocks[key] = block
 	_mark_neighbours_dirty(pos)
 	chunk_loaded.emit(pos)
+	return true
 
 
 ## Replay player edits onto a freshly generated or reloaded chunk, so digging a

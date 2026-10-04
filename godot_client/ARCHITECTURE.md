@@ -261,6 +261,9 @@ Failure is a return value, not an exception and not a crash.
 | Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
 | Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
 | Chunk generation failed | `StreamScheduler.step` | the job is cancelled, not fatal |
+| A queued chunk left the view | `StreamScheduler.select` | the job is pruned before the generator is asked -- cancellation is the scheduler's decision, never the generator's |
+| A forced load with a cached copy | `VoxelWorld._load_chunk` | the cached block is reclaimed, so one chunk is never two objects |
+| Meshing blocked on a neighbour | `VoxelWorld._has_mesh_work` + `step` | counted as a deferral, which an idle frame is not -- the two are different numbers on purpose |
 | Mod registered an unknown material | `EngMaterials.deserialize` | reported, the rest of the save applies |
 
 `SystemRegistry.healthy()` is false only when a **required** system (world,

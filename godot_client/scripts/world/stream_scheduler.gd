@@ -78,7 +78,7 @@ enum Phase { IDLE, GENERATE, MESH }
 ## player moves.
 var _queue: Array[Dictionary] = []
 var _queued := {}            # "x:y:z" -> true
-var _cache := {}             # "x:y:z" -> {block, used}
+var _cache := {}             # "x:y:z" -> {block}
 var _cache_order: Array[String] = []
 
 ## Observable counters. These are the numbers the streaming test asserts on and
@@ -147,6 +147,27 @@ func select(centre: Vector3i, forward: Vector3, radius: int,
 
 	var candidates: Array[Dictionary] = []
 	var r2 := radius * radius + radius
+	# Cancellation is enforced here, not downstream. The queue is re-seeded
+	# every frame, so a job still on it from an earlier frame is work the
+	# player has since walked away from -- and the decision cannot be left to
+	# the generator, because a generator says yes to any chunk it is able to
+	# produce. A queued chunk that became resident while it waited (a forced
+	# load beat the queue) is dropped for the same reason: there is nothing
+	# left to do, and spending a budget slot to rediscover that is waste.
+	var pruned := 0
+	var kept: Array[Dictionary] = []
+	for job in _queue:
+		var qp: Vector3i = job["pos"]
+		var d := qp - centre
+		var outside := d.x * d.x + d.y * d.y + d.z * d.z > r2
+		if outside or bool(resident.call(qp)):
+			_queued.erase(String(job["key"]))
+			pruned += 1
+			continue
+		kept.append(job)
+	if pruned > 0:
+		_queue = kept
+		stats["cancelled"] = int(stats["cancelled"]) + pruned
 	for dx in range(-radius, radius + 1):
 		for dy in range(-radius, radius + 1):
 			for dz in range(-radius, radius + 1):
@@ -199,9 +220,15 @@ func _update_score(queue: Array, key: String, score: float) -> void:
 ## do the real thing; the scheduler only decides what to call and when to stop.
 ##
 ## `gen(pos) -> bool` must return true if the chunk is now resident.
-## `mesh(pos) -> bool` must return true if the chunk is now meshed, and false
-## if it is not ready yet (neighbours missing) -- which is how holes are
-## prevented rather than hidden.
+##
+## `mesh_ready() -> bool` answers "is anything waiting to be meshed", ready
+## or not; false means the world has no pending mesh work at all. `mesh() ->
+## bool` meshes one ready chunk and returns true, or returns false when every
+## candidate is still waiting on a neighbour's terrain -- which is how holes
+## are prevented rather than hidden, and is the only thing counted as a
+## deferral. The two probes are separate so that an idle frame and a blocked
+## frame are different numbers: a counter that counts both is a counter you
+## cannot tune against.
 ##
 ## Returns `{"generated": int, "meshed": int, "generate_ms": float,
 ## "mesh_ms": float}`.
@@ -240,9 +267,12 @@ func step(gen: Callable, mesh: Callable, mesh_ready: Callable) -> Dictionary:
 	var mdone := 0
 	while mdone < max_chunks_per_frame and mspent < mesh_budget_ms:
 		if not bool(mesh_ready.call()):
-			stats["deferred"] = int(stats["deferred"]) + 1
+			# Nothing wants a mesh: an idle frame is not a deferral.
 			break
 		if not bool(mesh.call()):
+			# Something wants a mesh but nothing is ready -- every candidate
+			# is waiting on a neighbour. That is what "deferred" means.
+			stats["deferred"] = int(stats["deferred"]) + 1
 			break
 		mdone += 1
 		mspent += COST_MESH_MS
@@ -261,26 +291,40 @@ func step(gen: Callable, mesh: Callable, mesh_ready: Callable) -> Dictionary:
 
 # --- cache ------------------------------------------------------------------
 
-## Offer an unloaded chunk to the cache. Evicts the least recently used chunk
-## when over budget, so walking in a circle is instant and walking in a spiral
-## is bounded.
+## Offer an unloaded chunk to the cache. Evicts the least recently cached
+## chunk when over budget, so walking in a circle is instant and walking in a
+## spiral is bounded.
+##
+## The bookkeeping rule is one cache entry, one order record, always. A
+## second record for the same key turns every later eviction into a lottery
+## between a real eviction and a no-op -- and the no-ops leave the cache
+## reporting itself full while silently dropping the chunk being offered.
 func cache_put(key: String, block: Variant) -> void:
-	if block == null or _cache.size() >= CACHE_CHUNKS:
-		if block != null:
-			_evict_oldest()
+	if block == null:
+		return
+	if _cache.has(key):
+		# Replace in place: re-offer the key rather than growing a ghost.
+		_cache_order.erase(key)
+	elif _cache.size() >= CACHE_CHUNKS:
+		_evict_oldest()
 		if _cache.size() >= CACHE_CHUNKS:
 			return
-	_cache[key] = {"block": block, "used": 0}
+	_cache[key] = {"block": block}
 	_cache_order.append(key)
 
 
-## The cached block for `key`, or null, counting the hit.
+## The cached block for `key`, or null, counting the hit. Taking transfers
+## ownership out of the cache: a chunk that is resident again is no longer
+## the cache's to hold, and keeping a second reference would mean two copies
+## of the same chunk -- one being edited and one silently going stale.
 func cache_take(key: String) -> Variant:
 	var entry: Variant = _cache.get(key, null)
 	if entry == null:
 		return null
+	_cache.erase(key)
+	_cache_order.erase(key)
 	stats["cached_hits"] = int(stats["cached_hits"]) + 1
-	return entry["block"] if entry.has("block") else null
+	return entry["block"]
 
 
 ## The cached block without counting a hit.
@@ -298,11 +342,14 @@ func cache_size() -> int:
 
 
 func _evict_oldest() -> void:
-	if _cache_order.is_empty():
-		return
-	var oldest: String = _cache_order.pop_front()
-	_cache.erase(oldest)
-	stats["evicted"] = int(stats["evicted"]) + 1
+	# Skip stale records instead of pretending an eviction happened: a no-op
+	# eviction leaves the cache full, and the caller's only reaction to a
+	# full cache is to drop the chunk it came to store.
+	while not _cache_order.is_empty():
+		var oldest: String = _cache_order.pop_front()
+		if _cache.erase(oldest):
+			stats["evicted"] = int(stats["evicted"]) + 1
+			return
 
 
 func clear_cache() -> void:

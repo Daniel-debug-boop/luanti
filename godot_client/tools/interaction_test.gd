@@ -110,7 +110,13 @@ func _run() -> void:
 	print("edits: mined air -> placed stone at ", target)
 
 	# --- Edits survive a chunk reload ---
+	# Unload into the cache, then drop the cache so this reload exercises
+	# regeneration plus edit replay rather than reclaiming the very block we
+	# just put there. The village below searches the reloaded chunk for
+	# buildable terrain, and it was written against the procedural surface;
+	# reclaim-on-load itself is asserted by streaming_test.
 	world._unload_chunk(Vector3i(0, 0, 0), world._key(Vector3i(0, 0, 0)))
+	world.stream.clear_cache()
 	world._load_chunk(Vector3i(0, 0, 0))
 	check(world.get_content_at(target) == ContentDB.STONE,
 		"a placed block was lost when the chunk reloaded")
