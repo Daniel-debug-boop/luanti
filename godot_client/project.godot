@@ -6,6 +6,11 @@ config_version=5
 [application]
 
 config/name="LuantiVoxel (Godot 4 migration)"
+; Single source of truth is ../VERSION_LUANTIVOXEL; tools/build_release.sh
+; stamps this copy before exporting, and architecture_test asserts the two
+; agree -- a release archive named one version and a binary reporting another
+; is the kind of mismatch nobody notices until a bug report arrives.
+config/version="0.1.0"
 config/description="Loads Luanti worlds (map.sqlite, format 29) and renders them with greedy-meshed voxel chunks."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")

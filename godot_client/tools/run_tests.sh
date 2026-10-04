@@ -1,8 +1,22 @@
 #!/bin/sh
 # Runs the full Godot test suite headlessly.
 # Usage: sh tools/run_tests.sh [path-to-godot-binary]
+#        sh tools/run_tests.sh --list
 GODOT_BIN="${1:-godot}"
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Suites are discovered, not listed. A hardcoded list has one failure mode and
+# it is the worst one: a new suite that nobody remembered to add is not red,
+# it is absent -- and CI reports green having never run it. Discovery means
+# `tools/*_test.gd` is the definition of "the suite", by construction.
+SUITES=$(cd "$DIR" && ls tools/*_test.gd | sed 's|^tools/||; s|\.gd$||' | sort)
+
+# --list answers before the import pass, so it is instant and needs no engine.
+if [ "$GODOT_BIN" = "--list" ]; then
+  for t in $SUITES; do echo "$t"; done
+  exit 0
+fi
+
 cd /tmp
 # Import assets and rebuild the class cache. Without this the imported/ cache is
 # empty and every suite that touches a texture or sound fails with
@@ -25,15 +39,9 @@ if [ ! -d /tmp/testchunks ]; then
          "converted-world fixture and will be skipped." >&2
   fi
 fi
+
 FAIL=0
-for t in mesher_test seam_test chunk_format_test player_physics_test \
-    inventory_test world_test interaction_test render_settings_test \
-    e2e_test features_test render_test zylann_test gameplay_test creature_test \
-    crafting_ui_test engineering_test engineering_sim_test \
-    engineering_world_test diagnostics_test render_diagnostics_test \
-    adaptive_quality_test    multiplayer_test network_test streaming_test \
-    robustness_test architecture_test systems_test ui_test render_test_test \
-    emergent_test playable_test asset_test; do
+for t in $SUITES; do
   printf "%-22s " "$t"
   # A suite passes when it prints a verdict line at column 0 (`mesher: PASS`,
   # `asset: N checks, 0 FAILURES`) and reports no failure marker anywhere.

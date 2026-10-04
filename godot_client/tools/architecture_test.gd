@@ -22,12 +22,37 @@ func _init() -> void:
 	_test_protocol_sequence()
 	_test_determinism()
 	_test_threading()
+	_test_version_is_single_sourced()
 	# The runtime check needs a frame. `main.gd` builds its world, player and
 	# systems in `_ready`, and adding a node from `SceneTree._init` defers that
 	# -- the same rule the rest of this project follows. Everything else here
 	# is pure, so it does not have to wait.
 	_frames = 0
 	_root_ref = root
+
+
+## The build's version has one source. `tools/build_release.sh` names the
+## archive from ../VERSION_LUANTIVOXEL and stamps that same string into
+## project.godot before exporting, so the download and the running binary
+## cannot disagree -- which is the difference between a bug report that can
+## name its build and one that cannot.
+func _test_version_is_single_sourced() -> void:
+	var stamped := String(ProjectSettings.get_setting(
+		"application/config/version", ""))
+	_eq(stamped != "", true,
+		"the project carries no version, so the game cannot report its build")
+	var path := ProjectSettings.globalize_path("res://../VERSION_LUANTIVOXEL")
+	if not FileAccess.file_exists(path):
+		_eq(true, true, "no VERSION_LUANTIVOXEL in this checkout -- skipped")
+		return
+	var source := FileAccess.get_file_as_string(path).strip_edges()
+	_eq(stamped, source,
+		"project.godot says %s but VERSION_LUANTIVOXEL says %s"
+		% [stamped, source])
+	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	_true(main_src.contains("_version_string()"),
+		"main.gd never reports the version, so a player cannot name their "
+		+ "build")
 
 
 func _process(delta: float) -> bool:

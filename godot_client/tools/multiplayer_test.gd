@@ -12,6 +12,7 @@ var _applied := 0
 
 func _init() -> void:
 	_test_join_required()
+	_test_the_host_goes_through_the_gate()
 	_test_schema_rejects_junk()
 	_test_unknown_op_rejected()
 	_test_one_schema_for_both_ends()
@@ -83,6 +84,47 @@ func _test_join_required() -> void:
 	_eq(bool(a.submit(1, cmd, _apply)["ok"]), true,
 		"and is accepted once it has")
 	_eq(_applied, 1, "exactly once")
+
+
+## Single player is not an exemption. The host is a peer like any other:
+## same session check, same schema, same refusals. This is the entry point
+## `GameApi.request` has been calling for the host's own verbs, and while it
+## did not exist the host's commands went straight into the world while a
+## client's went through the gate -- which is precisely the asymmetry an
+## exploit looks for.
+func _test_the_host_goes_through_the_gate() -> void:
+	var a := NetAuthority.new()
+	_reset()
+	var unapplied := a.submit_local("place", {"component": "beam",
+		"position": Vector3.ONE})
+	_eq(bool(unapplied["ok"]), false,
+		"a host command with no applier installed is refused")
+	_eq(String(unapplied["reason"]).contains("applier"), true,
+		"and says the wiring is missing rather than claiming success")
+	a.set_local_applier(_apply)
+	var unjoined := a.submit_local("place", {"component": "beam",
+		"position": Vector3.ONE})
+	_eq(bool(unjoined["ok"]), false,
+		"and the host still has to have joined: the session check is not "
+		+ "skipped for the host")
+	_eq(_applied, 0, "nothing was applied along the way")
+	a.join(NetAuthority.HOST_PEER, "host", Vector3.ZERO, 0.0)
+	_eq(bool(a.submit_local("place", {"component": "beam",
+		"position": Vector3.ONE})["ok"]), true,
+		"a well-formed host command is accepted once it has")
+	_eq(_applied, 1, "and applied exactly once")
+	# The whole point: the refusals a remote client gets, the host gets too.
+	var bypass := a.submit_local("place", {"component": "beam",
+		"position": Vector3.ONE, "ignore_reach": true})
+	_eq(bool(bypass["ok"]), false,
+		"the host cannot ask to skip validation either")
+	_eq(_applied, 1, "and the refused command changed nothing")
+	var junk := a.submit_local("emergent_place", {"kind": 7})
+	_eq(bool(junk["ok"]), false,
+		"a mistyped host command is refused like any other")
+	_eq(_applied, 1, "still nothing applied")
+	_eq(String(junk["reason"]) != "", true,
+		"with a reason the HUD can show")
 
 
 func _test_schema_rejects_junk() -> void:

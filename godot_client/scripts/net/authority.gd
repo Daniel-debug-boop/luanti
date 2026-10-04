@@ -44,6 +44,42 @@ extends RefCounted
 ## disagreed: `disconnect` wanted an `a` in one and an `edge` in the other, and
 ## the emergent ops existed in only one of them. The protocol table is now the
 ## only description of the wire and this reads out of it.
+## The host player's own peer id. A single-player host is still a peer: it
+## joins like one, is rate limited like one, and is refused like one. The
+## only thing it does not have is a transport to send its commands over,
+## which is why `submit_local` submits them directly instead of queuing.
+const HOST_PEER := 1
+
+## The closure that performs the host's commands once the gate has passed
+## them. Installed once at start-up by the composition root.
+var _local_apply: Callable = Callable()
+
+
+## Install the closure the host's own commands are applied through. This is
+## the one door into the world that is not the transport, and it is still a
+## door through the gate: `GameApi.request` on the authoritative end calls
+## `submit_local`, which calls `submit` -- the same path a remote command
+## takes.
+func set_local_applier(apply: Callable) -> void:
+	_local_apply = apply
+
+
+func has_local_applier() -> bool:
+	return _local_apply.is_valid()
+
+
+## Submit a command from this process's own host player. Returns the same
+## `{"ok", "reason", "result", "peer"}` shape as `submit`.
+func submit_local(op: String, payload: Dictionary) -> Dictionary:
+	if not _local_apply.is_valid():
+		_rejected += 1
+		return {"ok": false, "reason": "no local applier is installed",
+			"result": null, "peer": HOST_PEER}
+	var cmd := payload.duplicate(true)
+	cmd["op"] = op
+	return submit(HOST_PEER, cmd, _local_apply)
+
+
 static func allowed_ops() -> Array[String]:
 	return NetProtocol.command_ops()
 

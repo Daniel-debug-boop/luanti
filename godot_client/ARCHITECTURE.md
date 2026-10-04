@@ -369,17 +369,21 @@ loopback host/client pair cannot be stood up in a headless sandbox to prove
 the handshake, and shipping an untested handshake would be worse than an
 honest gap. Everything the handshake would call is done and tested.
 
-Two things are deliberately *not* done, and are named here rather than left to
+One thing is deliberately *not* done, and is named here rather than left to
 be discovered:
 
-* `GameApi.request` has no local entry point to call, so the engineering verbs
-  the host player triggers still bypass the authority in single player. The
-  gate is correct; what is missing is a `submit_local` that puts the host
-  through it.
 * No price list is installed in `main.gd`, so until one is, the ledger is
   authoritative about whether a player can pay and not about what it costs:
-  the client's own figure is charged. `NetAuthority.set_pricer` is the seam,
-  and `network_test` covers both sides of it.
+  the client's own figure is charged. This is an economy decision rather than
+  an engineering one -- what a rule edit is worth is a game's call -- and
+  inventing a table here would be inventing it silently. `NetAuthority
+  .set_pricer` is the seam, and `network_test` covers both sides of it.
+
+The host is **not** an exemption: `main.gd` joins `NetAuthority.HOST_PEER` at
+start-up and installs `submit_local`'s applier, so the host's own commands go
+through the same session check, schema, depth limit and refusals a remote
+player's do. `GameApi.request` on the authoritative end reaches the world only
+through that door.
 
 ---
 

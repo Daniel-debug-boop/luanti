@@ -40,6 +40,21 @@ echo "==> Importing assets (first run only; this is the slow part)"
 GODOT_SILENCE_ROOT_WARNING=1 "$GODOT_BIN" --headless --path "$DIR" \
   --import >/dev/null 2>&1 || true
 
+# Stamp the version into the project before exporting. VERSION_LUANTIVOXEL is
+# the single source: without this step the archive is named one version and
+# the binary it contains reports none at all, so a bug report cannot name the
+# build it came from. The stamp is a literal-line replacement, and the result
+# is checked, because a silent no-op here would export the previous version.
+if [ -f "$DIR/../VERSION_LUANTIVOXEL" ]; then
+  echo "==> Stamping version $VERSION into project.godot"
+  sed -i "s|^config/version=.*|config/version=\"$VERSION\"|" \
+    "$DIR/project.godot"
+  grep -q "^config/version=\"$VERSION\"$" "$DIR/project.godot" || {
+    echo "error: version stamp did not take in project.godot" >&2
+    exit 1
+  }
+fi
+
 echo "==> Exporting Linux release"
 mkdir -p "$OUT"
 rm -f "$OUT"/luantivoxel.x86_64 "$OUT"/luantivoxel.pck "$OUT"/*.tar.gz*

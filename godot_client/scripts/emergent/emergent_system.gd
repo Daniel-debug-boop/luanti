@@ -727,6 +727,15 @@ func submit(peer_id: int, command: Dictionary) -> Dictionary:
 	return authority.submit(peer_id, command, apply)
 
 
+## Apply a command that has already been through the authority. This is the
+## host player's path (`NetAuthority.submit_local` installs it): the gate has
+## already decided the command is legal, so this performs it and nothing
+## else. Calling it directly would skip every check the authority exists for,
+## which is why it is not what `submit` uses.
+func apply_host(command: Dictionary) -> Variant:
+	return _apply_command(command)
+
+
 ## The mutation itself. Server-side only, and deliberately small: place an
 ## entity, remove one, add a rule. Anything that would need world knowledge
 ## belongs in the engineering layer, which already has an op for it.

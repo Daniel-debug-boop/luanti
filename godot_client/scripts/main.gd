@@ -187,6 +187,15 @@ func _ready() -> void:
 	add_child(profiler)
 	watchdog = StabilityWatchdog.new()
 	authority = NetAuthority.new()
+	# The host is a peer like any other: it joins, and its own commands go
+	# through the same gate a remote player's do. `GameApi.request` reaches
+	# this through `submit_local`, so single player is an exemption from
+	# nothing -- and a build that adds a UI verb cannot forget to wire it,
+	# because the only entry point the API offers is already inside the gate.
+	authority.join(NetAuthority.HOST_PEER, "host", Vector3.ZERO,
+		float(Time.get_ticks_msec()) / 1000.0)
+	authority.set_local_applier(func(cmd: Dictionary) -> Variant:
+		return emergent.apply_host(cmd))
 
 	audio = AudioDirector.new()
 	audio.name = "Audio"
@@ -314,7 +323,7 @@ func _ready() -> void:
 
 	world.update_around(_player_chunk())
 	village.update(player.position)
-	print("[main] ready in ", world.biome_name_at(
+	print("[main] ", _version_string(), " ready in ", world.biome_name_at(
 		Vector3i(int(spawn.x), int(spawn.y), int(spawn.z))), " biome")
 	print("[main] render: ", settings.describe())
 	_register_systems()
@@ -342,6 +351,17 @@ func _ready() -> void:
 
 
 ## Hand the finished scene to the benchmark and let it drive.
+## The build's own name, for the ready line and the dev panel. It comes from
+## project.godot, which tools/build_release.sh stamps from the repository's
+## VERSION_LUANTIVOXEL before exporting -- so the archive a player downloads
+## and the version the game prints are the same string, and a bug report can
+## name a build without anyone having to guess which one.
+func _version_string() -> String:
+	var v := String(ProjectSettings.get_setting(
+		"application/config/version", ""))
+	return "LuantiVoxel %s" % (v if v != "" else "dev")
+
+
 func _start_render_test() -> void:
 	var rt := RenderTest.new()
 	rt.name = "RenderTest"
