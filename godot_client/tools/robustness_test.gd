@@ -18,8 +18,13 @@ func _init() -> void:
 	_test_forward_compatibility_refused()
 	_test_integrity_detects_corruption()
 	_test_backup_recovery()
+	_test_backup_failure_stops_the_write()
+	_test_delete_takes_everything_with_it()
 	_test_complex_world_round_trip()
 	_test_no_duplicate_systems()
+	_test_content_ids_are_classed_consistently()
+	_test_content_table_has_no_collisions()
+	_test_fixture_ids_match_the_content_table()
 	_test_layers_are_separate()
 	_test_soak_determinism()
 	_test_soak_no_growth()
@@ -164,6 +169,71 @@ func _test_backup_recovery() -> void:
 	SaveGame.delete_slot(SLOT)
 
 
+func _test_backup_failure_stops_the_write() -> void:
+	var first := SaveMigration.seal(_v1_save())
+	_true(SaveMigration.write_with_backup(SLOT, first) == "",
+		"the first save writes")
+	# Make the backup path unwritable: a directory where the .bak file has
+	# to go. This is the disk-full-at-the-wrong-moment case in miniature,
+	# and the rule is that a save which cannot preserve the previous world
+	# does not get to overwrite it.
+	_clear_bak_path(SLOT)
+	DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(SaveMigration.backup_path(SLOT)))
+	var second := SaveMigration.seal(_v1_save())
+	second["player"]["position"] = [9.0, 9.0, 9.0]
+	var why := SaveMigration.write_with_backup(SLOT, second)
+	_true(why != "",
+		"a write that cannot back up the old save is refused, not attempted")
+	var read := SaveMigration.read_resilient(SLOT)
+	_true(bool(read["ok"]), "the slot still loads")
+	_eq((read["data"]["player"]["position"] as Array)[0], 1.0,
+		"and it still holds the previous save, not the refused one")
+	# Cleanup: the directory must go before the slot, or the delete below
+	# correctly refuses to leave a resurrection source behind.
+	_clear_bak_path(SLOT)
+	SaveGame.delete_slot(SLOT)
+
+
+## Remove whatever sits at a slot's backup path -- a file left by an earlier
+## run, or the directory this test puts there to make the backup fail. Doing
+## it at both ends is deliberate: a failing assertion stops the test function
+## mid-way, and without the cleanup at the start the sabotage would poison
+## every later run of this suite.
+func _clear_bak_path(slot: int) -> void:
+	var path := SaveMigration.backup_path(slot)
+	var d := DirAccess.open(SaveGame.SAVE_DIR)
+	if d != null:
+		d.remove("%s%d%s.bak" % [SaveGame.SLOT_PREFIX, slot,
+			SaveGame.SLOT_SUFFIX])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _test_delete_takes_everything_with_it() -> void:
+	var first := SaveMigration.seal(_v1_save())
+	_true(SaveMigration.write_with_backup(SLOT, first) == "", "a save writes")
+	var second := SaveMigration.seal(_v1_save())
+	second["player"]["position"] = [5.0, 5.0, 5.0]
+	_true(SaveMigration.write_with_backup(SLOT, second) == "",
+		"and a second write takes a backup of the first")
+	_true(FileAccess.file_exists(SaveMigration.backup_path(SLOT)),
+		"the backup exists")
+	# A stale temp file from an interrupted commit must die with the slot.
+	var tmp := FileAccess.open(SaveGame.slot_path(SLOT) + ".tmp",
+		FileAccess.WRITE)
+	tmp.store_string("{}")
+	tmp.close()
+	_eq(SaveGame.delete_slot(SLOT), true, "the slot deletes")
+	_eq(FileAccess.file_exists(SaveGame.slot_path(SLOT)), false,
+		"the slot file is gone")
+	_eq(FileAccess.file_exists(SaveMigration.backup_path(SLOT)), false,
+		"the backup dies with it -- a deleted save must not resurrect")
+	_eq(FileAccess.file_exists(SaveGame.slot_path(SLOT) + ".tmp"), false,
+		"and the stale temp file with it")
+	_eq(bool(SaveMigration.read_resilient(SLOT)["ok"]), false,
+		"so reading the deleted slot finds nothing to bring back")
+
+
 # --- complex world round trip ----------------------------------------------
 
 ## A factory with every kind of connection, so the round trip has something to
@@ -278,6 +348,97 @@ func _test_no_duplicate_systems() -> void:
 	_eq(eng.inventory == null, true,
 		"and the engineering root holds no inventory of its own")
 	eng.queue_free()
+
+
+func _test_content_ids_are_classed_consistently() -> void:
+	# An id the table does not claim must not be half-classed. get_entry()
+	# answers with the air entry for it, so a lookup past the end of the
+	# table that still reports "solid" is an invisible wall: colourless to
+	# the mesher, blocking to the player, and impossible to diagnose from
+	# inside the game.
+	_eq(ContentDB.is_solid(ContentDB.STONE), true, "stone blocks movement")
+	_eq(ContentDB.is_solid(ContentDB.AIR), false, "air does not")
+	_eq(ContentDB.is_solid(ContentDB.WATER), true,
+		"water still does: swimming is a different system")
+	_eq(ContentDB.is_solid(ContentDB.MAX_ID), true,
+		"the last registered id does")
+	_eq(ContentDB.is_solid(ContentDB.MAX_ID + 1), false,
+		"an id no entry claims does not")
+	_eq(ContentDB.is_solid(-1), false,
+		"and neither does a failed name lookup")
+	_eq(ContentDB.is_opaque(ContentDB.STONE), true, "stone is opaque")
+	_eq(ContentDB.is_opaque(ContentDB.GLASS), false, "glass is not")
+	_eq(ContentDB.is_opaque(ContentDB.MAX_ID + 1), false,
+		"an unclaimed id is not opaque either")
+
+
+func _test_content_table_has_no_collisions() -> void:
+	var stock := ContentDB.validate_table()
+	_eq(stock.size() == 0, true,
+		"the stock table has no id or name collisions: %s" % str(stock))
+	# Every registered id round-trips through the name index in both
+	# directions; a collision would make one direction lie.
+	for id in range(ContentDB.MAX_ID + 1):
+		var n := ContentDB.name_of(id)
+		_true(n != "", "id %d has a name" % id)
+		_eq(ContentDB.name_to_id(n), id,
+			"and the name of id %d resolves back to it" % id)
+	# Inject the two collisions this check exists to catch. Lookups are by
+	# array index, so a second entry claiming id 3 makes "stone" depend on
+	# which of the two entries you happen to find first; a second entry
+	# named "stone" makes the name index answer with whichever id came
+	# first. Both are silent at the call site and loud in a save file.
+	var t := ContentDB._entries
+	var saved := t.duplicate()
+	t.append(ContentDB.Entry.new(ContentDB.STONE, "imposter", Color(1, 0, 1)))
+	var problems := ContentDB.validate_table()
+	var hit := false
+	for p in problems:
+		if String(p).contains("duplicate id 3"):
+			hit = true
+	_true(hit, "a second entry claiming id 3 is reported by name: %s"
+		% str(problems))
+	t.resize(saved.size())
+	t.append(ContentDB.Entry.new(ContentDB.MAX_ID + 1, "stone",
+		Color(1, 0, 1)))
+	problems = ContentDB.validate_table()
+	hit = false
+	for p in problems:
+		if String(p).contains("duplicate name") and String(p).contains("stone"):
+			hit = true
+	_true(hit, "a second entry named stone is reported: %s" % str(problems))
+	# Restore, and prove the restore really did clear the injected state.
+	t.clear()
+	for e in saved:
+		t.append(e)
+	_eq(ContentDB.validate_table().size(), 0,
+		"the table is restored and clean again")
+
+
+func _test_fixture_ids_match_the_content_table() -> void:
+	# The converted-world fixture generator hard-codes the ids of the blocks
+	# it writes into a Luanti map. The Godot side reads that map back
+	# through ContentDB alone, with no remapping -- so a fixture id that
+	# disagrees with ContentDB does not produce the block the fixture meant.
+	# (This is how CONTENT_WATER drifted onto id 9, which is ContentDB's
+	# wood: the fixture's water converted into wooden blocks, silently.)
+	var src := FileAccess.get_file_as_string("res://tools/make_test_world.py")
+	_true(src != "", "the fixture generator is readable")
+	for pair in [["CONTENT_AIR", ContentDB.AIR],
+			["CONTENT_GRASS", ContentDB.GRASS], ["CONTENT_DIRT", ContentDB.DIRT],
+			["CONTENT_STONE", ContentDB.STONE],
+			["CONTENT_WATER", ContentDB.WATER]]:
+		var name := String(pair[0])
+		var re := RegEx.new()
+		re.compile("%s\\s*=\\s*(\\d+)" % name)
+		var m := re.search(src)
+		_true(m != null, "%s is defined in the fixture" % name)
+		if m == null:
+			continue
+		var got := int(m.get_string(1))
+		_eq(got, int(pair[1]),
+			"%s must be ContentDB's id %d, not %d, or the converted world " \
+			+ "reads it as a different block" % [name, int(pair[1]), got])
 
 
 func _test_layers_are_separate() -> void:

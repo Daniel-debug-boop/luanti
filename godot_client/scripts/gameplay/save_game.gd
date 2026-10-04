@@ -58,12 +58,30 @@ static func list_slots() -> Array[int]:
 	return out
 
 
+## Delete a slot and everything that can bring it back. The `.bak` is the
+## file `SaveMigration.read_resilient` falls back to, so leaving it behind
+## means a save the player deleted silently resurrects on the next load --
+## and if the backup cannot be removed, the delete is refused rather than
+## half-done, because half-deleting a save is how a world comes back from
+## the dead.
 static func delete_slot(slot: int) -> bool:
 	last_error = ""
 	if not has_slot(slot):
 		last_error = "no save in slot %d" % slot
 		return false
-	var err := DirAccess.remove_absolute(ProjectSettings.globalize_path(slot_path(slot)))
+	var bak := slot_path(slot) + ".bak"
+	if FileAccess.file_exists(bak):
+		var berr := DirAccess.remove_absolute(ProjectSettings.globalize_path(bak))
+		if berr != OK or FileAccess.file_exists(bak):
+			last_error = "could not remove the backup for slot %d (error %d)" \
+				% [slot, berr]
+			return false
+	# A temp file from an interrupted commit is never read back, but it is
+	# the player's disk; it goes when the slot does.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(
+		slot_path(slot) + ".tmp"))
+	var err := DirAccess.remove_absolute(
+		ProjectSettings.globalize_path(slot_path(slot)))
 	if err != OK:
 		last_error = "could not delete slot %d (error %d)" % [slot, err]
 		return false

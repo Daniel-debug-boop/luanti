@@ -138,7 +138,13 @@ func teardown() -> void:
 			c["from"].disconnect(c["signal"], c["callable"])
 	_signals.clear()
 	for t in _threads:
-		if t.is_alive():
+		# is_started(), not is_alive(): a thread that finished before
+		# teardown still has to be joined -- is_alive() went false the
+		# moment it finished, so it used to be skipped and destroyed
+		# unjoined -- and is_started() is exactly true until
+		# wait_to_finish() has run, which is what makes a second teardown
+		# safe rather than a double join.
+		if t.is_started():
 			t.wait_to_finish()
 	_threads.clear()
 	for n in _nodes:

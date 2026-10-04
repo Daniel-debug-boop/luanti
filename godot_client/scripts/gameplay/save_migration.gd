@@ -207,10 +207,22 @@ static func write_with_backup(slot: int, sealed: Dictionary) -> String:
 	if FileAccess.file_exists(final_path):
 		var prev := FileAccess.get_file_as_string(final_path)
 		if not prev.is_empty():
+			# The guarantee is "the previous save is still recoverable", so a
+			# backup that cannot be written is a refusal to write, not a
+			# warning to log. Proceeding is the one case where a second
+			# failure -- a crash, a disk that fills again mid-commit -- costs
+			# the player both saves, and this is exactly the moment the disk
+			# is already in trouble.
 			var b := FileAccess.open(backup_path(slot), FileAccess.WRITE)
-			if b != null:
-				b.store_string(prev)
-				b.close()
+			if b == null:
+				return "could not write the backup for slot %d (error %d)" \
+					% [slot, FileAccess.get_open_error()]
+			b.store_string(prev)
+			var berr := b.get_error()
+			b.close()
+			if berr != OK:
+				return "the backup for slot %d is incomplete (error %d)" \
+					% [slot, berr]
 	return "" if SaveGame.write_slot(slot, sealed) else SaveGame.last_error
 
 

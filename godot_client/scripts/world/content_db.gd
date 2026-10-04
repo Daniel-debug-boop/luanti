@@ -7,7 +7,11 @@ extends RefCounted
 ## translucency, emissive light, and hardness -- in one table that the mesher,
 ## the world generator, and the HUD all read.
 ##
-## Ids are stable: 0 air, 1..N terrain. Keep in sync with tools/worldgen.py.
+## Ids are stable: 0 air, 1..N terrain. This table is the only definition of
+## what an id means: the converted-world fixture (tools/make_test_world.py)
+## writes these ids into the Luanti map it generates, and the fixture is
+## asserted against this table, because the Godot side reads a converted
+## world back through here with no remapping in between.
 
 ## One entry per registered content id.
 class Entry:
@@ -170,7 +174,54 @@ static func _table() -> Array[Entry]:
 		Entry.new(GLASS, "glass", Color(0.72, 0.84, 0.90, 0.28), true, 0, 0.4),
 		Entry.new(METAL_PLATE, "metal_plate", Color(0.50, 0.53, 0.56), false, 0, 2.6),
 	]
+	# One integrity check at build time, because every lookup below is by
+	# array index: a table that has drifted from its ids fails silently.
+	# `get_entry` hands back whichever entry sits at that position, the
+	# mesher binds materials by the id printed on the surface, and the name
+	# index answers with whichever of two same-named entries came first.
+	var problems := _problems(_entries)
+	if not problems.is_empty():
+		push_warning("ContentDB: " + "; ".join(problems))
 	return _entries
+
+
+## Everything wrong with the id table, as human-readable strings; empty when
+## the table is sound. Exposed because a collision is invisible at every call
+## site and obvious here: two entries claiming one id, two ids answering to
+## one name, an entry whose id is not its index (which is what every lookup
+## assumes), a MAX_ID that has drifted from the table, or a metal mapping
+## pointing at an id nothing registered.
+static func validate_table() -> Array[String]:
+	return _problems(_table())
+
+
+static func _problems(t: Array[Entry]) -> Array[String]:
+	var out: Array[String] = []
+	if t.size() - 1 != MAX_ID:
+		out.append("table has %d entries but MAX_ID is %d" % [t.size(), MAX_ID])
+	var by_id := {}
+	var by_name := {}
+	for i in t.size():
+		var e: Entry = t[i]
+		if e.id != i:
+			out.append("entry %d carries id %d: lookups are by index"
+				% [i, e.id])
+		if by_id.has(e.id):
+			out.append("duplicate id %d: entries %d and %d both claim it"
+				% [e.id, int(by_id[e.id]), i])
+		else:
+			by_id[e.id] = i
+		if e.name == "":
+			out.append("entry %d has no name" % i)
+		elif by_name.has(e.name):
+			out.append("duplicate name \"%s\": ids %d and %d both answer to it"
+				% [e.name, int(by_name[e.name]), e.id])
+		else:
+			by_name[e.name] = e.id
+	for id in METAL_OF.keys():
+		if int(id) < 0 or int(id) >= t.size():
+			out.append("metal mapping names unregistered id %d" % int(id))
+	return out
 
 
 static func get_entry(id: int) -> Entry:
@@ -197,8 +248,14 @@ static func light_of(id: int) -> int:
 	return get_entry(id).light
 
 
+## True only for a registered id that blocks movement. An unregistered id --
+## a block from a newer build, a foreign map, a failed name lookup -- must
+## not be classed solid: `get_entry` answers with the air entry for it, so a
+## solid verdict would be an invisible wall, colourless to the mesher and
+## blocking to the player. Two answers for one id is worse than one honest
+## "I do not know this block".
 static func is_solid(id: int) -> bool:
-	return id != AIR
+	return id > AIR and id <= MAX_ID
 
 
 ## Blocks with real content (used to skip meshing all-air blocks).

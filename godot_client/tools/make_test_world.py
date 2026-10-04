@@ -24,11 +24,16 @@ except ImportError:
 MAP_BLOCKSIZE = 16
 BLOCK_VOLUME = MAP_BLOCKSIZE ** 3
 
+# These are ContentDB ids, not Luanti's own: the Godot side reads a
+# converted world back through ContentDB with no remapping in between, so
+# the only id that survives the round trip is the one both sides agree on.
+# (robustness_test asserts this table against ContentDB, which is how the
+# water id was found sitting on 9 -- ContentDB's wood.)
 CONTENT_AIR = 0
 CONTENT_STONE = 3
 CONTENT_DIRT = 2
 CONTENT_GRASS = 1
-CONTENT_WATER = 9
+CONTENT_WATER = 4
 
 VERSION = 29
 LIGHT_SUN = 15

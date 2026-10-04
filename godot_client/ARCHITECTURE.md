@@ -258,7 +258,11 @@ Failure is a return value, not an exception and not a crash.
 | Replayed or out-of-order command | `NetAuthority.submit_sequenced` | refused; the sequence number has already been applied |
 | A quote the server does not sell at | `NetAuthority.submit` | refused as a price mismatch |
 | Truncated or spliced save | `SaveMigration.read_resilient` | recovered from `.bak`, and says so |
+| A backup that cannot be written | `SaveMigration.write_with_backup` | the write is refused; the previous save stays the one on disk |
+| Deleting a slot with a stuck backup | `SaveGame.delete_slot` | the delete is refused rather than leaving a save that can resurrect |
 | Save from a newer build | `SaveMigration.migrate` | refused rather than guessed at |
+| A thread that finished before teardown | `System.teardown` | joined via `is_started()`, not skipped via `is_alive()` |
+| A content id or name collision | `ContentDB.validate_table` | named at table build; lookups are by index, so a collision fails silently otherwise |
 | Corrupt network state | `EngAssemblies.recognize` | a hint, never a failure |
 | Chunk generation failed | `StreamScheduler.step` | the job is cancelled, not fatal |
 | A queued chunk left the view | `StreamScheduler.select` | the job is pruned before the generator is asked -- cancellation is the scheduler's decision, never the generator's |

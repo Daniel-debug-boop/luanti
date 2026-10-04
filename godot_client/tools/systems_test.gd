@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_lifecycle_is_enforced()
 	_test_teardown_is_idempotent_and_total()
 	_test_teardown_drops_connections()
+	_test_teardown_joins_every_started_thread()
 	_test_registry_order()
 	_test_registry_tolerates_a_failed_system()
 	_test_registry_shutdown_is_reverse_order()
@@ -168,6 +169,36 @@ func _test_teardown_drops_connections() -> void:
 		"teardown disconnects it: a freed listener receiving a signal is a hard crash")
 	_eq(s.leaked(), 0, "and the debt is settled")
 	source.queue_free()
+
+
+func _test_teardown_joins_every_started_thread() -> void:
+	# Teardown owns the wait for every thread the system started -- a thread
+	# is the one acquisition with a life of its own, and abandoning one is
+	# how a process exits with unrealized completion (and, on a longer
+	# thread, how it hangs). The subtlety is the check: is_alive() is false
+	# the moment a thread finishes, so a finished thread used to be skipped
+	# and destroyed unjoined. is_started() is the right question -- it stays
+	# true until wait_to_finish() has actually been called.
+	var s := _sys("village")
+	s.initialize()
+	var finished := Thread.new()
+	finished.start(func() -> void: OS.delay_msec(2))
+	while finished.is_alive():
+		OS.delay_msec(1)
+	s._threads.append(finished)
+	s.teardown()
+	_eq(finished.is_started(), false,
+		"teardown joins a thread that had already finished")
+	var s2 := _sys("audio")
+	s2.initialize()
+	var running := Thread.new()
+	running.start(func() -> void: OS.delay_msec(40))
+	s2._threads.append(running)
+	s2.teardown()
+	_eq(running.is_alive(), false,
+		"teardown waits for a thread that was still running")
+	_eq(running.is_started(), false,
+		"and it is joined once teardown returns")
 
 
 func _test_registry_order() -> void:
