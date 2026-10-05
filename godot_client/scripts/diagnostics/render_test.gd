@@ -69,7 +69,7 @@ var apply_stage: Callable = Callable()
 ## capture answers "is the geometry right"; a shipping capture answers "is
 ## the game pretty". Both are worth having, so both are available, but the
 ## one you diagnose in must be the one with the fewest variables.
-const EFFECT_PRESETS := ["baseline", "game"]
+const EFFECT_PRESETS := ["baseline", "game", "slope"]
 
 
 # --- adapter classification --------------------------------------------------
@@ -576,21 +576,37 @@ func start(config: Dictionary) -> int:
 ## whose faces point the wrong way.
 func _apply_effects() -> void:
 	var preset := str(cfg.get("effects", "baseline"))
+	# RenderSettings.Quality: 0 LOW, 1 MEDIUM, 2 HIGH.
+	# MaterialLibrary.Mapping: 0 plain, 1 triplanar, 2 parallax,
+	# 3 stochastic, 4 slope blending.
+	#
+	# "slope" is the shipping quality with the slope-blended mapping, so a
+	# capture shows grass on level ground giving way to rock on the walls. It
+	# exists as its own preset because it is the only run that compiles the
+	# slope shader: a shading-language error in that file is invisible to any
+	# headless or CPU-side check, and shows up as a black or magenta surface
+	# here and nowhere else.
+	var quality := 2
+	var mapping := 3
+	if preset == "baseline":
+		quality = 0
+		mapping = 0
+	elif preset == "slope":
+		quality = 2
+		mapping = 4
 	if apply_render_settings.is_valid():
-		# RenderSettings.Quality: 0 LOW, 1 MEDIUM, 2 HIGH.
-		# MaterialLibrary.Mapping: 0 plain, 1 triplanar, 2 parallax,
-		# 3 stochastic.
-		if preset == "baseline":
-			apply_render_settings.call(0, 0)
-		else:
-			apply_render_settings.call(2, 3)
+		apply_render_settings.call(quality, mapping)
 	note("effects: %s (quality=%s, mapping=%s)" % [preset,
-		"LOW" if preset == "baseline" else "HIGH",
-		"plain" if preset == "baseline" else "stochastic"])
+		"LOW" if quality == 0 else "HIGH",
+		MaterialLibrary.mapping_name()[clampi(mapping, 0, 4)]])
 	if preset == "baseline":
 		note("baseline preset: POM, stochastic mapping, SSIL, volumetric fog "
 			+ "and SDFGI cascades are off so the captures show geometry, not "
 			+ "post-processing. Pass --effects game for the shipping look.")
+	elif preset == "slope":
+		note("slope preset: the shipping look with slope-blended materials, "
+			+ "so ground cover stops at the walls. A failure to compile the "
+			+ "slope shader is visible here as a flatly wrong surface.")
 
 
 ## Isolate one layer of the pipeline.
