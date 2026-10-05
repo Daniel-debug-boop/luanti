@@ -29,6 +29,7 @@ func _run() -> void:
 	_test_back_pressure_refuses_rather_than_queueing()
 	_test_an_edited_chunk_is_not_overwritten_by_a_stale_sweep()
 	_test_a_result_for_an_unloaded_chunk_is_dropped()
+	_test_a_chunk_can_be_culled_and_is_given_room_to_be()
 	print("mesh_worker: %s" % ["PASS" if failures == 0
 		else "%d FAILURES" % failures])
 	quit(1 if failures > 0 else 0)
@@ -222,4 +223,63 @@ func _test_a_result_for_an_unloaded_chunk_is_dropped() -> void:
 		% [meshes_before, w._meshes.size()])
 	check(not w._pending_mesh.has(key),
 		"the pending record for an unloaded chunk was left behind")
+	w.queue_free()
+
+
+## The culling contract. Frustum culling is the engine's job, but it can only
+## do it from bounds, and bounds it has to derive from a rebuilt mesh are
+## bounds it can get wrong -- which shows up as a chunk vanishing while part of
+## it is still on screen. Every chunk is therefore handed the same explicit
+## box, and a draw distance that follows the view radius.
+func _test_a_chunk_can_be_culled_and_is_given_room_to_be() -> void:
+	var w := VoxelWorld.new()
+	w.view_radius = 2
+	w.async_meshing = true
+	w.generator = WorldGenerator.new(99)
+	w.materials = MaterialLibrary.new()
+	root.add_child(w)
+	w.ensure_region(Vector3i.ZERO, 3)
+
+	# `ensure_region` generates blocks; meshing is a separate step, so drive
+	# the real job path the way a frame would.
+	var key := w._key(Vector3i.ZERO)
+	w._dirty[key] = true
+	w._mesh_job()
+	for r in w._mesh_worker.flush():
+		w._apply_meshed(r)
+
+	check(not w._meshes.is_empty(), "no chunk nodes were built to cull")
+	if w._meshes.is_empty():
+		w.queue_free()
+		return
+	var mi: MeshInstance3D = w._meshes[key]
+
+	check(mi.custom_aabb == VoxelWorld.CULL_AABB,
+		"a chunk did not get the shared bounding box")
+
+	# The box must contain the block it belongs to, slack included. If it does
+	# not, the engine can cull a chunk that is still partly visible.
+	var box := mi.custom_aabb
+	check(box.position.x <= 0.0 and box.position.y <= 0.0 \
+			and box.position.z <= 0.0,
+		"the chunk box does not reach the block's near corner")
+	check(box.end.x >= VoxelWorld.BS and box.end.y >= VoxelWorld.BS \
+			and box.end.z >= VoxelWorld.BS,
+		"the chunk box does not reach the block's far corner")
+	check(mi.extra_cull_margin == VoxelWorld.CULL_SLACK,
+		"a chunk has no margin for the vertices the smoother pulls outside it")
+
+	var expected := float(w.view_radius + 2) * VoxelWorld.BS
+	check(mi.visibility_range_end == expected,
+		"chunk draw distance is %s, expected %s"
+		% [mi.visibility_range_end, expected])
+
+	# Widening the view has to widen the draw distance on chunks that already
+	# exist, not only on the ones built afterwards.
+	w.view_radius = 4
+	w.rebind_materials()
+	var wider := float(w.view_radius + 2) * VoxelWorld.BS
+	check(wider > expected, "the wider radius did not widen the range at all")
+	check(mi.visibility_range_end == wider,
+		"a live chunk kept its old draw distance after the radius changed")
 	w.queue_free()

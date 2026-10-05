@@ -17,6 +17,16 @@ signal block_changed(pos: Vector3i, id: int)
 
 const BS := 16
 
+## How far outside its own block a vertex can be pulled, in voxels. The
+## surface-nets pass places a vertex inside the cell grid, which reaches one
+## voxel past the block on every side, so two is the most it can move.
+const CULL_SLACK := 2.0
+## One box, shared by every chunk. The block plus that slack, with the origin
+## moved so the box is centred on the same point the vertices are placed
+## around.
+const CULL_AABB := AABB(Vector3(-CULL_SLACK, -CULL_SLACK, -CULL_SLACK),
+		Vector3(BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0))
+
 @export var world_dir := ""
 @export var view_radius := 5
 @export var build_budget := 2
@@ -635,6 +645,25 @@ func _apply_meshed(result: Dictionary) -> void:
 
 
 ## The scene-graph half of meshing, for a chunk whose face buffers are ready.
+## Bounds and draw distance for one chunk instance.
+##
+## The engine frustum-culls a MeshInstance3D on its own, but only from bounds
+## it has to work out -- and it works them out from the mesh, which is rebuilt
+## every time a chunk is re-meshed. Handing every chunk the same explicit box
+## means the cull test is a fixed comparison against a box that is known to
+## contain the geometry, including the vertices the smoother pulls outside the
+## block. `extra_cull_margin` covers the sub-voxel remainder.
+##
+## The draw distance is the view radius plus the meshing margin: a chunk is
+## only dropped once it is past everything the player can see, so nothing pops
+## in at the edge of the view.
+func _apply_culling(mi: MeshInstance3D) -> void:
+	mi.custom_aabb = CULL_AABB
+	mi.extra_cull_margin = CULL_SLACK
+	mi.visibility_range_begin = 0.0
+	mi.visibility_range_end = float(view_radius + 2) * BS
+
+
 func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 		trans: ArrayMesh) -> void:
 	var mi: MeshInstance3D = _meshes.get(key, null)
@@ -644,6 +673,7 @@ func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 		add_child(mi)
 		_meshes[key] = mi
 	mi.position = Vector3(pos.x * BS, pos.y * BS, pos.z * BS)
+	_apply_culling(mi)
 	# Surfaces carry their own per-block-id materials, so no override here.
 	_bind_surfaces(mi, opaque)
 	mi.visible = (opaque != null)
@@ -656,6 +686,7 @@ func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 			add_child(ti)
 			_trans_nodes[key] = ti
 		ti.position = mi.position
+		_apply_culling(ti)
 		_bind_surfaces(ti, trans)
 		ti.visible = true
 	elif ti != null:
@@ -687,6 +718,9 @@ func rebind_materials() -> void:
 			var mi: MeshInstance3D = store[key]
 			if mi == null or not is_instance_valid(mi):
 				continue
+			# The view radius can have moved since this chunk was built, so the
+			# draw distance is refreshed here rather than only at creation.
+			_apply_culling(mi)
 			_bind_surfaces(mi, mi.mesh)
 
 
