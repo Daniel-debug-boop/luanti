@@ -426,6 +426,7 @@ add_custom_target(GenerateBuiltinFilesCpp
 
 add_subdirectory(threading)
 add_subdirectory(content)
+add_subdirectory(nows)
 add_subdirectory(database)
 add_subdirectory(mapgen)
 add_subdirectory(network)
@@ -526,6 +527,7 @@ set(common_SRCS
 	${common_SCRIPT_SRCS}
 	${common_server_SRCS}
 	${mapgen_SRCS}
+	${nows_SRCS}
 	${server_network_SRCS}
 	${test_SRCS}
 	${unittest_SRCS}

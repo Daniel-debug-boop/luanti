@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "map.h"
+#include "nows/nows_types.h" // WarmStart
 #include "util/container.h" // UniqueQueue
 #include "util/metricsbackend.h" // ptr typedefs
 #include "map_settings_manager.h"
@@ -159,8 +160,21 @@ public:
 
 	void transformLiquids(std::map<v3s16, MapBlock*> & modified_blocks,
 			ServerEnvironment *env);
+	/*
+	 * The relaxation itself. `warm_start` is an optional initial guess for
+	 * the liquid level field (see src/nows/): it changes only the level a node
+	 * starts from, never the rules, the writes or the result. Pass nullptr
+	 * for the plain behaviour.
+	 *
+	 * `loopcount_out`, when given, receives the number of nodes the solver
+	 * actually processed, which is the honest cost measure for the solve.
+	 * `residual_out`, when given, receives the work still queued when the
+	 * solve returned: zero means the field reached its fixed point.
+	 */
 	void transformLiquidsLocal(std::map<v3s16, MapBlock*> &modified_blocks, UniqueQueue<v3s16> &liquid_queue,
-			ServerEnvironment *env, u32 liquid_loop_max);
+			ServerEnvironment *env, u32 liquid_loop_max,
+			const nows::WarmStart *warm_start = nullptr, u32 *loopcount_out = nullptr,
+			u32 *residual_out = nullptr);
 	void transforming_liquid_add(v3s16 p);
 
 	MapSettingsManager settings_mgr;

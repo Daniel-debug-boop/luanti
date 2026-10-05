@@ -3561,6 +3561,70 @@
 #    type: float min: 0.001
 # liquid_update = 1.0
 
+#    Enable the NOWS acceleration layer: a neural operator predicts the
+#    converged state of a numerical field so the iterative solver can start
+#    closer to it. The solver still decides every value; the prediction is
+#    only ever an initial guess. Experimental.
+#    type: bool
+# nows_enabled = false
+
+#    Path to a NOWS model file (.nowsm). Leave empty to keep the layer off;
+#    an unusable or missing model simply falls back to the normal solve.
+#    type: string
+# nows_model_path = ""
+
+#    Allow loading a model whose header marks it as not trained.
+#    type: bool
+# nows_allow_untrained = false
+
+#    Fall back to the normal solver whenever a prediction is rejected,
+#    unavailable, or the solver does not converge.
+#    type: bool
+# nows_fallback = true
+
+#    Run the structural checks on every prediction.
+#    type: bool
+# nows_validation = true
+
+#    Reject a prediction whose RMS level deviation from the current field is
+#    larger than this. 1.0 means a deviation of the full value range.
+#    type: float min: 0.0 max: 1.0
+# nows_max_residual = 0.35
+
+#    Edge length of the cubic field handed to the model (power of two).
+#    type: int min: 8 max: 32
+# nows_grid_size = 16
+
+#    Upper bound on the number of nodes a single warm start may influence.
+#    type: int min: 1 max: 4096
+# nows_max_region_nodes = 512
+
+#    Below this many queued nodes the inference cost is not worth it.
+#    type: int min: 1 max: 1000000
+# nows_min_queue = 24
+
+#    If one inference takes longer than this many microseconds, NOWS backs off.
+#    type: int min: 1 max: 1000000
+# nows_max_inference_us = 2000
+
+#    Solver calls to skip after a rejection or a non-converged solve.
+#    type: int min: 0 max: 1000000
+# nows_cooldown = 8
+
+#    Back off automatically when the measured solver savings do not cover the
+#    measured inference cost.
+#    type: bool
+# nows_adaptive = true
+
+#    Solver calls of each kind needed before the profitability gate trusts its
+#    own measurements.
+#    type: int min: 1 max: 1000000
+# nows_min_samples = 8
+
+#    Log the warm start / normal solve decision and periodic statistics.
+#    type: bool
+# nows_debug = false
+
 #    At this distance the server will aggressively optimize which blocks are sent to
 #    clients.
 #    Small values potentially improve performance a lot, at the expense of visible

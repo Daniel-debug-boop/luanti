@@ -21,6 +21,7 @@
 #include "reflowscan.h"
 #include "emerge.h"
 #include "mapgen/mg_biome.h"
+#include "nows/nows_manager.h"
 #include "config.h"
 #include "server.h"
 #include "serverenvironment.h"
@@ -98,6 +99,13 @@ ServerMap::ServerMap(const std::string &savedir, IGameDef *gamedef,
 		"minetest_map_loaded_blocks", "Number of loaded blocks");
 
 	m_map_compression_level = rangelim(g_settings->getS16("map_compression_level_disk"), -1, 9);
+
+	/*
+	 * NOWS reads its configuration once per world load. It is off unless
+	 * nows_enabled says otherwise, and even then a missing or unusable model
+	 * only means the solvers keep behaving exactly as before.
+	 */
+	nows::Manager::get().initialize(g_settings, mb);
 
 	try {
 		// If directory exists, check contents and load if possible
@@ -938,7 +946,8 @@ void ServerMap::transforming_liquid_add(v3s16 p)
 }
 
 void ServerMap::transformLiquidsLocal(std::map<v3s16, MapBlock*> &modified_blocks, UniqueQueue<v3s16> &liquid_queue,
-		ServerEnvironment *env, u32 liquid_loop_max)
+		ServerEnvironment *env, u32 liquid_loop_max, const nows::WarmStart *warm_start,
+		u32 *loopcount_out, u32 *residual_out)
 {
 	u32 loopcount = 0;
 
@@ -998,6 +1007,31 @@ void ServerMap::transformLiquidsLocal(std::map<v3s16, MapBlock*> &modified_block
 				break;
 			case LiquidType_END:
 				break;
+		}
+
+		/*
+			NOWS warm start (experimental, off by default).
+			
+			This is the only place the acceleration layer touches the solver,
+			and all it does is replace the level this node *starts* from. The
+			decision below -- content, neighbours, viscosity, what gets written
+			and how it is reported -- is untouched, and the node's own bitfield
+			is still what the "did anything change" test compares against, so a
+			bad guess cannot be written verbatim: the next pass recomputes the
+			level from the neighbours.
+			
+			It is safe as an initial guess because the relaxation's fixed point
+			does not depend on where it starts: at equilibrium every node's level
+			equals the maximum level its neighbours can supply, which is a
+			function of the neighbours alone. A guess can therefore only change
+			how many passes the transient takes, never where the field settles.
+			The adapter additionally keeps the total liquid mass of the region
+			unchanged, so it cannot create or destroy water either.
+		 */
+		if (warm_start && liquid_level >= 0) {
+			const s8 guess = warm_start->levelAt(p0);
+			if (guess >= 0)
+				liquid_level = guess;
 		}
 
 		/*
@@ -1247,11 +1281,23 @@ void ServerMap::transformLiquidsLocal(std::map<v3s16, MapBlock*> &modified_block
 			case LiquidType_END:
 				break;
 		}
-	}
-	//infostream<<"Map::transformLiquids(): loopcount="<<loopcount<<std::endl;
+	}//infostream << "Map::transformLiquids(): loopcount=" << loopcount << std::endl;
+
+	// Honest cost measure of this solve, used by the NOWS statistics and by
+	// the unit tests. The number is simply how many nodes the relaxation had
+	// to visit before the queue drained or the iteration cap hit.
+	if (loopcount_out)
+		*loopcount_out = loopcount;
 
 	for (const auto &iter : must_reflow)
 		liquid_queue.push_back(iter);
+
+	// Residual work: what is still queued once this solve returns. Nodes the
+	// viscosity rule marked for another pass and nodes waiting on a floating
+	// node above all count, because none of them have settled yet. Zero means
+	// the relaxation reached its fixed point for this region.
+	if (residual_out)
+		*residual_out = (u32)liquid_queue.size() + (u32)check_for_falling.size();
 
 	voxalgo::update_lighting_nodes(this, changed_nodes, modified_blocks);
 
@@ -1268,7 +1314,40 @@ void ServerMap::transformLiquids(std::map<v3s16, MapBlock*> &modified_blocks,
 	// process the whole queue at most once, to rate-limit
 	u32 liquid_loop_max = std::min<u32>(m_transforming_liquid.size(), g_settings->getS32("liquid_loop_max"));
 
-	transformLiquidsLocal(modified_blocks, m_transforming_liquid, env, liquid_loop_max);
+	/*
+		NOWS acceleration layer (experimental).
+		
+		The learned warm start is strictly an accelerator around this call: the
+		solver below is the one that runs either way and owns the result. When
+		NOWS is disabled, misconfigured, has no model, or produces something
+		that fails validation, `guess` stays empty and the call is exactly the
+		one this method has always made.
+
+		The region is centred on the node the queue will process first, so the
+		guess covers the work that is actually about to happen, and the queue
+		length decides whether inference can pay for itself at all.
+	 */
+	nows::WarmStart guess;
+	bool used_nows = false;
+	if (!m_transforming_liquid.empty()) {
+		nows::Status status = nows::Status::Disabled;
+		used_nows = nows::Manager::get().predictWarmStart(this, m_gamedef,
+				m_transforming_liquid.front(), m_transforming_liquid.size(), guess,
+				status);
+	}
+
+	u32 loopcount = 0;
+	u32 residual = 0;
+	u64 solve_start_us = porting::getTimeUs();
+	transformLiquidsLocal(modified_blocks, m_transforming_liquid, env,
+			liquid_loop_max, used_nows ? &guess : nullptr, &loopcount, &residual);
+	const u64 solve_us = porting::getTimeUs() - solve_start_us;
+
+	// Convergence, in the solver's own terms: hitting the iteration cap with
+	// work still queued means the field has not settled, so the solve was not
+	// a fixed point and NOWS does not get credit for it.
+	const bool converged = loopcount < liquid_loop_max;
+	nows::Manager::get().recordSolve(used_nows, loopcount, solve_us, converged, residual);
 
 	/* ----------------------------------------------------------------------
 	 * Manage the queue so that it does not grow indefinitely

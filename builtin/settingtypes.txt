@@ -2367,6 +2367,63 @@ liquid_queue_purge_time (Liquid queue purge time) int 0 0 65535
 #    Liquid update interval in seconds.
 liquid_update (Liquid update tick) float 1.0 0.001
 
+#    Enable the NOWS acceleration layer: a neural operator predicts the
+#    converged state of a numerical field so the iterative solver can start
+#    closer to it. The solver still decides every value; the prediction is
+#    only ever an initial guess. Experimental.
+nows_enabled (NOWS: enable neural warm starts) bool false
+
+#    Path to a NOWS model file (.nowsm). Leave empty to keep the layer off;
+#    an unusable or missing model simply falls back to the normal solve.
+nows_model_path (NOWS: model path) string
+
+#    Allow loading a model whose header marks it as not trained. This exists
+#    so the plumbing can be exercised during development; a placeholder model
+#    is not a prediction of anything.
+nows_allow_untrained (NOWS: allow untrained models) bool false
+
+#    Fall back to the normal solver whenever a prediction is rejected,
+#    unavailable, or the solver does not converge.
+nows_fallback (NOWS: fall back to normal solver) bool true
+
+#    Run the structural checks (dimensions, finite values, ranges, boundary
+#    and residual) on every prediction.
+nows_validation (NOWS: validate predictions) bool true
+
+#    Reject a prediction whose RMS level deviation from the current field is
+#    larger than this. 1.0 means a deviation of the full value range.
+nows_max_residual (NOWS: maximum prediction residual) float 0.35 0.0 1.0
+
+#    Edge length of the cubic field handed to the model. Must be a power of
+#    two in [8,32].
+nows_grid_size (NOWS: model grid size) int 16 8 32
+
+#    Upper bound on the number of nodes a single warm start may influence.
+nows_max_region_nodes (NOWS: maximum warm start nodes) int 512 1 4096
+
+#    Below this many queued nodes the inference cost is not worth it.
+nows_min_queue (NOWS: minimum queue size) int 24 1 1000000
+
+#    If one inference takes longer than this many microseconds, NOWS backs off
+#    and lets the plain solver run.
+nows_max_inference_us (NOWS: inference time budget) int 2000 1 1000000
+
+#    Number of solver calls to skip after a rejected prediction or a solve
+#    that did not converge.
+nows_cooldown (NOWS: cooldown solves) int 8 0 1000000
+
+#    Back off automatically when the measured solver savings do not cover the
+#    measured inference cost. With this on, a model that costs more than it
+#    saves is not run at all, however well it is validated.
+nows_adaptive (NOWS: adaptive profitability gate) bool true
+
+#    Solver calls of each kind needed before the profitability gate trusts its
+#    own measurements.
+nows_min_samples (NOWS: profitability sample count) int 8 1 1000000
+
+#    Log the warm start / normal solve decision and periodic statistics.
+nows_debug (NOWS: debug output) bool false
+
 #    At this distance the server will aggressively optimize which blocks are sent to
 #    clients.
 #    Small values potentially improve performance a lot, at the expense of visible

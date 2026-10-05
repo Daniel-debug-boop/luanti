@@ -529,6 +529,24 @@ void set_default_settings()
 	settings->setDefault("liquid_queue_purge_time", "0");
 	settings->setDefault("liquid_update", "1.0");
 
+	// NOWS -- neural operator warm starts (experimental accelerator).
+	// Off by default, and safe with no model configured: the solvers simply
+	// run the way they always did.
+	settings->setDefault("nows_enabled", "false");
+	settings->setDefault("nows_model_path", "");
+	settings->setDefault("nows_allow_untrained", "false");
+	settings->setDefault("nows_fallback", "true");
+	settings->setDefault("nows_validation", "true");
+	settings->setDefault("nows_max_residual", "0.35");
+	settings->setDefault("nows_grid_size", "16");
+	settings->setDefault("nows_max_region_nodes", "512");
+	settings->setDefault("nows_min_queue", "24");
+	settings->setDefault("nows_max_inference_us", "2000");
+	settings->setDefault("nows_cooldown", "8");
+	settings->setDefault("nows_adaptive", "true");
+	settings->setDefault("nows_min_samples", "8");
+	settings->setDefault("nows_debug", "false");
+
 	// Mapgen
 	settings->setDefault("mg_name", "v7");
 	settings->setDefault("water_level", "1");
