@@ -75,6 +75,9 @@ const MODULES := {
 	"WorldGenerator":     {"layer": "world",       "visibility": PUBLIC},
 	"ChunkFiles":         {"layer": "world",       "visibility": INTERNAL},
 	"GreedyMesher":       {"layer": "world",       "visibility": INTERNAL},
+	# The smoothing mesher. INTERNAL like GreedyMesher: it is consumed by
+	# VoxelWorld, in the same layer, and nothing above needs to name it.
+	"SurfaceNets":        {"layer": "world",       "visibility": INTERNAL},
 	"ChunkMeshWorker":    {"layer": "world",       "visibility": INTERNAL},
 	"MaterialLibrary":    {"layer": "world",       "visibility": PUBLIC},
 	"RenderSettings":     {"layer": "world",       "visibility": PUBLIC},
