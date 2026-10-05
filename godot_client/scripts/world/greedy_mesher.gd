@@ -245,6 +245,13 @@ static func _lut() -> Dictionary:
 
 ## Stride between consecutive voxels along component `axis`, in both the
 ## padded lattice and the block's own arrays.
+## Lattice index for a block-local voxel coordinate in -1..BS. The shared
+## entry point for reading the padded lattice: `SurfaceNets` uses it too, so
+## the two meshers cannot disagree about where a voxel lives.
+static func _pidx(x: int, y: int, z: int) -> int:
+	return (z + 1) * PAD * PAD + (y + 1) * PAD + (x + 1)
+
+
 static func _pad_stride(axis: int) -> int:
 	if axis == 0:
 		return 1
