@@ -282,4 +282,38 @@ func _test_a_chunk_can_be_culled_and_is_given_room_to_be() -> void:
 	check(wider > expected, "the wider radius did not widen the range at all")
 	check(mi.visibility_range_end == wider,
 		"a live chunk kept its old draw distance after the radius changed")
+
+	# --- occlusion culling ---
+	check(w._occluders.has(key), "an opaque chunk was given no occluder")
+	if w._occluders.has(key):
+		var oi: OccluderInstance3D = w._occluders[key]
+		check(oi.occluder is BoxOccluder3D,
+			"the chunk occluder is not the shared box")
+		# The occluder has to sit where the chunk's geometry does. A box
+		# occluder is centred on its own origin while the chunk's geometry
+		# starts at the chunk corner, so the two differ by half a block.
+		# Getting this wrong offsets the occluder by 8 blocks, which rejects
+		# the wrong terrain -- and is invisible until someone walks into it.
+		check(oi.position.is_equal_approx(VoxelWorld.OCCLUDER_OFFSET),
+			"the chunk occluder is at %s, expected %s"
+			% [oi.position, VoxelWorld.OCCLUDER_OFFSET])
+		check(oi.occluder.size.is_equal_approx(
+				Vector3(VoxelWorld.BS, VoxelWorld.BS, VoxelWorld.BS)),
+			"the chunk occluder is %s, expected a whole block"
+			% oi.occluder.size)
+
+	# Toggling has to reach chunks that already exist, or the switch is a lie
+	# for everything built before it was flipped.
+	w.set_occluders(false)
+	check(not w._occluders.has(key),
+		"turning occluders off left a live chunk's occluder behind")
+	w.set_occluders(true)
+	check(w._occluders.has(key),
+		"turning occluders back on did not restore the chunk's occluder")
+
+	# It has to go when the chunk does. A leaked occluder keeps rejecting
+	# geometry for a chunk that is no longer drawn.
+	w._unload_chunk(Vector3i.ZERO, key)
+	check(not w._occluders.has(key),
+		"unloading a chunk left its occluder behind")
 	w.queue_free()
