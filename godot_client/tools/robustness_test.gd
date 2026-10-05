@@ -427,7 +427,9 @@ func _test_fixture_ids_match_the_content_table() -> void:
 	for pair in [["CONTENT_AIR", ContentDB.AIR],
 			["CONTENT_GRASS", ContentDB.GRASS], ["CONTENT_DIRT", ContentDB.DIRT],
 			["CONTENT_STONE", ContentDB.STONE],
-			["CONTENT_WATER", ContentDB.WATER]]:
+			["CONTENT_WATER", ContentDB.WATER],
+			["CONTENT_WOOD", ContentDB.WOOD],
+			["CONTENT_LEAVES", ContentDB.LEAVES]]:
 		var name := String(pair[0])
 		var re := RegEx.new()
 		re.compile("%s\\s*=\\s*(\\d+)" % name)

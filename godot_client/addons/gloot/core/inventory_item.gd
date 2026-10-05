@@ -1,5 +1,5 @@
 @tool
-@icon("res://addons/gloot/images/icon_item.svg")
+@icon("res://addons/gloot/images/icon_item_slot.svg")
 extends RefCounted
 class_name InventoryItem
 ## Stack-based inventory item class.

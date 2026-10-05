@@ -34,7 +34,20 @@ CONTENT_STONE = 3
 CONTENT_DIRT = 2
 CONTENT_GRASS = 1
 CONTENT_WATER = 4
+# Trees. The fixture used to "have" wood only by accident: CONTENT_WATER sat
+# on 9, which is ContentDB's wood, so the scattered stone-turned-water blocks
+# read back as trunks and playable_test's chop-a-tree passed against a world
+# with no tree in it. Correcting the water id removed that accident, so the
+# trees are now real. Trunk and canopy ids are checked against ContentDB by
+# robustness_test, exactly as the terrain ids are.
+CONTENT_WOOD = 9
+CONTENT_LEAVES = 10
 
+# Columns holding a tree, kept inside the box playable_test scans from spawn
+# (spawn block 8, +-8) so the first thing a player is asked to do -- chop a
+# tree -- is something the world actually offers.
+TREES = [(12, 8), (5, 12), (13, 13), (4, 5), (14, 4), (6, 15)]
+TRUNK_HEIGHT = 5
 VERSION = 29
 LIGHT_SUN = 15
 
@@ -49,10 +62,32 @@ def terrain_height(wx: int, wz: int) -> int:
                    + 1.5 * math.sin((wx + wz) * 0.05))
 
 
+def tree_at(wx: int, wy: int, wz: int) -> int:
+    """Wood or leaves at this air-space cell, or 0.
+
+    Only ever consulted above the surface, so a canopy can never overwrite
+    a hillside -- a trunk that starts at the ground of ITS column, and a
+    canopy that overhangs the columns around it.
+    """
+    for tx, tz in TREES:
+        if abs(wx - tx) > 2 or abs(wz - tz) > 2:
+            continue
+        base = terrain_height(tx, tz) + 1
+        top = base + TRUNK_HEIGHT - 1
+        if wx == tx and wz == tz and base <= wy <= top:
+            return CONTENT_WOOD
+        ring = abs(wx - tx) + abs(wz - tz)
+        if wy == top + 1 and ring <= 2:
+            return CONTENT_LEAVES
+        if wy == top + 2 and ring <= 1:
+            return CONTENT_LEAVES
+    return 0
+
+
 def content_at(wx: int, wy: int, wz: int) -> int:
     h = terrain_height(wx, wz)
     if wy > h:
-        return CONTENT_AIR
+        return tree_at(wx, wy, wz) or CONTENT_AIR
     if wy == h:
         return CONTENT_GRASS
     if wy > h - 4:

@@ -47,9 +47,15 @@ extends RefCounted
 ## it: `take()` is the only thing that mutates, so a pool would replace one
 ## function body rather than the design.
 
-## What one chunk costs the generator, in milliseconds. Deliberately
-## pessimistic: over-estimating makes the first frames after a load slower
-## than they need to be, under-estimating makes every frame after it too slow.
+## Fallback cost estimates for one chunk, in milliseconds, used only for a
+## job whose duration was too small for the clock to resolve (sub-100 us).
+##
+## These are NOT what the budget spends. They used to be, and that is how a
+## 130 ms frame hid behind a scheduler that believed the frame cost 1.4 ms
+## per chunk and 6 ms of generation: the accounting charged a constant per
+## job while the mesher actually took 83 ms, so the budget never ran out and
+## the streamer happily ate the whole frame. The budget is now charged the
+## clock's own answer -- see `step()`.
 const COST_GENERATE_MS := 2.5
 ## Meshing is cheaper than generating but not free, and it is measured
 ## separately so that a frame full of generation never also meshes.
@@ -78,6 +84,15 @@ enum Phase { IDLE, GENERATE, MESH }
 ## player moves.
 var _queue: Array[Dictionary] = []
 var _queued := {}            # "x:y:z" -> true
+## "x:y:z" -> the same job Dictionary that is in `_queue`.
+##
+## Dictionaries are references, so this is an index into the queue rather
+## than a copy of it: writing `score` here writes the queue's job. It exists
+## because rescoring used to walk the whole queue once per already-queued
+## chunk, which is quadratic in the size of the view sphere -- 739 chunks at
+## radius 5 meant ~273,000 string comparisons every single frame, and
+## `select` measured 47 ms on its own.
+var _by_key := {}
 var _cache := {}             # "x:y:z" -> {block}
 var _cache_order: Array[String] = []
 
@@ -123,8 +138,16 @@ func _init() -> void:
 ## look direction, `radius` the view radius in chunks. `resident` reports
 ## whether a chunk is already in memory, so the caller keeps the authority on
 ## what "loaded" means and this class never has to know.
+##
+## `cubic` selects a CUBE of half-width `radius` instead of a sphere. The
+## caller needs the cube when the radius has to cover something measured in
+## Chebyshev distance: a chunk is only meshable once all 26 of its neighbours
+## have terrain, and meshing the whole visible sphere therefore requires
+## terrain out to `view_radius + 1` in EVERY direction -- including the
+## diagonals, which a sphere of that radius does not reach. Selecting a
+## sphere there left the corners of the view permanently unmeshed.
 func select(centre: Vector3i, forward: Vector3, radius: int,
-		resident: Callable) -> void:
+		resident: Callable, cubic := false) -> void:
 	# A camera that has not moved yet has no direction to bias towards.
 	var dir := Vector3(forward.x, 0.0, forward.z)
 	if dir.length_squared() < 0.0001:
@@ -141,12 +164,14 @@ func select(centre: Vector3i, forward: Vector3, radius: int,
 		var dropped := _queue.size()
 		_queue.clear()
 		_queued.clear()
+		_by_key.clear()
 		stats["cancelled"] = int(stats["cancelled"]) + dropped
 	_last_centre = centre
 	_seeded = true
 
 	var candidates: Array[Dictionary] = []
 	var r2 := radius * radius + radius
+	var span := range(-radius, radius + 1)
 	# Cancellation is enforced here, not downstream. The queue is re-seeded
 	# every frame, so a job still on it from an earlier frame is work the
 	# player has since walked away from -- and the decision cannot be left to
@@ -159,20 +184,23 @@ func select(centre: Vector3i, forward: Vector3, radius: int,
 	for job in _queue:
 		var qp: Vector3i = job["pos"]
 		var d := qp - centre
-		var outside := d.x * d.x + d.y * d.y + d.z * d.z > r2
+		var outside := _outside(d, r2, cubic)
 		if outside or bool(resident.call(qp)):
-			_queued.erase(String(job["key"]))
+			var dead := String(job["key"])
+			_queued.erase(dead)
+			_by_key.erase(dead)
 			pruned += 1
 			continue
 		kept.append(job)
 	if pruned > 0:
 		_queue = kept
 		stats["cancelled"] = int(stats["cancelled"]) + pruned
-	for dx in range(-radius, radius + 1):
-		for dy in range(-radius, radius + 1):
-			for dz in range(-radius, radius + 1):
-				var d2 := dx * dx + dy * dy + dz * dz
-				if d2 > r2:
+	for dx in span:
+		for dy in span:
+			for dz in span:
+				# A cube has no corners to trim, so the sphere test is
+				# skipped entirely rather than evaluated and ignored.
+				if not cubic and dx * dx + dy * dy + dz * dz > r2:
 					continue
 				var p := centre + Vector3i(dx, dy, dz)
 				if bool(resident.call(p)):
@@ -183,13 +211,23 @@ func select(centre: Vector3i, forward: Vector3, radius: int,
 					# Already in the queue: refresh its score, because the
 					# player has moved and the old score was for where they
 					# used to be.
-					_update_score(_queue, key, score)
+					_by_key[key]["score"] = score
 					continue
-				candidates.append({"pos": p, "key": key, "score": score,
-					"kind": "generate"})
+				var job := {"pos": p, "key": key, "score": score,
+					"kind": "generate"}
+				candidates.append(job)
 				_queued[key] = true
+				_by_key[key] = job
 	_queue.append_array(candidates)
 	_queue.sort_custom(func(a, b): return float(a["score"]) < float(b["score"]))
+
+
+## Is chunk offset `d` outside the selected region?
+static func _outside(d: Vector3i, r2: int, cubic: bool) -> bool:
+	if cubic:
+		var m := maxi(absi(d.x), maxi(absi(d.y), absi(d.z)))
+		return m * m + m > r2
+	return d.x * d.x + d.y * d.y + d.z * d.z > r2
 
 
 ## Lower is better. Distance dominates; direction breaks it.
@@ -208,10 +246,10 @@ func _score(p: Vector3i, centre: Vector3i, dir: Vector3) -> float:
 
 
 func _update_score(queue: Array, key: String, score: float) -> void:
-	for job in queue:
-		if String(job["key"]) == key:
-			job["score"] = score
-			return
+	# Kept for the tests' benefit; the hot path writes through `_by_key`.
+	var job: Variant = _by_key.get(key, null)
+	if job != null:
+		job["score"] = score
 
 
 # --- the frame's work -------------------------------------------------------
@@ -248,9 +286,16 @@ func step(gen: Callable, mesh: Callable, mesh_ready: Callable) -> Dictionary:
 		if not _queued.has(key):
 			continue
 		_queued.erase(key)
-		if bool(gen.call(job["pos"])):
+		_by_key.erase(key)
+		var gt := Time.get_ticks_usec()
+		var ok := bool(gen.call(job["pos"]))
+		# Charge what the job actually cost, not what the schedule assumed
+		# it would cost. Anything the clock could not resolve falls back to
+		# the estimate, so a fast job still counts as something.
+		spent += maxf(float(Time.get_ticks_usec() - gt) / 1000.0, \
+			COST_GENERATE_MS * 0.01)
+		if ok:
 			done += 1
-			spent += COST_GENERATE_MS
 		else:
 			# The chunk left the view before its turn. Cancelled, not built.
 			stats["cancelled"] = int(stats["cancelled"]) + 1
@@ -269,13 +314,16 @@ func step(gen: Callable, mesh: Callable, mesh_ready: Callable) -> Dictionary:
 		if not bool(mesh_ready.call()):
 			# Nothing wants a mesh: an idle frame is not a deferral.
 			break
+		var mt := Time.get_ticks_usec()
 		if not bool(mesh.call()):
 			# Something wants a mesh but nothing is ready -- every candidate
 			# is waiting on a neighbour. That is what "deferred" means.
 			stats["deferred"] = int(stats["deferred"]) + 1
 			break
 		mdone += 1
-		mspent += COST_MESH_MS
+		# Same rule as generation: the budget is spent in real milliseconds.
+		mspent += maxf(float(Time.get_ticks_usec() - mt) / 1000.0, \
+			COST_MESH_MS * 0.01)
 	var mesh_ms := float(Time.get_ticks_usec() - t1) / 1000.0
 	out["meshed"] = mdone
 	out["mesh_ms"] = mesh_ms
@@ -377,6 +425,7 @@ func cancel_all() -> int:
 	var n := _queue.size()
 	_queue.clear()
 	_queued.clear()
+	_by_key.clear()
 	stats["cancelled"] = int(stats["cancelled"]) + n
 	return n
 

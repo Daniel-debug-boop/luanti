@@ -157,13 +157,30 @@ func get_stats() -> Dictionary:
 ## The ordering, the budget and the cancellation all belong to
 ## `StreamScheduler`. This method is the seam: it says what "generated" and
 ## "meshed" mean, and the scheduler says what to do and when to stop.
+##
+## Generation runs one chunk WIDER than meshing. A chunk is only meshed once
+## all 26 of its neighbours have terrain (`_can_mesh`), so the outermost ring
+## of the view sphere could never satisfy that rule: every one of them wanted a
+## diagonal neighbour one step outside the sphere, which nothing ever
+## generated. They sat dirty forever. That is what the "floating slabs with no
+## ground under them" screenshots were -- not broken geometry, terrain that
+## had never been meshed, over a hole where the missing chunks should have
+## been. Loading the extra ring costs one chunk of terrain per 30 or so and
+## lets the whole visible sphere finish.
 func update_around(focus: Vector3i) -> void:
 	var centre := _block_pos(focus)
 	_last_focus = focus
-	stream.select(centre, view_forward, view_radius, _is_resident)
+	stream.select(centre, view_forward, view_radius + MESH_MARGIN, _is_resident,
+		true)
 	drop_distant(centre)
 	if mesh_enabled:
 		stream.step(_generate_job, _mesh_job, _has_mesh_work)
+
+
+## Extra rings of terrain generated beyond the view radius, so that every chunk
+## inside the view radius can actually be meshed. One is the minimum: the 26
+## neighbour rule reaches exactly one chunk out.
+const MESH_MARGIN := 1
 
 
 func _is_resident(p: Vector3i) -> bool:
@@ -317,7 +334,10 @@ func _mark_neighbours_dirty(pos: Vector3i) -> void:
 ## Unload chunks that left the view, into the cache rather than into the void,
 ## and with hysteresis so a chunk on the boundary does not thrash.
 func drop_distant(centre: Vector3i) -> void:
-	var lim := view_radius + 2
+	# Must stay outside the generation cube (`view_radius + MESH_MARGIN`),
+	# or a chunk is evicted by the frame after it was generated and the two
+	# halves of the streamer fight over it forever.
+	var lim := view_radius + MESH_MARGIN + 2
 	var lim2 := lim * lim
 	for key in _blocks.keys().duplicate():
 		var parts: PackedStringArray = String(key).split(":")

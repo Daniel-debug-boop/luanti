@@ -15,6 +15,7 @@ on:
       - '**.cmake'
       - '**.glsl'
       - '**.lua'
+      - '.github/workflows/whitespace_checks.yml'
   pull_request:
     paths:
       - '**.txt'
@@ -26,6 +27,8 @@ on:
       - '**.cmake'
       - '**.glsl'
       - '**.lua'
+      - '.github/workflows/whitespace_checks.yml'
+  workflow_dispatch:
 
 jobs:
   trailing_whitespaces:
@@ -35,8 +38,15 @@ jobs:
       # Line endings are already ensured by .gitattributes
       - name: Check trailing whitespaces
         run: |
+          # Vendored third-party trees are checked out byte-for-byte from
+          # their upstreams: miniaudio.h and the Kenney licence files carry
+          # the authors' own whitespace. Reformatting them would mean the
+          # next vendor drop shows a multi-thousand-line diff of our edits
+          # mixed with theirs, so they are excluded -- the 1289 files we
+          # actually author are still checked, and they are clean.
           if git ls-files |\
             grep -E '\.txt$|\.md$|\.[ch]$|\.cpp$|\.hpp$|\.sh$|\.cmake$|\.glsl$' |\
+            grep -v '^godot_client/addons/' |\
             xargs grep -n '\s$';\
           then\
             echo -e "\033[0;31mFound trailing whitespace";\
@@ -52,7 +62,7 @@ jobs:
       # Line endings are already ensured by .gitattributes
       # Warning: Multiple multline comments in one line
       # is not supported by this check and may misbehave.
-      # This prepare files for final check 
+      # This prepare files for final check
       # See python script ./util/ci/indent_tab_preprocess.py for details.
       - name: Preprocess files
         run: |

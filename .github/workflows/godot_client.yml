@@ -102,15 +102,25 @@ jobs:
              /tmp/tpl/templates/version.txt \
              ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
 
-      # The assets are fetched by a script rather than committed, so the build
-      # step has to fetch them first. It is idempotent and skipped when the
-      # directory is already populated.
-      - name: Fetch assets
+      # The runtime asset tree is committed (655 files) and is what the
+      # export packs. The old step here fetched from assets/raw/textures
+      # through tools/fetch_assets.py -- a script that does not exist, into a
+      # directory that never has -- so it failed on every single run, while
+      # the build it guarded never read that directory at all. Check what the
+      # export actually needs instead.
+      - name: Verify committed runtime assets
         run: |
           set -euo pipefail
           cd godot_client
-          if [ ! -d assets/raw/textures ]; then
-            python3 tools/fetch_assets.py
+          if [ ! -d assets/runtime ]; then
+            echo "::error::assets/runtime is missing; the export would ship without textures"
+            exit 1
+          fi
+          n=$(find assets/runtime -type f | wc -l)
+          echo "assets/runtime: $n files"
+          if [ "$n" -lt 100 ]; then
+            echo "::error::assets/runtime has only $n files; expected the full committed tree"
+            exit 1
           fi
 
       - name: Build release

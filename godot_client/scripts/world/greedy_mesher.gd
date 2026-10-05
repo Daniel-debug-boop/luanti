@@ -11,8 +11,31 @@ extends RefCounted
 ## emissive block light and ambient occlusion. Opaque and translucent geometry
 ## (water, ice) is returned as two separate meshes so the caller can order the
 ## transparent pass after the opaque one.
+##
+## ## Why the padded lattice
+##
+## The first version asked for a voxel through a GDScript `Callable` on every
+## single sample: the face sweep needed one neighbour per voxel per axis per
+## direction (6 x 4096) and ambient occlusion needed three more per corner of
+## every emitted quad. That is tens of thousands of interpreted call
+## dispatches per chunk, and it measured at ~83 ms for one chunk -- a frame
+## budget the streamer believed was 1.4 ms, so the world meshed two chunks a
+## frame and never caught up. The player saw floating slabs of half-loaded
+## terrain and a 130 ms frame time.
+##
+## Everything the mesher ever reads is within one voxel of the block, so
+## `build()` now samples that 18^3 skirt ONCE into a flat `PackedInt32Array`
+## and every inner loop indexes it arithmetically. Content predicates
+## (`is_solid`, `is_opaque`, `is_translucent`) become byte lookups for the
+## same reason: they walked a dictionary-backed table per voxel. The mesh that
+## comes out is byte-identical; it is just produced without the interpreter
+## in the inner loop.
 
 const BS := 16
+## The block plus one voxel of skirt on every side. Faces need one voxel of
+## neighbour to decide whether they are interior, and ambient occlusion needs
+## one voxel past the face plane in both tangent directions.
+const PAD := BS + 2
 
 ## Directional face shading indexed by axis*2+dir: 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z
 const FACE_SHADE := [0.86, 0.86, 1.0, 0.5, 0.72, 0.72]
@@ -69,14 +92,12 @@ static func build(block: VoxelBlock, neighbours: Dictionary) -> Array:
 	var opaque := {}   # block id -> FaceBuffer
 	var trans := {}
 
-	var get_content := func(local: Vector3i) -> int:
-		return _sample(block, neighbours, local, false)
-	var get_light := func(local: Vector3i) -> int:
-		return _sample(block, neighbours, local, true)
+	var ids := _lattice(block, neighbours)
+	var lut := _lut()
 
 	for axis in 3:
 		for dir in 2:
-			_mesh_axis(block, get_content, get_light, axis, dir, opaque, trans)
+			_mesh_axis(block, ids, lut, axis, dir, opaque, trans)
 
 	return [_to_mesh(opaque), _to_mesh(trans)]
 
@@ -93,6 +114,10 @@ static func surface_ids(mesh: ArrayMesh) -> PackedInt32Array:
 
 ## Read a voxel (or its daylight) at a block-local coordinate, following into
 ## neighbouring blocks when the coordinate falls outside this one.
+##
+## Kept as the readable definition of the cross-chunk sampling rule; the
+## mesher itself reads its padded lattice, which is filled from the same
+## rule by `_lattice`.
 static func _sample(block: VoxelBlock, neighbours: Dictionary,
 		local: Vector3i, want_light: bool) -> int:
 	var b := block
@@ -104,24 +129,116 @@ static func _sample(block: VoxelBlock, neighbours: Dictionary,
 			int(floor(float(c.y) / BS)),
 			int(floor(float(c.z) / BS)))
 		c = c - bo * BS
-		# Only a block that is BOTH generated and loaded may be sampled.
-		# VoxelWorld populates its block table as generation completes, so a
-		# neighbour can be present but not yet filled in; trusting it would
-		# read zeroed content, cull every face against it, and leave a hole
-		# that pops in once the data actually lands. An untrusted neighbour
-		# is treated as air, which draws the faces -- the safe direction,
-		# since a redundant face is hidden by the neighbour when it arrives
-		# and a missing face is a hole in the world.
-		if not neighbours.has(bo):
-			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
-		var cand: VoxelBlock = neighbours[bo]
-		if cand == null or not cand.is_complete():
+		var cand := _trusted(neighbours, bo)
+		if cand == null:
 			return MapNode.LIGHT_SUN if want_light else ContentDB.AIR
 		b = cand
 	var idx := MapNode.index(c.x, c.y, c.z)
 	if want_light:
 		return b.light[idx] & 0x0F
 	return b.content[idx]
+
+
+## The block plus its one-voxel skirt, as flat ids in an 18^3 array indexed by
+## `PIDX(x, y, z)` for local coordinates in -1..16.
+static func _lattice(block: VoxelBlock, neighbours: Dictionary) -> PackedInt32Array:
+	var ids := PackedInt32Array()
+	ids.resize(PAD * PAD * PAD)
+	var content := block.content
+	# Interior: 16 rows of 16, straight across.
+	for z in BS:
+		var pz := (z + 1) * PAD * PAD
+		var src := z * BS * BS
+		for y in BS:
+			var row := pz + (y + 1) * PAD + 1
+			var s := src + y * BS
+			for x in BS:
+				ids[row + x] = content[s + x]
+	# Skirt: six 16x16 faces, each a direct read from one neighbour.
+	#
+	# These were 1736 individual `_sample` calls, each of which re-derived
+	# which block a coordinate belongs to and re-did a dictionary lookup --
+	# to fetch 1736 values that actually live in six flat planes. Copying the
+	# planes took the lattice from 3.3 ms to well under 1.
+	for axis in 3:
+		for dir in 2:
+			var bo := Vector3i.ZERO
+			bo[axis] = 1 if dir == 0 else -1
+			var nb := _trusted(neighbours, bo)
+			if nb == null:
+				# Absent or unfinished neighbour: leave the skirt as air,
+				# which draws the faces rather than hiding a hole.
+				continue
+			var u := (axis + 1) % 3
+			var v := (axis + 2) % 3
+			var pu := _pad_stride(u)
+			var pv := _pad_stride(v)
+			# The skirt plane sits at local -1 (dir 1) or BS (dir 0), which
+			# is the far edge of the neighbour: BS-1 or 0 in its own block.
+			var dst_plane := (0 if dir == 1 else BS + 1) * _pad_stride(axis)
+			var src_plane := (BS - 1 if dir == 1 else 0) * _block_stride(axis)
+			var src_content := nb.content
+			for j in BS:
+				var dst := dst_plane + (j + 1) * pv
+				var src := src_plane + j * _block_stride(v)
+				for i in BS:
+					ids[dst + (i + 1) * pu] = src_content[src + i * _block_stride(u)]
+	return ids
+
+
+## The neighbour at block offset `bo`, or null when it must not be trusted --
+## absent, null, or not both generated and loaded.
+##
+## VoxelWorld populates its block table as generation completes, so a
+## neighbour can be present but not yet filled in; trusting it would read
+## zeroed content, cull every face against it, and leave a hole that pops in
+## once the data actually lands. An untrusted neighbour is treated as air,
+## which draws the faces -- the safe direction, since a redundant face is
+## hidden by the neighbour when it arrives and a missing face is a hole in
+## the world.
+static func _trusted(neighbours: Dictionary, bo: Vector3i) -> VoxelBlock:
+	if not neighbours.has(bo):
+		return null
+	var cand: VoxelBlock = neighbours[bo]
+	if cand == null or not cand.is_complete():
+		return null
+	return cand
+
+
+## Content predicates as byte tables, one entry per registered id. The
+## dictionary-backed lookups behind `is_solid`/`is_opaque`/`is_translucent`
+## are the wrong shape for a loop that asks tens of thousands of times.
+static func _lut() -> Dictionary:
+	var solid := PackedByteArray()
+	var opaque := PackedByteArray()
+	var translucent := PackedByteArray()
+	var n := ContentDB.MAX_ID + 1
+	solid.resize(n)
+	opaque.resize(n)
+	translucent.resize(n)
+	for id in n:
+		solid[id] = 1 if ContentDB.is_solid(id) else 0
+		opaque[id] = 1 if ContentDB.is_opaque(id) else 0
+		translucent[id] = 1 if ContentDB.is_translucent(id) else 0
+	return {"solid": solid, "opaque": opaque, "translucent": translucent}
+
+
+## Stride between consecutive voxels along component `axis`, in both the
+## padded lattice and the block's own arrays.
+static func _pad_stride(axis: int) -> int:
+	if axis == 0:
+		return 1
+	if axis == 1:
+		return PAD
+	return PAD * PAD
+
+
+static func _block_stride(axis: int) -> int:
+	if axis == 0:
+		return 1
+	if axis == 1:
+		return BS
+	return BS * BS
 
 
 static func _buffer_for(store: Dictionary, id: int) -> FaceBuffer:
@@ -133,8 +250,8 @@ static func _buffer_for(store: Dictionary, id: int) -> FaceBuffer:
 	return buf
 
 
-static func _mesh_axis(block: VoxelBlock, get_content: Callable,
-		get_light: Callable, axis: int, dir: int,
+static func _mesh_axis(block: VoxelBlock, ids: PackedInt32Array,
+		lut: Dictionary, axis: int, dir: int,
 		opaque: Dictionary, trans: Dictionary) -> void:
 	var u := (axis + 1) % 3
 	var v := (axis + 2) % 3
@@ -145,6 +262,19 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 	var normal := Vector3i.ZERO
 	normal[axis] = 1 if dir == 0 else -1
 
+	# Padded strides for this axis' (u, v, axis) basis, plus the constant
+	# offset that shifts a local -1..16 coordinate into its 0..17 slot.
+	var pu := _pad_stride(u)
+	var pv := _pad_stride(v)
+	var pa := _pad_stride(axis)
+	var pbase := pu + pv + pa
+	# One step along the face normal, in lattice units.
+	var pstep := pa if dir == 0 else -pa
+	var max_id := ContentDB.MAX_ID
+	var solid: PackedByteArray = lut["solid"]
+	var opaque_lut: PackedByteArray = lut["opaque"]
+	var translucent: PackedByteArray = lut["translucent"]
+
 	var cells := BS * BS * BS
 	var present := PackedByteArray()
 	present.resize(cells)
@@ -152,37 +282,49 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 	mask.resize(cells)
 	var self_ids := PackedInt32Array()
 	self_ids.resize(cells)
+	# Which d-slices produced any face at all. The sweep below walks all
+	# 4096 cells of a slice to merge faces, so a slice with no faces in it
+	# is 4096 iterations of nothing -- and in terrain that is most of them:
+	# a chunk is mostly air above its surface and mostly buried below it.
+	var slice_used := PackedByteArray()
+	slice_used.resize(BS)
 
 	# Face detection: a solid voxel gets a face where the neighbour on the far
 	# side of that face does not occlude it. Same-id translucent neighbours
 	# cull against each other so water surfaces stay clean.
 	for d in BS:
+		var plane := pbase + d * pa
 		for x in BS:
+			var row := plane + x * pu
 			for y in BS:
-				var p := Vector3i.ZERO
-				p[u] = x
-				p[v] = y
-				p[axis] = d
-				var own: int = block.content[MapNode.index(p.x, p.y, p.z)]
-				if not ContentDB.is_solid(own):
+				var li := row + y * pv
+				var own: int = ids[li]
+				# `is_solid`: a registered id above air.
+				if own <= 0 or own > max_id or solid[own] == 0:
 					continue
-				var q := p
-				q[axis] = d + (1 if dir == 0 else -1)
-				var nb: int = get_content.call(q)
-				if ContentDB.is_opaque(nb):
+				var nb: int = ids[li + pstep]
+				# `is_opaque`: solid, and neither translucent nor a cutout.
+				if nb > 0 and nb <= max_id and opaque_lut[nb] != 0:
 					continue
-				if nb == own and not ContentDB.is_translucent(own):
+				if nb == own and translucent[own] == 0:
 					continue
 				var idx := d * BS * BS + y * BS + x
 				present[idx] = 1
 				mask[idx] = nb
 				self_ids[idx] = own
+				slice_used[d] = 1
 
 	# Greedy sweep: merge maximal rectangles of identical faces per slice.
 	for d in BS:
+		if slice_used[d] == 0:
+			continue
 		var x := 0
 		while x < BS:
 			var y := 0
+			# `row_w` is declared out here rather than inside the loop: it is
+			# read AFTER the loop, and it is the only thing that carries a
+			# column with no faces at all. Such a column never runs the body,
+			# so `row_w` is still the 0 it starts as and `x` advances by one.
 			var row_w := 0
 			while y < BS:
 				var idx := d * BS * BS + y * BS + x
@@ -215,8 +357,9 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 						break
 					hh += 1
 
-				_emit_face(block, get_content, get_light, axis, dir, u, v,
-					du, dv, d, x, y, row_w, hh, normal, sid, m,
+				_emit_face(block, ids, opaque_lut, axis, dir, u, v,
+					du, dv, d, x, y, row_w, hh, normal, sid,
+					pbase, pu, pv, pa, pstep,
 					opaque, trans)
 				y += hh
 			if row_w > 0:
@@ -225,10 +368,11 @@ static func _mesh_axis(block: VoxelBlock, get_content: Callable,
 				x += 1
 
 
-static func _emit_face(block: VoxelBlock, get_content: Callable,
-		get_light: Callable, axis: int, dir: int, u: int, v: int,
+static func _emit_face(block: VoxelBlock, ids: PackedInt32Array,
+		opaque_lut: PackedByteArray, axis: int, dir: int, u: int, v: int,
 		du: Vector3i, dv: Vector3i, d: int, x: int, y: int, w: int, h: int,
-		normal: Vector3i, own_content: int, _neighbour_id: int,
+		normal: Vector3i, own_content: int,
+		pbase: int, pu: int, pv: int, pa: int, pstep: int,
 		opaque: Dictionary, trans: Dictionary) -> void:
 	var store := trans if ContentDB.is_translucent(own_content) else opaque
 	var buf := _buffer_for(store, own_content)
@@ -250,7 +394,7 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 	# triangles were all there, just in the wrong place.
 	#
 	# A +axis face lies between voxel d and d+1, so it sits at d+1; a -axis
-	# face lies between d and d-1, so it sits at d.
+	# face lies between voxel d and d-1, so it sits at d.
 	base[axis] = d + (1 if dir == 0 else 0)
 	var nrm := Vector3(float(normal.x), float(normal.y), float(normal.z))
 
@@ -261,29 +405,40 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 
 	# Brightness: directional shade x daylight, plus an emissive bonus for
 	# light-emitting blocks so glowstone faces read as bright.
+	#
+	# The four sampled voxels are all inside this block, so daylight is read
+	# straight out of `block.light` -- no neighbour lookup was ever needed
+	# here, and the Callable round-trip hid that.
 	var face_idx := axis * 2 + (0 if dir == 0 else 1)
 	var shade: float = FACE_SHADE[face_idx]
-	var lsum := 0
-	for cx in [x, x + w - 1]:
-		for cy in [y, y + h - 1]:
-			var c := Vector3i.ZERO
-			c[u] = cx
-			c[v] = cy
-			c[axis] = d
-			lsum += int(get_light.call(c))
+	var light := block.light
+	var bu := _block_stride(u)
+	var bv := _block_stride(v)
+	var ba := d * _block_stride(axis)
+	var x0 := x * bu
+	var x1 := (x + w - 1) * bu
+	var y0 := y * bv
+	var y1 := (y + h - 1) * bv
+	var lsum := (int(light[ba + x0 + y0]) + int(light[ba + x1 + y0]) \
+		+ int(light[ba + x0 + y1]) + int(light[ba + x1 + y1])) & 0x3F
 	var day := float(lsum) / 4.0 / float(MapNode.LIGHT_SUN)
 	var emit := float(ContentDB.light_of(own_content)) / 15.0
 
 	# Ambient occlusion, sampled per corner so merged quads still darken
-	# where the surface meets an obstruction.
+	# where the surface meets an obstruction. Each corner's cell sits one
+	# voxel in front of the face plane, and its two edge neighbours and the
+	# diagonal are one lattice stride away.
 	var cols := PackedColorArray()
 	var pal := ContentDB.color_of(own_content)
+	var cell_base := pbase + d * pa + pstep
+	var max_id := ContentDB.MAX_ID
 	for corner in 4:
 		var cu := x if corner == 0 or corner == 3 else x + w - 1
 		var cv := y if corner == 0 or corner == 1 else y + h - 1
 		var su := -1 if cu == x else 1
 		var sv := -1 if cv == y else 1
-		var ao := _ao(get_content, axis, dir, u, v, du, dv, d, cu, cv, su, sv)
+		var ao := _ao(ids, opaque_lut, cell_base + cu * pu + cv * pv,
+			pu * su, pv * sv, max_id)
 		var bright := clampf(shade * (0.25 + 0.75 * day) * ao + emit * 0.9,
 			0.08, 1.0)
 		cols.append(Color(pal.r * bright, pal.g * bright, pal.b * bright,
@@ -315,20 +470,17 @@ static func _emit_face(block: VoxelBlock, get_content: Callable,
 
 ## Standard voxel ambient occlusion for one quad corner: look at the two edge
 ## neighbours and the diagonal in the layer in front of the face.
-static func _ao(get_content: Callable, axis: int, dir: int, u: int, v: int,
-		du: Vector3i, dv: Vector3i, d: int, cu: int, cv: int,
-		su: int, sv: int) -> float:
-	var cell := Vector3i.ZERO
-	cell[u] = cu
-	cell[v] = cv
-	cell[axis] = d + (1 if dir == 0 else -1)
-
-	var p1 := cell + du * su
-	var p2 := cell + dv * sv
-	var p3 := cell + du * su + dv * sv
-	var s1 := 1 if ContentDB.is_opaque(get_content.call(p1)) else 0
-	var s2 := 1 if ContentDB.is_opaque(get_content.call(p2)) else 0
-	var sc := 1 if ContentDB.is_opaque(get_content.call(p3)) else 0
+##
+## `cell` is the corner's padded-lattice index in the layer in front of the
+## face; `ou` and `ov` are the signed lattice strides to its edge neighbours.
+static func _ao(ids: PackedInt32Array, opaque_lut: PackedByteArray,
+		cell: int, ou: int, ov: int, max_id: int) -> float:
+	var a1: int = ids[cell + ou]
+	var a2: int = ids[cell + ov]
+	var a3: int = ids[cell + ou + ov]
+	var s1 := 1 if (a1 > 0 and a1 <= max_id and opaque_lut[a1] != 0) else 0
+	var s2 := 1 if (a2 > 0 and a2 <= max_id and opaque_lut[a2] != 0) else 0
+	var sc := 1 if (a3 > 0 and a3 <= max_id and opaque_lut[a3] != 0) else 0
 	# Two touching edges mean the corner is fully enclosed; the diagonal is
 	# ignored in that case, which is what removes the harsh "X" artefact.
 	if s1 == 1 and s2 == 1:

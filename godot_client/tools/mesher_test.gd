@@ -17,6 +17,7 @@ func _init() -> void:
 	_test_faces_land_on_their_own_voxel()
 	_test_ao_colour_stays_with_its_corner()
 	_test_geometry_invariants()
+	_test_a_chunk_mesh_stays_under_its_budget()
 	# --- Isolated block: exactly 12 triangles (6 faces x 2) ---
 	var solo := VoxelBlock.new()
 	solo.is_loaded = true
@@ -504,14 +505,25 @@ func _test_geometry_invariants() -> void:
 	var gen := WorldGenerator.new(4242)
 	for cx in 2:
 		for cz in 2:
+			# Real terrain, taken from the generator rather than synthesised:
+			# this test is about the invariants real chunks hold to.
+			#
+			# It used to call `WorldGenerator.generate_node`, which does not
+			# exist. The call raised a script error on the first iteration,
+			# which aborted the whole test body -- so the "invariants over a
+			# real generated world" had been checking nothing at all and
+			# still reporting PASS.
 			var block := VoxelBlock.new()
 			block.is_loaded = true
 			block.is_generated = true
-			for y in 24:
-				for x in 16:
-					for z in 16:
-						block.content[MapNode.index(x, y, z)] = \
-							gen.generate_node(Vector3i(cx * 16 + x, y, cz * 16 + z))
+			block.fill(MapNode.LIGHT_SUN | (MapNode.LIGHT_SUN << 4))
+			for cy in 2:
+				var src := gen.generate_block(Vector3i(cx, cy, cz))
+				for lx in GreedyMesher.BS:
+					for ly in GreedyMesher.BS:
+						for lz in GreedyMesher.BS:
+							var idx := MapNode.index(lx, ly, lz)
+							block.content[idx] = src.content[idx]
 			var meshes := GreedyMesher.build(block, {})
 			for pass_i in 2:
 				var m: ArrayMesh = meshes[pass_i]
@@ -565,6 +577,45 @@ func _test_geometry_invariants() -> void:
 					check(backwards == 0,
 						"%s: %d triangle(s) wound against their own normal"
 						% [where, backwards])
+
+
+## A chunk mesh is the single most expensive thing the world does per frame,
+## so its cost gets a test rather than a comment.
+##
+## The mesher used to take 45-85 ms per chunk because every voxel lookup went
+## through a GDScript `Callable`, and the streamer believed a chunk cost 1.4
+## ms -- it meshed two chunks a frame and fell further behind every frame, at
+## a measured 130 ms. It now measures ~4-5 ms on the same input. This test
+## exists so that going back to tens of milliseconds is a red suite rather
+## than a stutter somebody notices in a screenshot.
+##
+## The ceiling is deliberately loose relative to the 5 ms it actually takes:
+## it has to hold on a cold CI runner, a debug build, and under the Voxel
+## Tools binary, all of which are slower than this machine. It is a backstop
+## against an order-of-magnitude regression, not a benchmark.
+const MESH_BUDGET_US := 25000
+
+
+func _test_a_chunk_mesh_stays_under_its_budget() -> void:
+	# The pathological case for this mesher: a solid block. Nothing merges,
+	# so every one of the 4096 voxels is examined for all six directions.
+	var solid := VoxelBlock.new()
+	solid.is_loaded = true
+	solid.is_generated = true
+	solid.content.fill(ContentDB.STONE)
+	solid.fill(MapNode.LIGHT_SUN | (MapNode.LIGHT_SUN << 4))
+	# Discard the first call: it pays for the surface/material caches.
+	GreedyMesher.build(solid, {})
+	var samples: Array[float] = []
+	for i in 5:
+		var t := Time.get_ticks_usec()
+		GreedyMesher.build(solid, {})
+		samples.append(float(Time.get_ticks_usec() - t))
+	samples.sort()
+	var worst: float = samples[samples.size() - 1]
+	check(worst < float(MESH_BUDGET_US),
+		"a solid chunk meshed in %.0f us, budget is %d us (all samples: %s)"
+		% [worst, MESH_BUDGET_US, str(samples)])
 
 
 func _tris(mesh: ArrayMesh) -> int:
