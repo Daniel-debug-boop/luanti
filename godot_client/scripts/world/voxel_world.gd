@@ -222,7 +222,8 @@ func get_stats() -> Dictionary:
 		"mesh_worker_ms": _mesh_worker.worker_ms_total(),
 		"textures": texture_count(),
 		"mapping": MaterialLibrary.mapping_name()[
-			clampi(materials.mapping() if materials != null else 0, 0, 3)],
+			clampi(materials.mapping() if materials != null else 0, 0,
+				MaterialLibrary.mapping_name().size() - 1)],
 	}
 
 

@@ -814,7 +814,11 @@ func _apply_stage_materials(mode: int) -> void:
 ## benchmark-only one.
 func set_render_settings(quality: int, mapping: int) -> void:
 	render_quality = clampi(quality, 0, 2)
-	texture_mapping = clampi(mapping, 0, 3)
+	# Bound by the mapping table, not by a literal. A hard 0..3 here silently
+	# rewrote the slope mapping to stochastic, so a caller asking for slope got
+	# a different material and no indication that it had been overruled.
+	texture_mapping = clampi(mapping, 0,
+			MaterialLibrary.mapping_name().size() - 1)
 	settings.set_quality(render_quality, world.materials,
 		[_env_over, _env_deeps] as Array[Environment])
 	world.set_texture_mapping(texture_mapping)

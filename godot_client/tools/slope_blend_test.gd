@@ -35,6 +35,7 @@ func _run() -> void:
 	_test_a_block_without_a_pair_is_left_alone()
 	_test_a_translucent_block_keeps_its_own_path()
 	_test_every_uniform_the_library_sets_exists_in_the_shader()
+	_test_the_mapping_survives_the_round_trip()
 	print("slope_blend: %s" % ["PASS" if failures == 0
 		else "%d FAILURES" % failures])
 	quit(1 if failures > 0 else 0)
@@ -146,6 +147,27 @@ func _test_a_translucent_block_keeps_its_own_path() -> void:
 	if mat is ShaderMaterial:
 		check((mat as ShaderMaterial).shader != MaterialLibrary.SLOPE_SHADER,
 			"glass took the slope shader, which cannot do transparency")
+
+
+## The clamp that used to eat this mode.
+##
+## The code that hands a mapping down to the world bounded it with a literal
+## 0..3, so SLOPE was silently rewritten to stochastic: the caller asked for
+## one material and got another, with nothing in the log to say it had been
+## overruled. Anything that bounds a mapping has to bound it by the table, so
+## adding a mode cannot require remembering every clamp that mentions it.
+func _test_the_mapping_survives_the_round_trip() -> void:
+	var w := VoxelWorld.new()
+	w.materials = MaterialLibrary.new()
+	root.add_child(w)
+
+	w.set_texture_mapping(MaterialLibrary.Mapping.SLOPE)
+	check(w.texture_mapping == MaterialLibrary.Mapping.SLOPE,
+		"set_texture_mapping turned slope into mode %d" % w.texture_mapping)
+	var reported := String(w.get_stats()["mapping"])
+	check(reported == "slope",
+		"a world in slope mode reports its mapping as '%s'" % reported)
+	w.queue_free()
 
 
 ## The check that earns its keep. Godot does not fail when GDScript sets a
