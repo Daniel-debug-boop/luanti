@@ -22,7 +22,10 @@ extends Node3D
 ## with parallax occlusion, so this picks one:
 ##   0 plain (box UVs) · 1 triplanar · 2 parallax occlusion (POM)
 ##   3 stochastic triplanar (vendored shader, breaks up texture tiling)
-@export_enum("Plain", "Triplanar", "Parallax", "Stochastic") var texture_mapping := 2
+##   4 slope blending: 3, plus grass on level ground and rock on the walls for
+##     the blocks that have a top/side pair. Blocks without one are unchanged.
+## F4 cycles all five, and the list is driven by MaterialLibrary.mapping_name().
+@export_enum("Plain", "Triplanar", "Parallax", "Stochastic", "Slope") var texture_mapping := 2
 
 var world: VoxelWorld
 var player: Player

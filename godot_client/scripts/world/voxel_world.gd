@@ -27,14 +27,24 @@ const CULL_SLACK := 2.0
 const CULL_AABB := AABB(Vector3(-CULL_SLACK, -CULL_SLACK, -CULL_SLACK),
 		Vector3(BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0))
 
+## A chunk's occluder is the block itself. BoxOccluder3D is centred on its own
+## origin, so an occluder placed at a chunk's corner needs this much offset to
+## cover the chunk's extent.
+const OCCLUDER_OFFSET := Vector3(BS * 0.5, BS * 0.5, BS * 0.5)
+
 @export var world_dir := ""
 @export var view_radius := 5
 @export var build_budget := 2
+## Occlusion culling on chunks. A solid chunk near the camera hides a lot of
+## terrain behind it, which is the case occluders exist for; a chunk without
+## one is a chunk the engine has to draw. Opt-out, but a real switch: on a
+## very small view radius the occluder set costs more than it rejects.
+@export var occluders := true
 ## Active dimension: WorldGenerator.DIM_OVERWORLD or WorldGenerator.DIM_DEEPS.
 @export var dimension := 0
 ## How block textures are projected: 0 plain, 1 triplanar, 2 parallax (POM),
 ## 3 stochastic triplanar (vendored shader).
-@export_enum("Plain", "Triplanar", "Parallax", "Stochastic") var texture_mapping := 2
+@export_enum("Plain", "Triplanar", "Parallax", "Stochastic", "Slope") var texture_mapping := 2
 
 var generator: WorldGenerator
 var materials: MaterialLibrary
@@ -42,6 +52,12 @@ var materials: MaterialLibrary
 var _blocks := {}          # "dim:x:y:z" -> VoxelBlock
 var _meshes := {}          # "dim:x:y:z" -> MeshInstance3D
 var _trans_nodes := {}     # "dim:x:y:z" -> MeshInstance3D
+## Chunk occluders, keyed the same way. Only opaque chunks have one.
+var _occluders := {}       # "dim:x:y:z" -> OccluderInstance3D
+## One shape shared by every chunk. Every chunk is the same box, so a resource
+## each would only duplicate identical geometry; the engine uploads each
+## *instance* either way.
+var _occluder_shape: BoxOccluder3D = null
 var _dirty := {}           # key -> true
 ## Chunks with a mesh job in flight: key -> the focus distance it was queued
 ## at. A result is only applied if this still matches, which is how a stale
@@ -520,6 +536,10 @@ func _unload_chunk(pos: Vector3i, key: String) -> void:
 	if ti != null:
 		ti.queue_free()
 	_trans_nodes.erase(key)
+	var oi: OccluderInstance3D = _occluders.get(key, null)
+	if oi != null:
+		oi.queue_free()
+	_occluders.erase(key)
 	# The terrain goes to the cache, not into the void: walking back three
 	# chunks should not regenerate the world.
 	stream.cache_put(key, _blocks.get(key))
@@ -664,6 +684,45 @@ func _apply_culling(mi: MeshInstance3D) -> void:
 	mi.visibility_range_end = float(view_radius + 2) * BS
 
 
+## Give a chunk an occluder, or take its occluder away.
+##
+## Only an opaque chunk gets one. A chunk that is mostly air -- or that is only
+## drawn in the transparent pass -- does not block the view, and an occluder
+## claiming otherwise would reject geometry the player can genuinely see
+## through the gap. That failure is invisible in a screenshot and obvious to
+## anyone standing in front of it, so the rule is strict: opaque mesh or no
+## occluder.
+func _update_occluder(key: String, pos: Vector3i, solid: bool) -> void:
+	var oi: OccluderInstance3D = _occluders.get(key, null)
+	if not (occluders and solid):
+		if oi != null:
+			oi.queue_free()
+			_occluders.erase(key)
+		return
+	if oi == null:
+		oi = OccluderInstance3D.new()
+		oi.name = "Occl_%s" % key.replace(":", "_")
+		if _occluder_shape == null:
+			_occluder_shape = BoxOccluder3D.new()
+			_occluder_shape.size = Vector3(BS, BS, BS)
+		oi.occluder = _occluder_shape
+		add_child(oi)
+		_occluders[key] = oi
+	oi.position = Vector3(pos.x * BS, pos.y * BS, pos.z * BS) + OCCLUDER_OFFSET
+
+
+## Turn chunk occlusion on or off for every live chunk, not only for the ones
+## built afterwards. A chunk meshed while occluders were off would otherwise
+## stay a permanent hole in the occlusion set, which is the kind of gap that
+## only shows up as unexplained frame cost in one direction of travel.
+func set_occluders(on: bool) -> void:
+	occluders = on
+	for key in _meshes.keys():
+		var mi: MeshInstance3D = _meshes[key]
+		var solid: bool = mi != null and is_instance_valid(mi) and mi.visible
+		_update_occluder(key, _key_pos(key), solid)
+
+
 func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 		trans: ArrayMesh) -> void:
 	var mi: MeshInstance3D = _meshes.get(key, null)
@@ -677,6 +736,7 @@ func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 	# Surfaces carry their own per-block-id materials, so no override here.
 	_bind_surfaces(mi, opaque)
 	mi.visible = (opaque != null)
+	_update_occluder(key, pos, opaque != null)
 
 	var ti: MeshInstance3D = _trans_nodes.get(key, null)
 	if trans != null:

@@ -30,6 +30,17 @@ const RUNTIME := "res://assets/runtime/textures"
 ## The vendored stochastic triplanar shader (derived from Acegiak's
 ## Apache-2.0 terrain shader; see addons/ATTRIBUTION.md).
 const STOCHASTIC_SHADER := preload("res://scripts/world/voxel_stochastic.gdshader")
+
+## Slope blending: one block id, two texture sets, chosen by how flat the face
+## is. See voxel_slope_blend.gdshader.
+const SLOPE_SHADER := preload("res://scripts/world/voxel_slope_blend.gdshader")
+
+## The slope at which ground cover gives way to wall. A face whose normal has
+## a Y component above this is level ground and takes the `top` set; below it
+## the face is a wall and takes `side`. This is the number the rendering
+## specification names, and it lives here rather than in the shader literal so
+## the tests and the material build both read the same constant.
+const SLOPE_THRESHOLD := 0.7
 ## Renders surface normals as colour. See RenderDiagnostics, Stage.NORMAL.
 const NORMAL_DEBUG_SHADER := preload(
 	"res://scripts/world/voxel_normal_debug.gdshader")
@@ -78,8 +89,12 @@ const POM_QUALITY := Quality.ULTRA
 ##                sampling, so the repeating grid pattern of a tiled texture
 ##                is broken up. Hand-authored GLSL rather than an engine
 ##                material, so it drops the StandardMaterial3D PBR path.
+##   SLOPE     -- stochastic, plus slope blending for the blocks that have a
+##                top/side pair (see SLOPE_PAIRS). Grass on level ground, rock
+##                on the walls. Blocks with no pair behave exactly as they do
+##                under STOCHASTIC, so this mode is additive.
 ##   PLAIN     -- straight box UVs, cheapest.
-enum Mapping { PLAIN, TRIPLANAR, PARALLAX, STOCHASTIC }
+enum Mapping { PLAIN, TRIPLANAR, PARALLAX, STOCHASTIC, SLOPE }
 
 ## Sets that are made of code rather than of downloaded pixels. A material with
 ## no texture at all is the right answer for glass: a translucent, very smooth
@@ -102,6 +117,11 @@ var _trans_materials := {}    # int -> Material
 ## Stochastic-shader materials, keyed by block id. These are ShaderMaterial,
 ## not StandardMaterial3D, so they live apart from the engine-material path.
 var _shader_materials := {}   # int -> ShaderMaterial
+## Slope-blended materials, keyed by block id. Separate from
+## _shader_materials because a block can be single-textured under one mapping
+## and two-set under another, and the cache has to hold whichever the current
+## mapping asked for.
+var _slope_materials := {}    # int -> ShaderMaterial
 ## Set names that are known to be missing on disk, so we never retry.
 var _failed := {}             # String -> true
 var _plain: StandardMaterial3D
@@ -329,6 +349,29 @@ static func detail_set_for(id: int) -> String:
 ## The rung of the texture ladder the current tier loads. A set that does not
 ## have this rung (a 1K source has no 2048) falls back to the largest it has,
 ## so nothing is ever asked for a file the pipeline did not write.
+## The pair of texture sets a block shows by slope, as
+## `{"top": <set>, "side": <set>}`, or an empty dictionary when the block is
+## single-textured.
+##
+## Only blocks where the distinction is real get an entry. A block of stone is
+## stone on every face, so giving it a pair would spend a second albedo, normal
+## and ARM sample per fragment to draw the same picture twice.
+static func slope_pair_for(id: int) -> Dictionary:
+	match id:
+		# Ground covered in grass, with the soil set on the walls -- which is
+		# what makes a grass block read as grass *on top* rather than as a
+		# green cube.
+		ContentDB.GRASS, ContentDB.DIRT:
+			return {"top": "aerial_grass_rock", "side": "brown_mud_leaves_01"}
+		ContentDB.SAND:
+			return {"top": "sand_01", "side": "aerial_rocks_02"}
+		ContentDB.SNOW:
+			return {"top": "snow_02", "side": "rock_06"}
+		ContentDB.GRAVEL:
+			return {"top": "aerial_rocks_02", "side": "rock_06"}
+	return {}
+
+
 func _tier_for(set_name: String) -> int:
 	var want: int = TEXTURE_TIER.get(_quality, 1024)
 	var path := "%s/%s/diff_%d.jpg" % [RUNTIME, set_name, want]
@@ -353,7 +396,15 @@ func _has(res_path: String) -> bool:
 ## built into BaseMaterial3D; nothing here compiles a shader.
 func _apply_effects(mat: Material, id: int) -> void:
 	if mat is ShaderMaterial:
-		_configure_stochastic(mat as ShaderMaterial, id)
+		# A slope material is told apart by which shader it was built from,
+		# not by the current mapping: a rebuild is in flight during
+		# set_mapping, and reading _mapping there would reconfigure the wrong
+		# shader's uniforms.
+		var smat := mat as ShaderMaterial
+		if smat.shader == SLOPE_SHADER:
+			_configure_slope(smat, id)
+		else:
+			_configure_stochastic(smat, id)
 		return
 	var sm := mat as StandardMaterial3D
 	if sm == null:
@@ -510,7 +561,19 @@ func material_for(id: int) -> Material:
 		return _flat_material()
 	if id == ContentDB.GLOWSTONE:
 		return _emissive
-	if _mapping == Mapping.STOCHASTIC:
+	# --- Slope blending ---
+	# Only a block with a declared top/side pair takes this path, and only when
+	# it is opaque. Everything else falls through to the branches below
+	# unchanged, so turning this mode on cannot alter a block that has no pair
+	# -- and a translucent block keeps the engine materials that can actually
+	# do transparency.
+	if _mapping == Mapping.SLOPE and not ContentDB.is_translucent(id):
+		var slopem := _get_slope_material(id)
+		if slopem != null:
+			return slopem
+	# SLOPE is STOCHASTIC plus the pairs above: unpaired blocks are meant to
+	# look exactly as they did, so they run the ordinary shader path.
+	if _mapping == Mapping.STOCHASTIC or _mapping == Mapping.SLOPE:
 		# The vendored shader writes ALBEDO from vertex_tint.rgb and never
 		# touches the alpha channel, so a translucent block put through it is
 		# opaque. Glass and water therefore take the engine materials that
@@ -551,7 +614,7 @@ func material_for(id: int) -> Material:
 ## Cheap to re-run: each material is reconfigured in place.
 func apply_quality(q: int) -> void:
 	_quality = q
-	for store in [_materials, _trans_materials, _shader_materials]:
+	for store in [_materials, _trans_materials, _shader_materials, _slope_materials]:
 		for id in store.keys():
 			_apply_effects(store[id], id)
 
@@ -562,19 +625,27 @@ func apply_quality(q: int) -> void:
 func set_mapping(m: int) -> void:
 	# Engine materials cannot become shader materials in place, so switching
 	# into or out of STOCHASTIC has to drop the cache and rebuild from scratch.
-	var was_stochastic := _mapping == Mapping.STOCHASTIC
+	var was_shader := _is_shader_mapping(_mapping)
 	_mapping = m
-	var is_stochastic := _mapping == Mapping.STOCHASTIC
-	if was_stochastic != is_stochastic:
+	var is_shader := _is_shader_mapping(_mapping)
+	if was_shader != is_shader:
 		_materials.clear()
 		_trans_materials.clear()
 		_shader_materials.clear()
+		_slope_materials.clear()
 		_procedural.clear()
 		prime()
 		return
-	for store in [_materials, _trans_materials, _shader_materials]:
+	for store in [_materials, _trans_materials, _shader_materials, _slope_materials]:
 		for id in store.keys():
 			_apply_effects(store[id], id)
+
+
+## True for the mappings that build hand-authored ShaderMaterials rather than
+## engine StandardMaterial3Ds. Switching between the two families cannot be
+## done in place, so `set_mapping` has to rebuild rather than reconfigure.
+static func _is_shader_mapping(m: int) -> bool:
+	return m == Mapping.STOCHASTIC or m == Mapping.SLOPE
 
 
 func mapping() -> int:
@@ -582,7 +653,7 @@ func mapping() -> int:
 
 
 static func mapping_name() -> Array[String]:
-	return ["plain", "triplanar", "parallax", "stochastic"]
+	return ["plain", "triplanar", "parallax", "stochastic", "slope"]
 
 
 ## Build the hand-authored stochastic triplanar material for a block id. This
@@ -629,6 +700,70 @@ func _get_shader_material(id: int, translucent: bool) -> ShaderMaterial:
 		m.render_priority = 1
 	_shader_materials[id] = m
 	return m
+
+
+## Bind one texture set's albedo, normal and ARM maps under `prefix`, which is
+## "top" or "side". Deliberately the same file naming and the same data tier
+## clamp as the single-texture path, so a set named in a slope pair is loaded
+## exactly as it would be on its own.
+func _bind_slope_set(m: ShaderMaterial, prefix: String, set_name: String,
+		tier: int) -> void:
+	var data_tier: int = min(tier, 1024)
+	m.set_shader_parameter(prefix + "_albedo_tex",
+		load("%s/%s/diff_%d.jpg" % [RUNTIME, set_name, tier]))
+	m.set_shader_parameter(prefix + "_normal_tex",
+		load("%s/%s/nor_gl_%d.png" % [RUNTIME, set_name, data_tier]))
+	m.set_shader_parameter(prefix + "_arm_tex",
+		load("%s/%s/arm_%d.png" % [RUNTIME, set_name, data_tier]))
+
+
+## Build the two-set slope material for a block id, or null when the block has
+## no pair or a set is missing. The two ends name real sets in the same
+## registry the single-texture path uses, so a pair cannot point at something
+## that is not shipped.
+func _get_slope_material(id: int) -> ShaderMaterial:
+	if _slope_materials.has(id):
+		return _slope_materials[id]
+	var pair := MaterialLibrary.slope_pair_for(id)
+	if pair.is_empty():
+		return null
+	var top_name: String = pair["top"]
+	var side_name: String = pair["side"]
+	var top_tier := _tier_for(top_name)
+	var side_tier := _tier_for(side_name)
+	if top_tier == 0 or side_tier == 0:
+		return null
+	var m := ShaderMaterial.new()
+	m.shader = SLOPE_SHADER
+	m.set_shader_parameter("albedo_tint", Color(1, 1, 1, 1))
+	# One texture tile per block face, matching the stochastic path.
+	m.set_shader_parameter("uv_scale", 1.0)
+	# The rule itself, set from the one constant both this and the tests read.
+	m.set_shader_parameter("slope_threshold", SLOPE_THRESHOLD)
+	_bind_slope_set(m, "top", top_name, top_tier)
+	_bind_slope_set(m, "side", side_name, side_tier)
+	m.set_shader_parameter("use_arm", true)
+	_configure_slope(m, id)
+	_slope_materials[id] = m
+	return m
+
+
+## The slope shader is built from the two sets at construction; this keeps the
+## quality-dependent uniforms in step, matching `_configure_stochastic`. The
+## detail overlay is the block's own, applied to both ends, so the finer
+## breakup does not change as the blend crosses the threshold.
+func _configure_slope(m: ShaderMaterial, id: int) -> void:
+	var dname := MaterialLibrary.detail_set_for(id)
+	var dpath := "%s/%s/diff_%d.jpg" % [RUNTIME, dname, DETAIL_TIER]
+	if _quality >= Quality.MEDIUM and dname != "" and _has(dpath):
+		var dtex := load(dpath)
+		m.set_shader_parameter("top_detail_tex", dtex)
+		m.set_shader_parameter("side_detail_tex", dtex)
+		m.set_shader_parameter("detail_strength", 0.35)
+	else:
+		m.set_shader_parameter("detail_strength", 0.0)
+	m.set_shader_parameter("normal_strength",
+		1.0 if _quality >= Quality.MEDIUM else 0.0)
 
 
 ## The stochastic shader is configured at construction, so this only has to
@@ -714,6 +849,7 @@ func effect_counts() -> Dictionary:
 	var pom := 0
 	var detail := 0
 	var stochastic := 0
+	var slope := 0
 	var total := 0
 	for store in [_materials, _trans_materials]:
 		for id in store.keys():
@@ -731,25 +867,30 @@ func effect_counts() -> Dictionary:
 	for id in _shader_materials.keys():
 		total += 1
 		stochastic += 1
+	for id in _slope_materials.keys():
+		total += 1
+		slope += 1
 	return {
 		"materials": total,
 		"triplanar": triplanar,
 		"pom": pom,
 		"detail": detail,
 		"stochastic": stochastic,
+		"slope": slope,
 		"procedural": _procedural.size(),
 		"tier": texture_tier(),
 		# Godot discards the heightmap on a triplanar material, so exactly one
 		# of these should be non-zero. A material counted in both would be
 		# rendering with triplanar and a silently dead heightmap.
-		"mapping": MaterialLibrary.mapping_name()[clampi(_mapping, 0, 3)],
+		"mapping": MaterialLibrary.mapping_name()[clampi(_mapping, 0,
+				MaterialLibrary.mapping_name().size() - 1)],
 	}
 
 
 ## Human-readable summary for the HUD and test output.
 func describe() -> String:
 	var sets := {}
-	for store in [_materials, _trans_materials, _shader_materials]:
+	for store in [_materials, _trans_materials, _shader_materials, _slope_materials]:
 		for id in store.keys():
 			sets[MaterialLibrary.texture_set_for(id)] = true
 	var names := sets.keys()
