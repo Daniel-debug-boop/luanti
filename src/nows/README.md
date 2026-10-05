@@ -257,10 +257,22 @@ first, judge afterwards -- and prints, per problem and in total:
   fallbacks              -               -             ?
 ```
 
-plus the line that actually decides it: the saving against the inference cost,
-and the resulting net microseconds per problem. `solution error` is the number
-of cells where the warm-started run's converged state differs from run A's --
-it must be zero, and the harness asserts it.
+`total time` is what the frame actually pays -- solver plus, on the warm path,
+the prediction that bought the shorter solver. `solution error` is the number
+of cells where the warm-started run's converged state differs from run A's; it
+must be zero, and the harness asserts it.
+
+Then the two lines that actually decide it:
+
+```
+  saving vs inference (model): solver saved N us/problem, inference N us/problem, net N us/problem
+  oracle upper bound: solver saved N us/problem before any inference at all
+```
+
+followed by an explicit verdict -- whether NOWS pays for itself here, and that
+`nows_adaptive` would switch it off or leave it on. Both are per problem on
+both sides, because the model column only accumulates the solves that actually
+took a prediction and the two totals therefore cover different counts.
 
 Run it with:
 

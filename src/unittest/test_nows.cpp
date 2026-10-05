@@ -1056,9 +1056,10 @@ void TestNOWS::testABTable(IGameDef *gamedef)
 			const u64 t0 = porting::getTimeUs();
 			const bool have = mgr.predictWarmStart(h.map, gamedef, src_pos, 64, guess,
 					status);
-			model_run.inference_us = porting::getTimeUs() - t0;
 			model_run = runSolve(h.map, h.env.get(), seedQueue(src_pos),
 					have ? &guess : nullptr);
+			// Inference is whatever the round trip cost beyond the solve
+			// itself, so gather+model+project is all of it.
 			model_run.inference_us = porting::getTimeUs() - t0 - model_run.solver_us;
 			model_run.used_nows = have;
 			if (have) {
@@ -1119,6 +1120,14 @@ void TestNOWS::testABTable(IGameDef *gamedef)
 	if (model_runs)
 		rawstream << "              " << (sum_us_model / (u64)model_runs) << " us";
 	rawstream << std::endl;
+	// Total is what the frame actually pays: solver plus, on the warm path,
+	// the prediction that bought the shorter solver.
+	rawstream << "  total time          " << (sum_us_normal / n) << " us        "
+			<< (sum_us_warm / n) << " us";
+	if (model_runs)
+		rawstream << "              " << (sum_us_model / (u64)model_runs +
+				sum_inference_us / (u64)model_runs) << " us";
+	rawstream << std::endl;
 	rawstream << "  residual work       " << sum_residual_normal << "            "
 			<< sum_residual_warm;
 	if (model_runs)
@@ -1136,17 +1145,28 @@ void TestNOWS::testABTable(IGameDef *gamedef)
 	rawstream << std::endl;
 
 	if (model_runs) {
-		const double save_oracle = (double)sum_us_normal - (double)sum_us_warm;
-		const double save_model = (double)sum_us_normal - (double)sum_us_model;
-		rawstream << "  measured saving vs inference (model): saved " << save_model
-				<< " us/problem, inference "
-				<< ((double)sum_inference_us / (double)model_runs)
-				<< " us/problem, net " << (save_model - (double)sum_inference_us /
-						(double)model_runs) << " us/problem" << std::endl;
-		if (save_model <= (double)sum_inference_us / (double)model_runs)
+		// Per problem, on both sides: the model column only sums the solves
+		// that actually took a prediction, so the two totals do not cover the
+		// same number of problems and subtracting them directly would be a
+		// difference of sums, not a saving per problem.
+		const double mr = (double)model_runs;
+		const double inference_per = (double)sum_inference_us / mr;
+		const double solver_per = (double)sum_us_model / mr;
+		const double save_per = ((double)sum_us_normal / n) - solver_per;
+		const double oracle_per = ((double)sum_us_normal / n) -
+				((double)sum_us_warm / n);
+		rawstream << "  saving vs inference (model): solver saved " << save_per
+				<< " us/problem, inference " << inference_per
+				<< " us/problem, net " << (save_per - inference_per)
+				<< " us/problem" << std::endl;
+		rawstream << "  oracle upper bound: solver saved " << oracle_per
+				<< " us/problem before any inference at all" << std::endl;
+		if (save_per <= inference_per)
 			rawstream << "    -> NOWS is a net cost here; nows_adaptive would switch it off"
 					<< std::endl;
-		(void)save_oracle;
+		else
+			rawstream << "    -> NOWS pays for itself here; nows_adaptive would keep it on"
+					<< std::endl;
 	}
 	rawstream << "  (run inside the unit-test binary on this machine; treat as a "
 			"pipeline measurement, not a benchmark)" << std::endl;
