@@ -78,7 +78,21 @@ class FaceBuffer:
 ## Greedy-mesh `block` with `neighbours` (Vector3i offset -> VoxelBlock) for
 ## cross-chunk culling. Returns [opaque: ArrayMesh, trans: ArrayMesh], either
 ## of which may be null when that pass is empty.
+##
+## This is the convenient whole-pipeline entry point, and it touches the
+## rendering server. The two halves are `geometry()` (pure arithmetic over
+## packed arrays, safe on a worker thread) and `to_meshes()` (creates
+## ArrayMeshes, main thread only), so background meshing can run the first and
+## hand the second to the frame that presents the result.
 static func build(block: VoxelBlock, neighbours: Dictionary) -> Array:
+	return to_meshes(geometry(block, neighbours))
+
+
+## The pure-CPU half: sweep the block and return
+## [opaque_faces: Dictionary, trans_faces: Dictionary], each mapping block id
+## -> FaceBuffer. Nothing here allocates an engine resource or reads global
+## mutable state, so it is safe to call from a WorkerThreadPool thread.
+static func geometry(block: VoxelBlock, neighbours: Dictionary) -> Array:
 	# Fast path: an all-air block meshes to nothing. This keeps streaming
 	# cheap over open sky, where most chunks are empty.
 	var any_solid := false
@@ -87,7 +101,7 @@ static func build(block: VoxelBlock, neighbours: Dictionary) -> Array:
 			any_solid = true
 			break
 	if not any_solid:
-		return [null, null]
+		return [{}, {}]
 
 	var opaque := {}   # block id -> FaceBuffer
 	var trans := {}
@@ -99,7 +113,13 @@ static func build(block: VoxelBlock, neighbours: Dictionary) -> Array:
 		for dir in 2:
 			_mesh_axis(block, ids, lut, axis, dir, opaque, trans)
 
-	return [_to_mesh(opaque), _to_mesh(trans)]
+	return [opaque, trans]
+
+
+## The engine half: turn face buffers into meshes. Main thread only, because
+## `add_surface_from_arrays` uploads to the rendering server.
+static func to_meshes(faces: Array) -> Array:
+	return [_to_mesh(faces[0]), _to_mesh(faces[1])]
 
 
 ## Which surface ids a mesh pass contains, for tests and material binding.

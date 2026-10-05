@@ -33,6 +33,11 @@ var _blocks := {}          # "dim:x:y:z" -> VoxelBlock
 var _meshes := {}          # "dim:x:y:z" -> MeshInstance3D
 var _trans_nodes := {}     # "dim:x:y:z" -> MeshInstance3D
 var _dirty := {}           # key -> true
+## Chunks with a mesh job in flight: key -> the focus distance it was queued
+## at. A result is only applied if this still matches, which is how a stale
+## sweep (the chunk was edited or re-queued while the worker had it) is
+## recognised and thrown away instead of overwriting newer geometry.
+var _pending_mesh := {}    # key -> d2
 var _edits := {}           # "dim:x:y:z:vx:vy:vz" -> id, survives chunk reload
 var _built := 0
 
@@ -48,6 +53,14 @@ var view_forward := Vector3.FORWARD
 ## Set false to stream terrain only and skip meshing, which is what a
 ## dedicated server wants.
 @export var mesh_enabled := true
+## Meshing runs on WorkerThreadPool threads. Set false to sweep inline, which
+## is what a headless test wants when it asserts on geometry the instant a
+## call returns rather than a frame later.
+@export var async_meshing := true
+
+## The worker pool. Created here rather than per job so the thread handoff is
+## amortised and so `flush` has something stable to wait on.
+var _mesh_worker := ChunkMeshWorker.new()
 
 
 func _ready() -> void:
@@ -61,6 +74,39 @@ func _ready() -> void:
 	materials.prime()
 	print("[VoxelWorld] materials: ", materials.describe())
 	print("[VoxelWorld] material effects: ", materials.effect_counts())
+
+
+## Drain finished worker results into meshes. This is the only place the main
+## thread touches meshing output, and it is deliberately cheap: the sweep ran
+## on a worker, so all that is left is building an ArrayMesh and pointing an
+## existing MeshInstance3D at it.
+##
+## It is called from `update_around` rather than from `_process` on purpose.
+## `update_around` is the world's own tick, so results land before the frame
+## that is going to render them and the scheduler sees chunks that are already
+## meshed. It also means the world behaves the same whether or not the engine
+## is driving `_process` -- which is exactly the situation the end-to-end
+## test is in, since it steps the tree by hand and would otherwise never apply
+## a single chunk.
+func _apply_pending_meshes() -> int:
+	if _mesh_worker.outstanding() == 0:
+		return 0
+	var n := 0
+	for r in _mesh_worker.apply():
+		_apply_meshed(r)
+		n += 1
+	return n
+
+
+## Block until every queued and in-flight mesh job has been applied. Anything
+## that needs the world meshed *now* rather than a frame from now calls this:
+## saving, and the tests that edit blocks and immediately assert on geometry.
+func flush_meshing() -> int:
+	var applied := 0
+	for r in _mesh_worker.flush():
+		_apply_meshed(r)
+		applied += 1
+	return applied
 
 
 func _key(pos: Vector3i) -> String:
@@ -146,6 +192,8 @@ func get_stats() -> Dictionary:
 		"dimension": dimension,
 		"dirty": _dirty.size(),
 		"edits": _edits.size(),
+		"mesh_pending": _mesh_worker.outstanding(),
+		"mesh_worker_ms": _mesh_worker.worker_ms_total(),
 		"textures": texture_count(),
 		"mapping": MaterialLibrary.mapping_name()[
 			clampi(materials.mapping() if materials != null else 0, 0, 3)],
@@ -170,6 +218,10 @@ func get_stats() -> Dictionary:
 func update_around(focus: Vector3i) -> void:
 	var centre := _block_pos(focus)
 	_last_focus = focus
+	# Finish last frame's meshing before deciding this frame's work: the
+	# scheduler's queue is only meaningful against chunks that are already
+	# resident, and a chunk that just gained geometry should not be re-queued.
+	_apply_pending_meshes()
 	stream.select(centre, view_forward, view_radius + MESH_MARGIN, _is_resident,
 		true)
 	drop_distant(centre)
@@ -227,6 +279,12 @@ func ensure_region(focus: Vector3i, radius: int) -> int:
 					continue
 				if _load_chunk(p):
 					loaded += 1
+	# The caller asked for this region to exist NOW. With async meshing on,
+	# that means the jobs queued above have to finish too -- otherwise
+	# "ensure the region" would return a world whose chunks have no geometry
+	# yet, and every test that walks onto a freshly loaded region would fall
+	# through the floor.
+	flush_meshing()
 	return loaded
 
 
@@ -257,13 +315,56 @@ func _generate_job(p: Vector3i) -> bool:
 ## The scheduler's mesh callback: the nearest chunk that is ready to be meshed.
 ## Takes no argument -- the mesh queue is "which dirty chunk is nearest and
 ## ready", which is a question about the world, not about the job.
+##
+## This only *submits*. The sweep runs on a worker thread and the resulting
+## ArrayMesh is built in `_process`, so the frame pays for a dictionary push
+## rather than for meshing.
+##
+## With `async_meshing` off the whole thing runs inline instead, and the chunk
+## is meshed before this returns. Both paths share the gather, the staleness
+## check and the scene-graph update; the only difference is which thread the
+## sweep runs on, so the geometry a test sees is the same either way.
 func _mesh_job() -> bool:
 	var key := _nearest_meshable()
 	if key == "":
 		return false
-	_mesh_chunk(_key_pos(key), key)
+	var pos := _key_pos(key)
+	var data := _gather_neighbours(pos, key)
+	var d2 := _focus_dist2(pos)
+	if not async_meshing:
+		var meshes := GreedyMesher.to_meshes(
+			GreedyMesher.geometry(data["block"], data["neighbours"]))
+		_mesh_chunk(pos, key, meshes[0], meshes[1])
+		_dirty.erase(key)
+		return true
+	if not _mesh_worker.submit(key, pos, data["block"], data["neighbours"], d2):
+		# Saturated: leave it dirty so the next frame tries again. This is
+		# back-pressure, not a cancellation, so it must not read as failure.
+		return true
+	_pending_mesh[key] = d2
 	_dirty.erase(key)
 	return true
+
+
+func _focus_dist2(pos: Vector3i) -> int:
+	var d := pos - _block_pos(_last_focus)
+	return d.x * d.x + d.y * d.y + d.z * d.z
+
+
+## Collect the block plus its loaded neighbours. Main thread only: it reads
+## the world dictionary, which the worker never touches.
+func _gather_neighbours(pos: Vector3i, key: String) -> Dictionary:
+	var neighbours := {}
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				if dx == 0 and dy == 0 and dz == 0:
+					continue
+				var n: VoxelBlock = _blocks.get(
+					_key(pos + Vector3i(dx, dy, dz)))
+				if n != null:
+					neighbours[Vector3i(dx, dy, dz)] = n
+	return {"block": _blocks[key], "neighbours": neighbours}
 
 
 ## The scheduler's "is anything waiting to be meshed" probe: true while a
@@ -315,6 +416,16 @@ func _nearest_meshable() -> String:
 ## The focus the streaming decisions are relative to, kept so the mesh probe
 ## does not have to be handed the camera position every call.
 var _last_focus := Vector3i.ZERO
+
+
+## Leave the scene with nothing in flight on a worker thread. Without this a
+## quit during streaming would free the world while a job still held a copy of
+## its blocks -- harmless today, but only because the job writes to its own
+## collections; it is not something to rely on as the safety property.
+func _exit_tree() -> void:
+	_mesh_worker.cancel_queued()
+	_mesh_worker.flush()
+	_pending_mesh.clear()
 
 
 
@@ -404,6 +515,11 @@ func _unload_chunk(pos: Vector3i, key: String) -> void:
 	stream.cache_put(key, _blocks.get(key))
 	_blocks.erase(key)
 	_dirty.erase(key)
+	# Forget any in-flight job for it. The result will still arrive if a
+	# worker already had the block, and `_apply_meshed` drops it because
+	# `_blocks` no longer has the key -- but clearing the record here stops
+	# the d2 bookkeeping from resurrecting it.
+	_pending_mesh.erase(key)
 	chunk_unloaded.emit(pos)
 
 
@@ -455,6 +571,13 @@ func set_block(world_pos: Vector3i, id: int) -> bool:
 		local.x, local.y, local.z]] = id
 
 	# Re-mesh this chunk plus any neighbour sharing the edited face.
+	#
+	# Marking a chunk dirty while its mesh job is still on a worker thread is
+	# the case async meshing has to get right: the in-flight sweep read the
+	# pre-edit data, so its result is stale. `_apply_meshed` sees the dirty
+	# flag and throws that result away instead of installing it, and the next
+	# `_mesh_job` re-queues the chunk. The flag is therefore never cleared
+	# while a job is outstanding.
 	_dirty[key] = true
 	for axis in 3:
 		for step in [-1, 1]:
@@ -482,23 +605,38 @@ func place_block(world_pos: Vector3i, id: int) -> bool:
 	return set_block(world_pos, id)
 
 
-func _mesh_chunk(pos: Vector3i, key: String) -> void:
-	var block: VoxelBlock = _blocks[key]
-	var neighbours := {}
-	for dx in [-1, 0, 1]:
-		for dy in [-1, 0, 1]:
-			for dz in [-1, 0, 1]:
-				if dx == 0 and dy == 0 and dz == 0:
-					continue
-				var n: VoxelBlock = _blocks.get(
-					_key(pos + Vector3i(dx, dy, dz)))
-				if n != null:
-					neighbours[Vector3i(dx, dy, dz)] = n
+## Turn one finished worker result into meshes. Main thread only, and only the
+## cheap half of the pipeline: the sweep already happened on a worker.
+##
+## `d2_at_submit` is the focus distance when the job was queued, not now. If
+## the chunk has been edited or re-marked dirty since, its geometry is stale
+## no matter how close the player is now, so it is put back in the queue and
+## the stale mesh is left alone. That check is what makes async meshing safe:
+## without it a player who mines a block while its chunk is being swept would
+## see the edit vanish until something else happened to dirty the chunk.
+func _apply_meshed(result: Dictionary) -> void:
+	var key := String(result["key"])
+	var pos: Vector3i = result["pos"]
+	var qd2: int = result["d2"]
+	var was_pending: int = int(_pending_mesh.get(key, -1))
+	_pending_mesh.erase(key)
+	# The chunk may have been unloaded, or the dimension switched, while the
+	# worker had it. Its mesh is about to be hidden or rebuilt.
+	if not _blocks.has(key):
+		return
+	# A newer job was queued for this chunk after this one, so this result is
+	# for superseded data: drop it and let the newer one win.
+	if was_pending != qd2:
+		return
+	if _dirty.has(key):
+		return
+	var meshes := GreedyMesher.to_meshes(result["faces"])
+	_mesh_chunk(pos, key, meshes[0], meshes[1])
 
-	var result := GreedyMesher.build(block, neighbours)
-	var opaque: ArrayMesh = result[0]
-	var trans: ArrayMesh = result[1]
 
+## The scene-graph half of meshing, for a chunk whose face buffers are ready.
+func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
+		trans: ArrayMesh) -> void:
 	var mi: MeshInstance3D = _meshes.get(key, null)
 	if mi == null:
 		mi = MeshInstance3D.new()

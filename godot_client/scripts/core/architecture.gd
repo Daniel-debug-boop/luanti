@@ -75,6 +75,7 @@ const MODULES := {
 	"WorldGenerator":     {"layer": "world",       "visibility": PUBLIC},
 	"ChunkFiles":         {"layer": "world",       "visibility": INTERNAL},
 	"GreedyMesher":       {"layer": "world",       "visibility": INTERNAL},
+	"ChunkMeshWorker":    {"layer": "world",       "visibility": INTERNAL},
 	"MaterialLibrary":    {"layer": "world",       "visibility": PUBLIC},
 	"RenderSettings":     {"layer": "world",       "visibility": PUBLIC},
 	"VoxelPick":          {"layer": "world",       "visibility": PUBLIC},
