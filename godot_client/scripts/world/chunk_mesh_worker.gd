@@ -61,16 +61,19 @@ const MAX_QUEUED := 48
 ## Queue one chunk. `block` and `neighbours` are the block and its loaded
 ## neighbours, already gathered by the caller: gathering reads the world
 ## dictionary, which must happen on the main thread. `d2` is the squared
-## distance from the focus and is used only to order each batch.
+## distance from the focus and is used only to order each batch. `gen` is the
+## mesh generation the data was captured at -- it is NOT optional and NOT
+## interchangeable with `d2`, because identity of a result is which generation
+## of the chunk it describes, not where the player happened to be standing.
 ##
 ## Returns false when the pool is saturated. The caller should treat that as
 ## "keep it dirty and try again next frame", not as a failure.
 func submit(key: String, pos: Vector3i, block: VoxelBlock,
-		neighbours: Dictionary, d2: int) -> bool:
+		neighbours: Dictionary, d2: int, gen: int) -> bool:
 	if outstanding() >= MAX_QUEUED:
 		return false
 	var job := {
-		"key": key, "pos": pos, "d2": d2, "done": false,
+		"key": key, "pos": pos, "d2": d2, "gen": gen, "done": false,
 		"block": _copy_block(block),
 		"neighbours": _copy_neighbours(neighbours),
 	}
@@ -203,6 +206,7 @@ func _work(job: Dictionary) -> void:
 	_mutex.lock()
 	_results.append({
 		"key": job["key"], "pos": job["pos"], "d2": job["d2"],
+		"gen": job["gen"],
 		"faces": faces, "ms": ms,
 	})
 	_ms_total += ms

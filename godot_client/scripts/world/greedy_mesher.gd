@@ -446,9 +446,15 @@ static func _emit_face(block: VoxelBlock, ids: PackedInt32Array,
 	var x1 := (x + w - 1) * bu
 	var y0 := y * bv
 	var y1 := (y + h - 1) * bv
-	var lsum := (int(light[ba + x0 + y0]) + int(light[ba + x1 + y0]) \
-		+ int(light[ba + x0 + y1]) + int(light[ba + x1 + y1])) & 0x3F
-	var day := float(lsum) / 4.0 / float(MapNode.LIGHT_SUN)
+	# Daylight is the LOW nibble of the packed byte (`MapNode` stores the sun
+	# channel there and mirrors it in the high nibble). Masking a whole byte
+	# with 0x3F only works while high nibble == day<<4 exactly; reading the
+	# per-cell 0..15 channel and averaging is stable under any packer.
+	var lsum := (int(light[ba + x0 + y0]) & 0x0F)
+	lsum += int(light[ba + x1 + y0]) & 0x0F
+	lsum += int(light[ba + x0 + y1]) & 0x0F
+	lsum += int(light[ba + x1 + y1]) & 0x0F
+	var day := float(lsum) / 60.0
 	var emit := float(ContentDB.light_of(own_content)) / 15.0
 
 	# Ambient occlusion, sampled per corner so merged quads still darken

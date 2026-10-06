@@ -27,19 +27,26 @@ const CULL_SLACK := 2.0
 const CULL_AABB := AABB(Vector3(-CULL_SLACK, -CULL_SLACK, -CULL_SLACK),
 		Vector3(BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0, BS + CULL_SLACK * 2.0))
 
-## A chunk's occluder is the block itself. BoxOccluder3D is centred on its own
-## origin, so an occluder placed at a chunk's corner needs this much offset to
-## cover the chunk's extent.
-const OCCLUDER_OFFSET := Vector3(BS * 0.5, BS * 0.5, BS * 0.5)
-
+## Chunk occlusion culling is deliberately ABSENT, and there is no switch to
+## turn it back on.
+##
+## A voxel chunk is not a solid object. It is a 16^3 lattice that is mostly
+## air above the surface and riddled with caves, slopes and gaps below it, so
+## the only shape that could stand in for the whole chunk was a BoxOccluder3D
+## covering its entire 16x16x16 footprint. That box claims the empty sky above
+## a hill blocks the view, and the renderer then discards terrain the player
+## can plainly see. It never shows up as a crash or a missing triangle -- it
+## shows up as ground that vanishes as you walk toward it, which is exactly
+## what the hardware-GPU captures caught.
+##
+## Until an occluder can be derived from the chunk's actual geometry, the
+## correct answer is no occluder. Godot's frustum culling, the explicit
+## `CULL_AABB`, `extra_cull_margin` and `visibility_range_end` already do
+## every culling step that is safe to do here, and one wrongly-culled chunk
+## costs far more than all the draw calls a box would ever save.
 @export var world_dir := ""
 @export var view_radius := 5
 @export var build_budget := 2
-## Occlusion culling on chunks. A solid chunk near the camera hides a lot of
-## terrain behind it, which is the case occluders exist for; a chunk without
-## one is a chunk the engine has to draw. Opt-out, but a real switch: on a
-## very small view radius the occluder set costs more than it rejects.
-@export var occluders := true
 ## Active dimension: WorldGenerator.DIM_OVERWORLD or WorldGenerator.DIM_DEEPS.
 @export var dimension := 0
 ## How block textures are projected: 0 plain, 1 triplanar, 2 parallax (POM),
@@ -52,18 +59,22 @@ var materials: MaterialLibrary
 var _blocks := {}          # "dim:x:y:z" -> VoxelBlock
 var _meshes := {}          # "dim:x:y:z" -> MeshInstance3D
 var _trans_nodes := {}     # "dim:x:y:z" -> MeshInstance3D
-## Chunk occluders, keyed the same way. Only opaque chunks have one.
-var _occluders := {}       # "dim:x:y:z" -> OccluderInstance3D
-## One shape shared by every chunk. Every chunk is the same box, so a resource
-## each would only duplicate identical geometry; the engine uploads each
-## *instance* either way.
-var _occluder_shape: BoxOccluder3D = null
 var _dirty := {}           # key -> true
-## Chunks with a mesh job in flight: key -> the focus distance it was queued
-## at. A result is only applied if this still matches, which is how a stale
-## sweep (the chunk was edited or re-queued while the worker had it) is
-## recognised and thrown away instead of overwriting newer geometry.
-var _pending_mesh := {}    # key -> d2
+## Monotonic counter that makes every mesh generation id unique across the
+## whole session. Per-chunk ids are carved out of it, so an id handed out
+## before a chunk was unloaded can never collide with one handed out after it
+## was loaded again -- which is what stops a stale worker result from
+## resurrecting geometry for a chunk that has since been regenerated.
+var _gen_counter := 0
+## The current mesh generation for each chunk: key -> generation id.
+## Bumped whenever the chunk's data changes (dirty) and again whenever a job
+## for it is submitted.
+var _mesh_generation := {} # key -> int
+## The generation of the job currently expected for a chunk: key -> id.
+## Distance is scheduling priority only -- it is NOT identity, because two
+## different mesh generations of the same chunk can sit at the exact same
+## focus distance.
+var _pending_mesh := {}    # key -> generation id
 var _edits := {}           # "dim:x:y:z:vx:vy:vz" -> id, survives chunk reload
 var _built := 0
 
@@ -296,6 +307,7 @@ func ensure_region(focus: Vector3i, radius: int) -> int:
 	var centre := _block_pos(focus)
 	var loaded := 0
 	var r2 := radius * radius + radius
+	# Phase 1 -- the region the caller actually asked for.
 	for dx in range(-radius, radius + 1):
 		for dy in range(-radius, radius + 1):
 			for dz in range(-radius, radius + 1):
@@ -306,12 +318,80 @@ func ensure_region(focus: Vector3i, radius: int) -> int:
 					continue
 				if _load_chunk(p):
 					loaded += 1
-	# The caller asked for this region to exist NOW. With async meshing on,
-	# that means the jobs queued above have to finish too -- otherwise
-	# "ensure the region" would return a world whose chunks have no geometry
-	# yet, and every test that walks onto a freshly loaded region would fall
-	# through the floor.
-	flush_meshing()
+
+	if not mesh_enabled:
+		return loaded
+
+	# Phase 2 -- the neighbours those chunks need in order to be meshed at all.
+	#
+	# A chunk is meshed only when all 26 neighbours exist, so the outer ring of
+	# the requested sphere can never be meshed from the sphere alone: every one
+	# of them wants a diagonal neighbour one step outside it. Without this ring
+	# `ensure_region` returned a region that was loaded and had no geometry,
+	# which is the exact bug being fixed -- so the ring is every neighbour of
+	# every chunk in the region, and nothing wider.
+	var need := {}
+	for dx in range(-radius, radius + 1):
+		for dy in range(-radius, radius + 1):
+			for dz in range(-radius, radius + 1):
+				if dx * dx + dy * dy + dz * dz > r2:
+					continue
+				var p := centre + Vector3i(dx, dy, dz)
+				for ox in [-1, 0, 1]:
+					for oy in [-1, 0, 1]:
+						for oz in [-1, 0, 1]:
+							need[p + Vector3i(ox, oy, oz)] = true
+	for np in need.keys():
+		if not _blocks.has(_key(np)):
+			_load_chunk(np)
+
+	# Phase 3 -- sweep every chunk of the region and APPLY the results.
+	#
+	# `_load_chunk` only marks things dirty; the budgeted scheduler is not
+	# running here, so nothing else would ever submit them. The loop stops
+	# when no chunk of the region is both dirty and meshable, or when it stops
+	# making progress -- saturation is cleared by the flush at the end of each
+	# pass, so a pass that submitted nothing still advances the state.
+	var keys := []
+	for dx in range(-radius, radius + 1):
+		for dy in range(-radius, radius + 1):
+			for dz in range(-radius, radius + 1):
+				if dx * dx + dy * dy + dz * dz > r2:
+					continue
+				keys.append(_key(centre + Vector3i(dx, dy, dz)))
+	for _attempt in range(keys.size() + 4):
+		var pending := 0
+		for k in keys:
+			if _dirty.has(k) and _blocks.has(k) \
+					and _can_mesh(_key_pos(String(k))):
+					pending += 1
+		if pending == 0:
+			break
+		for k in keys:
+			var key := String(k)
+			if not _dirty.has(key) or not _blocks.has(key):
+				continue
+			if not _can_mesh(_key_pos(key)):
+				continue
+			_submit_mesh(key)
+		flush_meshing()
+
+	# Phase 4 -- verify. The contract is "loaded AND meshed", so a chunk that
+	# should have geometry but does not is reported rather than silently
+	# returned to a caller that is about to walk onto it.
+	var unmeshed := 0
+	for k in keys:
+		var key := String(k)
+		if not _blocks.has(key):
+			continue
+		if not _can_mesh(_key_pos(key)):
+			continue
+		var mi: MeshInstance3D = _meshes.get(key, null)
+		if mi == null or _dirty.has(key) or _pending_mesh.has(key):
+			unmeshed += 1
+	if unmeshed > 0:
+		push_warning(("ensure_region: %d chunk(s) in the region still have no "
+			+ "applied mesh") % unmeshed)
 	return loaded
 
 
@@ -339,6 +419,33 @@ func _generate_job(p: Vector3i) -> bool:
 	return _load_chunk(p)
 
 
+## Next mesh generation id. One global counter, so an id handed out before a
+## chunk was unloaded can never be reused once it is loaded again -- which is
+## what stops a stale worker result from resurrecting geometry for a chunk
+## that has since been regenerated.
+func _next_generation() -> int:
+	_gen_counter += 1
+	return _gen_counter
+
+
+## Publish a fresh generation for a chunk. Called when its data changes and
+## again when a job for it is submitted; a result computed from an older
+## generation is stale by definition and is discarded on arrival.
+func _bump_generation(key: String) -> int:
+	var gen := _next_generation()
+	_mesh_generation[key] = gen
+	return gen
+
+
+## Mark a chunk dirty, retiring whatever generation its in-flight sweep was
+## reading. This is the whole point of the scheme: an edit that lands while a
+## worker holds a copy of the old data invalidates that copy the instant the
+## edit happens, not when the result comes back.
+func _mark_dirty(key: String) -> void:
+	_dirty[key] = true
+	_bump_generation(key)
+
+
 ## The scheduler's mesh callback: the nearest chunk that is ready to be meshed.
 ## Takes no argument -- the mesh queue is "which dirty chunk is nearest and
 ## ready", which is a question about the world, not about the job.
@@ -346,8 +453,7 @@ func _generate_job(p: Vector3i) -> bool:
 ## This only *submits*. The sweep runs on a worker thread and the resulting
 ## ArrayMesh is built in `_process`, so the frame pays for a dictionary push
 ## rather than for meshing.
-##
-## With `async_meshing` off the whole thing runs inline instead, and the chunk
+#### With `async_meshing` off the whole thing runs inline instead, and the chunk
 ## is meshed before this returns. Both paths share the gather, the staleness
 ## check and the scene-graph update; the only difference is which thread the
 ## sweep runs on, so the geometry a test sees is the same either way.
@@ -355,20 +461,39 @@ func _mesh_job() -> bool:
 	var key := _nearest_meshable()
 	if key == "":
 		return false
+	# Accepted-but-saturated still returns true: something WAS ready, so the
+	# scheduler must not record it as "deferred waiting on a neighbour".
+	_submit_mesh(key)
+	return true
+
+
+## Sweep one specific chunk: gather, reserve its generation, then either mesh
+## it inline or hand it to the worker. Returns false only when the pool is
+## saturated -- the chunk stays dirty and the caller retries after a flush.
+func _submit_mesh(key: String) -> bool:
+	if not _blocks.has(key):
+		return false
 	var pos := _key_pos(key)
 	var data := _gather_neighbours(pos, key)
 	var d2 := _focus_dist2(pos)
+	# The generation is reserved before the data is copied, so the worker
+	# result carries the identity of the exact state it was computed from.
+	var gen := _bump_generation(key)
 	if not async_meshing:
 		var meshes := GreedyMesher.to_meshes(
 			GreedyMesher.geometry(data["block"], data["neighbours"]))
 		_mesh_chunk(pos, key, meshes[0], meshes[1])
 		_dirty.erase(key)
+		_pending_mesh.erase(key)
 		return true
-	if not _mesh_worker.submit(key, pos, data["block"], data["neighbours"], d2):
+	if not _mesh_worker.submit(key, pos, data["block"], data["neighbours"], d2,
+			gen):
 		# Saturated: leave it dirty so the next frame tries again. This is
 		# back-pressure, not a cancellation, so it must not read as failure.
-		return true
-	_pending_mesh[key] = d2
+		# The generation was reserved but never published to the worker, so
+		# the next attempt simply takes a new one.
+		return false
+	_pending_mesh[key] = gen
 	_dirty.erase(key)
 	return true
 
@@ -453,6 +578,7 @@ func _exit_tree() -> void:
 	_mesh_worker.cancel_queued()
 	_mesh_worker.flush()
 	_pending_mesh.clear()
+	_mesh_generation.clear()
 
 
 
@@ -465,8 +591,8 @@ func _mark_neighbours_dirty(pos: Vector3i) -> void:
 				var n := pos + Vector3i(dx, dy, dz)
 				var nk := _key(n)
 				if _blocks.has(nk):
-					_dirty[nk] = true
-	_dirty[_key(pos)] = true
+					_mark_dirty(nk)
+	_mark_dirty(_key(pos))
 
 
 ## Unload chunks that left the view, into the cache rather than into the void,
@@ -536,21 +662,19 @@ func _unload_chunk(pos: Vector3i, key: String) -> void:
 	var ti: MeshInstance3D = _trans_nodes.get(key, null)
 	if ti != null:
 		ti.queue_free()
-	_trans_nodes.erase(key)
-	var oi: OccluderInstance3D = _occluders.get(key, null)
-	if oi != null:
-		oi.queue_free()
-	_occluders.erase(key)
+		_trans_nodes.erase(key)
 	# The terrain goes to the cache, not into the void: walking back three
 	# chunks should not regenerate the world.
 	stream.cache_put(key, _blocks.get(key))
 	_blocks.erase(key)
 	_dirty.erase(key)
-	# Forget any in-flight job for it. The result will still arrive if a
-	# worker already had the block, and `_apply_meshed` drops it because
-	# `_blocks` no longer has the key -- but clearing the record here stops
-	# the d2 bookkeeping from resurrecting it.
+	# Forget any in-flight job for it, and drop its generation id. The result
+	# will still arrive if a worker already had the block, and `_apply_meshed`
+	# drops it because `_blocks` no longer has the key -- and even if the chunk
+	# is loaded again before the result lands, the reloaded chunk is handed a
+	# NEW id from the global counter, so the old result can never match.
 	_pending_mesh.erase(key)
+	_mesh_generation.erase(key)
 	chunk_unloaded.emit(pos)
 
 
@@ -605,18 +729,19 @@ func set_block(world_pos: Vector3i, id: int) -> bool:
 	#
 	# Marking a chunk dirty while its mesh job is still on a worker thread is
 	# the case async meshing has to get right: the in-flight sweep read the
-	# pre-edit data, so its result is stale. `_apply_meshed` sees the dirty
-	# flag and throws that result away instead of installing it, and the next
-	# `_mesh_job` re-queues the chunk. The flag is therefore never cleared
-	# while a job is outstanding.
-	_dirty[key] = true
+	# pre-edit data, so its result is stale. `_mark_dirty` retires that sweep's
+	# generation the instant the edit lands, `_apply_meshed` sees the
+	# generation no longer matches and throws the result away instead of
+	# installing it, and the next `_mesh_job` re-queues the chunk. The flag is
+	# therefore never cleared while a job is outstanding.
+	_mark_dirty(key)
 	for axis in 3:
 		for step in [-1, 1]:
 			var off := Vector3i.ZERO
 			off[axis] = step
 			var nkey := _key(bpos + off)
 			if _blocks.has(nkey):
-				_dirty[nkey] = true
+				_mark_dirty(nkey)
 	block_changed.emit(world_pos, id)
 	return true
 
@@ -639,25 +764,37 @@ func place_block(world_pos: Vector3i, id: int) -> bool:
 ## Turn one finished worker result into meshes. Main thread only, and only the
 ## cheap half of the pipeline: the sweep already happened on a worker.
 ##
-## `d2_at_submit` is the focus distance when the job was queued, not now. If
-## the chunk has been edited or re-marked dirty since, its geometry is stale
-## no matter how close the player is now, so it is put back in the queue and
-## the stale mesh is left alone. That check is what makes async meshing safe:
-## without it a player who mines a block while its chunk is being swept would
-## see the edit vanish until something else happened to dirty the chunk.
+## Staleness is decided by the mesh GENERATION id, never by focus distance.
+## Distance is not identity: two different mesh generations of the same chunk
+## can sit at exactly the same distance from the player, so a distance check
+## accepts an old result that happens to have been queued from where the
+## player now stands. The generation id is reserved when the job is submitted,
+## carried through the worker, and compared on arrival against the chunk's
+## current generation -- they must be equal or the result is discarded.
+##
+## That is what makes async meshing safe: a player who mines a block while its
+## chunk is being swept gets the edit re-meshed instead of watching it vanish
+## until something else happened to dirty the chunk, and a generation-1 result
+## arriving after a generation-2 result can never overwrite it.
 func _apply_meshed(result: Dictionary) -> void:
 	var key := String(result["key"])
 	var pos: Vector3i = result["pos"]
-	var qd2: int = result["d2"]
+	var qgen: int = result["gen"]
 	var was_pending: int = int(_pending_mesh.get(key, -1))
-	_pending_mesh.erase(key)
+	var current: int = int(_mesh_generation.get(key, -1))
+	# Only the result that IS the awaited generation may clear the slot. A
+	# stale result arriving first must not erase the newer job's record, or
+	# the newer result would then find nothing waiting and discard itself.
+	if qgen == was_pending:
+		_pending_mesh.erase(key)
 	# The chunk may have been unloaded, or the dimension switched, while the
 	# worker had it. Its mesh is about to be hidden or rebuilt.
 	if not _blocks.has(key):
 		return
-	# A newer job was queued for this chunk after this one, so this result is
-	# for superseded data: drop it and let the newer one win.
-	if was_pending != qd2:
+	# A newer job was queued for this chunk after this one, or its data
+	# changed since: this result describes superseded geometry. Drop it and
+	# let the newer generation win, whichever order the two arrive in.
+	if qgen != current or qgen != was_pending:
 		return
 	if _dirty.has(key):
 		return
@@ -685,43 +822,12 @@ func _apply_culling(mi: MeshInstance3D) -> void:
 	mi.visibility_range_end = float(view_radius + 2) * BS
 
 
-## Give a chunk an occluder, or take its occluder away.
-##
-## Only an opaque chunk gets one. A chunk that is mostly air -- or that is only
-## drawn in the transparent pass -- does not block the view, and an occluder
-## claiming otherwise would reject geometry the player can genuinely see
-## through the gap. That failure is invisible in a screenshot and obvious to
-## anyone standing in front of it, so the rule is strict: opaque mesh or no
-## occluder.
-func _update_occluder(key: String, pos: Vector3i, solid: bool) -> void:
-	var oi: OccluderInstance3D = _occluders.get(key, null)
-	if not (occluders and solid):
-		if oi != null:
-			oi.queue_free()
-			_occluders.erase(key)
-		return
-	if oi == null:
-		oi = OccluderInstance3D.new()
-		oi.name = "Occl_%s" % key.replace(":", "_")
-		if _occluder_shape == null:
-			_occluder_shape = BoxOccluder3D.new()
-			_occluder_shape.size = Vector3(BS, BS, BS)
-		oi.occluder = _occluder_shape
-		add_child(oi)
-		_occluders[key] = oi
-	oi.position = Vector3(pos.x * BS, pos.y * BS, pos.z * BS) + OCCLUDER_OFFSET
-
-
-## Turn chunk occlusion on or off for every live chunk, not only for the ones
-## built afterwards. A chunk meshed while occluders were off would otherwise
-## stay a permanent hole in the occlusion set, which is the kind of gap that
-## only shows up as unexplained frame cost in one direction of travel.
-func set_occluders(on: bool) -> void:
-	occluders = on
-	for key in _meshes.keys():
-		var mi: MeshInstance3D = _meshes[key]
-		var solid: bool = mi != null and is_instance_valid(mi) and mi.visible
-		_update_occluder(key, _key_pos(key), solid)
+## Chunk occlusion culling is intentionally disabled -- see the note on
+## `dimension` at the top of this file. There is no `_update_occluder` and no
+## `set_occluders` any more: the full-chunk BoxOccluder3D they built is the
+## thing that hid visible terrain, and leaving a disabled switch behind would
+## only invite the same bug back in. Frustum culling, `CULL_AABB`,
+## `extra_cull_margin` and `visibility_range_end` cover the safe cases.
 
 
 func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
@@ -737,7 +843,6 @@ func _mesh_chunk(pos: Vector3i, key: String, opaque: ArrayMesh,
 	# Surfaces carry their own per-block-id materials, so no override here.
 	_bind_surfaces(mi, opaque)
 	mi.visible = (opaque != null)
-	_update_occluder(key, pos, opaque != null)
 
 	var ti: MeshInstance3D = _trans_nodes.get(key, null)
 	if trans != null:
@@ -819,7 +924,7 @@ func apply_edits_snapshot(edits: Dictionary) -> void:
 		var pos := Vector3i(int(parts[1]), int(parts[2]), int(parts[3]))
 		var block: VoxelBlock = _blocks[block_key]
 		_apply_edits(block, pos)
-		_dirty[block_key] = true
+		_mark_dirty(block_key)
 
 
 func set_texture_mapping(m: int) -> void:

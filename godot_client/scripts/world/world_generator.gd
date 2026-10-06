@@ -32,6 +32,14 @@ var _deeps_noise := FastNoiseLite.new()
 ## retuning caves never reshuffles where the copper is.
 var _ore_noise := FastNoiseLite.new()
 var _rng := RandomNumberGenerator.new()
+## One seeded, stream-safe roll: a fresh hash of the world seed and the
+## absolute world coordinate, mapped to [0,1). Every per-column and
+## per-feature decision MUST come through here instead of a shared mutable
+## RNG, because a shared RNG makes a chunk's content depend on which chunks
+## were generated before it -- invalid for streaming, unloading, reloading,
+## multiplayer synchronization and deterministic saves.
+static func _roll01(x: int, y: int, z: int) -> float:
+	return float(hash(Vector3i(x, y, z)) & 0x7FFFFFFF) / 2147483648.0
 
 
 func _init(seed_value: int = 1337) -> void:
@@ -59,9 +67,14 @@ func _init(seed_value: int = 1337) -> void:
 
 
 func biome_at(wx: int, wz: int) -> int:
+	return _biome_from(wx, wz, _height_at(wx, wz))
+
+
+## The biome decision, given the surface height already in hand so callers
+## that need both do not sample the terrain noise twice.
+func _biome_from(wx: int, wz: int, height: int) -> int:
 	var t := _temp_noise.get_noise_2d(wx, wz)
 	var h := _humid_noise.get_noise_2d(wx, wz)
-	var height := _height_at(wx, wz)
 	if height < SEA_LEVEL - 2:
 		return Biome.OCEAN
 	if height <= SEA_LEVEL + 1:
@@ -142,7 +155,10 @@ func _terrain_column(biome: int, wy: int, h: int, wx: int, wz: int) -> int:
 			_: return ContentDB.GRASS
 	if wy > h - 4:
 		return ContentDB.DIRT if biome != Biome.DESERT else ContentDB.SAND
-	if wy > h - 6 and _rng.randf() < 0.25:
+	# Deterministic from position alone: the roll is hashed from the absolute
+	# world coordinate, never from a shared mutable RNG. A column's gravel
+	# must not depend on how many columns were generated before it.
+	if _roll01(wx, wy, wz) < 0.25:
 		return ContentDB.GRAVEL
 	# Ore veins. Deterministic from position alone, so a chunk regenerates
 	# identically and a save/load cycle never moves a vein.
@@ -190,86 +206,100 @@ func _sky_light(wy: int, h: int) -> int:
 
 
 ## Scatter biome features after terrain, so trees can poke above the surface.
+##
+## Features are WORLD-COORDINATE decisions, never clipped by chunk ownership.
+## A tree planted by column wx,wz writes its trunk and canopy through a
+## block-relative `set` that lands in THIS block where the voxel happens to
+## be inside it -- and the neighbouring block's own feature pass re-derives
+## the same tree from the same column and fills in the parts that fall in
+## it. Because every input to the decision is a function of absolute world
+## coordinates and nothing else, generating (A before B) and (B before A)
+## produce exactly the same world: cross-chunk canopies and trunks can no
+## longer be truncated at a block boundary.
 func _add_features(block: VoxelBlock, pos: Vector3i) -> void:
-	# Deterministic per-block feature pass.
-	var frng := RandomNumberGenerator.new()
-	frng.seed = hash(Vector3i(pos.x, 0, pos.z))
-
-	for lx in range(2, BS - 2):
-		for lz in range(2, BS - 2):
-			var wx := pos.x * BS + lx
-			var wz := pos.z * BS + lz
+	# A tree's canopy reaches 2 columns beyond its trunk, so scan columns
+	# up to 2 outside this block: a boundary block gets the parts of a
+	# neighbour's tree that overhang it. The `set` below drops voxels that
+	# are still further outside.
+	for wx in range(pos.x * BS - 2, pos.x * BS + BS + 2):
+		for wz in range(pos.z * BS - 2, pos.z * BS + BS + 2):
 			var h := _height_at(wx, wz)
 			if h <= SEA_LEVEL:
 				continue
-			var biome := biome_at(wx, wz)
-			var r := frng.randf()
-			match biome:
-				Biome.FOREST:
-					if r < 0.02:
-						_place_tree(block, pos, lx, h + 1, lz, frng)
-				Biome.PLAINS:
-					if r < 0.004:
-						_place_tree(block, pos, lx, h + 1, lz, frng, 3)
-				Biome.DESERT:
-					if r < 0.012:
-						_place_cactus(block, pos, lx, h + 1, lz)
-				Biome.TUNDRA:
-					if r < 0.01:
-						_place_boulder(block, pos, lx, h + 1, lz)
-
-
-func _place_tree(block: VoxelBlock, pos: Vector3i, lx: int, ly: int,
-		lz: int, frng: RandomNumberGenerator, max_h := 6) -> void:
-	var trunk := frng.randi_range(4, max_h)
-	for i in trunk:
-		if not _set_local(block, pos, lx, ly + i, lz, ContentDB.WOOD):
-			return
-	# Leaf canopy: two shrunken layers plus a cap.
-	for dy in [-1, 0]:
-		var ry: int = ly + trunk - 1 + dy
-		for dx in range(-2, 3):
-			for dz in range(-2, 3):
-				if absi(dx) == 2 and absi(dz) == 2:
-					continue
-				_set_local(block, pos, lx + dx, ry, lz + dz, ContentDB.LEAVES)
-	for dx in range(-1, 2):
-		for dz in range(-1, 2):
-			if absi(dx) + absi(dz) > 1:
+			var biome := _biome_from(wx, wz, h)
+			var r := _roll01(wx, 0, wz)
+			var detected := false
+			if biome == Biome.FOREST:
+				detected = r < 0.02
+			elif biome == Biome.PLAINS:
+				detected = r < 0.004
+			elif biome == Biome.DESERT:
+				detected = r < 0.012
+			elif biome == Biome.TUNDRA:
+				detected = r < 0.01
+			if not detected:
 				continue
-			_set_local(block, pos, lx + dx, ly + trunk + 1, lz + dz,
-				ContentDB.LEAVES)
+			var kind := 0 if (biome == Biome.FOREST or biome == Biome.PLAINS) \
+				else (1 if biome == Biome.DESERT else 2)
+			_place_feature(block, pos, wx, h + 1, wz, kind)
 
 
-func _place_cactus(block: VoxelBlock, pos: Vector3i, lx: int, ly: int,
-		lz: int) -> void:
-	var n := 2 + int(hash(Vector3i(pos.x, lx, lz)) % 3)
-	for i in n:
-		_set_local(block, pos, lx, ly + i, lz, ContentDB.CACTUS)
+## Stamp one world-column feature into `block`. Every voxel written has the
+## same value no matter which block is doing the stamping, so two blocks
+## sharing a feature produce complementary, non-conflicting halves.
+func _place_feature(block: VoxelBlock, pos: Vector3i, wx: int, wy: int,
+		wz: int, kind: int) -> void:
+	if kind == 0:
+		var max_h := 6 if _biome_from(wx, wz, wy - 1) == Biome.FOREST else 3
+		var trunk := 4 + int(_roll01(wx, 1, wz) * float(max_h - 3))
+		for i in trunk:
+			_stamp(block, pos, wx, wy + i, wz, ContentDB.WOOD)
+		# Leaf canopy: two shrunken layers plus a cap.
+		for dy in [-1, 0]:
+			var ry: int = wy + trunk - 1 + dy
+			for dx in range(-2, 3):
+				for dz in range(-2, 3):
+					if absi(dx) == 2 and absi(dz) == 2:
+						continue
+					_stamp(block, pos, wx + dx, ry, wz + dz,
+						ContentDB.LEAVES)
+			for dx in range(-1, 2):
+				for dz in range(-1, 2):
+					if absi(dx) + absi(dz) > 1:
+						continue
+					_stamp(block, pos, wx + dx, wy + trunk + 1,
+						wz + dz, ContentDB.LEAVES)
+	elif kind == 1:
+		var n := 2 + int(_roll01(wx, 2, wz) * 3.0) % 3
+		for i in n:
+			_stamp(block, pos, wx, wy + i, wz, ContentDB.CACTUS)
+	else:
+		_stamp(block, pos, wx, wy, wz, ContentDB.STONE)
+		if _roll01(wx, 3, wz) < 0.5:
+			_stamp(block, pos, wx, wy + 1, wz, ContentDB.STONE)
 
 
-func _place_boulder(block: VoxelBlock, pos: Vector3i, lx: int, ly: int,
-		lz: int) -> void:
-	_set_local(block, pos, lx, ly, lz, ContentDB.STONE)
-	if hash(Vector3i(lx, ly, lz)) % 2 == 0:
-		_set_local(block, pos, lx, ly + 1, lz, ContentDB.STONE)
-
-
-## Write a voxel if it exists in this block. Trees can cross block borders;
-## those voxels are simply dropped, which the neighbours' own feature pass
-## mostly compensates for.
-func _set_local(block: VoxelBlock, pos: Vector3i, lx: int, ly: int,
-		lz: int, cid: int) -> bool:
+## Write one world voxel into `block` if that voxel is inside it. Features
+## never overwrite terrain, only fill air or water -- so a canopy stamping
+## from one side cannot out-vote terrain stamped from the other.
+##
+## This replaces `_set_local` and the dropped-voxel behaviour: the caller
+## re-derives the feature for the columns that reach into this block, so a
+## boundary block no longer silently truncates a tree.
+func _stamp(block: VoxelBlock, pos: Vector3i, wx: int, wy: int, wz: int,
+		cid: int) -> void:
+	var lx := wx - pos.x * BS
+	var ly := wy - pos.y * BS
+	var lz := wz - pos.z * BS
 	if lx < 0 or lx >= BS or ly < 0 or ly >= BS or lz < 0 or lz >= BS:
-		return false
+		return
 	var idx := MapNode.index(lx, ly, lz)
-	# Features never overwrite terrain, only fill air.
 	if block.content[idx] == ContentDB.AIR \
 			or block.content[idx] == ContentDB.WATER:
 		block.content[idx] = cid
-		var day := _sky_light(ly, _height_at(pos.x * BS + lx, pos.z * BS + lz))
+		var day := _sky_light(wy - pos.y * BS,
+			_height_at(wx, wz) - pos.y * BS)
 		block.light[idx] = day | (day << 4)
-	return true
 
 
 ## Generate one block of The Deeps: a dark cavern dimension with deepslate

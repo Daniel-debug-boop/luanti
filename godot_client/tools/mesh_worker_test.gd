@@ -28,11 +28,108 @@ func _run() -> void:
 	_test_a_worker_produces_the_same_geometry()
 	_test_back_pressure_refuses_rather_than_queueing()
 	_test_an_edited_chunk_is_not_overwritten_by_a_stale_sweep()
+	_test_a_stale_generation_cannot_outrank_a_newer_one()
 	_test_a_result_for_an_unloaded_chunk_is_dropped()
 	_test_a_chunk_can_be_culled_and_is_given_room_to_be()
 	print("mesh_worker: %s" % ["PASS" if failures == 0
 		else "%d FAILURES" % failures])
 	quit(1 if failures > 0 else 0)
+
+
+## The generation-identity contract: distance is NOT identity.
+##
+## Two sweeps of the SAME chunk, queued at the SAME focus distance -- the
+## second one finishing first. The old result must be discarded regardless of
+## arrival order. The previous scheme identified a result by the player's
+## distance from the chunk, which is identical for both jobs here, so it
+## accepted whichever arrived last and could install pre-edit geometry over
+## post-edit geometry.
+##
+## The out-of-order arrival is imposed by the test rather than produced by the
+## pool: on a single-CPU sandbox the tasks complete in queue order, so waiting
+## for the scheduler to race would make this test pass vacuously.
+func _test_a_stale_generation_cannot_outrank_a_newer_one() -> void:
+	var w := VoxelWorld.new()
+	w.view_radius = 1
+	w.async_meshing = true
+	w.generator = WorldGenerator.new(1337)
+	w.materials = MaterialLibrary.new()
+	root.add_child(w)
+	w.ensure_region(Vector3i.ZERO, 2)
+
+	var key := w._key(Vector3i.ZERO)
+	check(w._blocks.has(key), "test setup: chunk was not loaded")
+
+	# Generation 1: queue a sweep and hold on to it.
+	w._mark_dirty(key)
+	check(w._mesh_job(), "the first sweep was not queued")
+	var gen1 := int(w._pending_mesh.get(key, -1))
+	check(gen1 > 0, "the first sweep carries no generation id")
+
+	# Find some real terrain to edit, so the second sweep describes different
+	# data rather than the same data twice.
+	var found := Vector3i(-1, -1, -1)
+	for x in range(16):
+		for z in range(16):
+			for y in range(16):
+				if w.get_content_at(Vector3i(x, y, z)) == ContentDB.STONE:
+					found = Vector3i(x, y, z)
+					break
+			if found.x >= 0:
+				break
+		if found.x >= 0:
+			break
+	check(found.x >= 0, "test setup: no stone to mine")
+	check(w.break_block(found), "break_block should have changed the block")
+
+	# Generation 2: the same chunk, the same focus, a newer generation.
+	check(w._mesh_job(), "the second sweep was not queued")
+	var gen2 := int(w._pending_mesh.get(key, -1))
+	check(gen2 > gen1,
+		"the second sweep did not get a newer generation (%d -> %d)"
+		% [gen1, gen2])
+	check(gen2 != gen1,
+		"distance-based identity would have called these two the same job")
+
+	var batch := w._mesh_worker.flush()
+	var old_result := {}
+	var new_result := {}
+	for r in batch:
+		if int(r["gen"]) == gen1:
+			old_result = r
+		elif int(r["gen"]) == gen2:
+			new_result = r
+	check(not old_result.is_empty() and not new_result.is_empty(),
+		"both sweeps did not come back (%d results)" % batch.size())
+	if old_result.is_empty() or new_result.is_empty():
+		w.queue_free()
+		return
+
+	# Newest first...
+	var built_before := w._built
+	w._apply_meshed(new_result)
+	var built_after_new := w._built
+	check(built_after_new > built_before,
+		"the newer generation did not install its mesh at all")
+
+	# ...then the stale one lands late. It must change nothing.
+	w._apply_meshed(old_result)
+	check(w._built == built_after_new,
+		("a stale generation-%d result installed itself after generation %d "
+			+ "(%d -> %d)")
+		% [gen1, gen2, built_after_new, w._built])
+	check(not w._dirty.has(key),
+		"the discarded result should not have re-dirtied a clean chunk")
+
+	# And what is installed is the post-edit geometry, not merely some mesh.
+	var mi: MeshInstance3D = w._meshes.get(key, null)
+	check(mi != null, "the chunk has no mesh after both sweeps")
+	if mi != null:
+		var expected := GreedyMesher.build(w._blocks[key],
+			w._gather_neighbours(Vector3i.ZERO, key))
+		check(_surface_hash(mi.mesh) == _surface_hash(expected[0]),
+			"the installed mesh is not the post-edit mesh")
+	w.queue_free()
 
 
 ## A chunk with real terrain in it, and enough neighbours to mesh it.
@@ -78,7 +175,8 @@ func _test_a_worker_produces_the_same_geometry() -> void:
 	var inline := GreedyMesher.build(b, {})
 
 	var w := ChunkMeshWorker.new()
-	check(w.submit("k", Vector3i.ZERO, b, {}, 0), "submit on an idle pool refused")
+	check(w.submit("k", Vector3i.ZERO, b, {}, 0, 1),
+		"submit on an idle pool refused")
 	check(w.outstanding() == 1, "outstanding should be 1 right after submit")
 
 	var batch := w.flush()
@@ -126,7 +224,7 @@ func _test_back_pressure_refuses_rather_than_queueing() -> void:
 	# accepted -- the pool is allowed to start draining -- but that the queue
 	# is bounded, and that a refusal is a plain false rather than an error.
 	for i in ChunkMeshWorker.MAX_QUEUED * 3:
-		if w.submit("k%d" % i, Vector3i.ZERO, b, {}, i):
+		if w.submit("k%d" % i, Vector3i.ZERO, b, {}, i, i + 1):
 			accepted += 1
 	check(accepted <= ChunkMeshWorker.MAX_QUEUED,
 		"accepted %d jobs against a cap of %d: the queue is unbounded"
@@ -283,37 +381,43 @@ func _test_a_chunk_can_be_culled_and_is_given_room_to_be() -> void:
 	check(mi.visibility_range_end == wider,
 		"a live chunk kept its old draw distance after the radius changed")
 
-	# --- occlusion culling ---
-	check(w._occluders.has(key), "an opaque chunk was given no occluder")
-	if w._occluders.has(key):
-		var oi: OccluderInstance3D = w._occluders[key]
-		check(oi.occluder is BoxOccluder3D,
-			"the chunk occluder is not the shared box")
-		# The occluder has to sit where the chunk's geometry does. A box
-		# occluder is centred on its own origin while the chunk's geometry
-		# starts at the chunk corner, so the two differ by half a block.
-		# Getting this wrong offsets the occluder by 8 blocks, which rejects
-		# the wrong terrain -- and is invisible until someone walks into it.
-		check(oi.position.is_equal_approx(VoxelWorld.OCCLUDER_OFFSET),
-			"the chunk occluder is at %s, expected %s"
-			% [oi.position, VoxelWorld.OCCLUDER_OFFSET])
-		check(oi.occluder.size.is_equal_approx(
-				Vector3(VoxelWorld.BS, VoxelWorld.BS, VoxelWorld.BS)),
-			"the chunk occluder is %s, expected a whole block"
-			% oi.occluder.size)
+	# --- no full-chunk occluder, ever ---
+	# A 16^3 BoxOccluder3D over a chunk claims the empty sky above a hill
+	# blocks the view, so the renderer discards terrain the player can plainly
+	# see. The fix removed the path rather than switching it off, so nothing
+	# anywhere may have recreated it.
+	var occl := _count_occluders(w)
+	check(occl == 0,
+		"%d chunk occluder(s) exist: a full-chunk box hides visible terrain"
+		% occl)
+	var has_occl_prop := false
+	for p in w.get_property_list():
+		if String(p["name"]) == "occluders":
+			has_occl_prop = true
+	check(not has_occl_prop and not w.has_method("set_occluders"),
+		"the unsafe occlusion path was reintroduced as a live API")
 
-	# Toggling has to reach chunks that already exist, or the switch is a lie
-	# for everything built before it was flipped.
-	w.set_occluders(false)
-	check(not w._occluders.has(key),
-		"turning occluders off left a live chunk's occluder behind")
-	w.set_occluders(true)
-	check(w._occluders.has(key),
-		"turning occluders back on did not restore the chunk's occluder")
+	# And the geometry must be untouched by any of it: the chunk a test sees
+	# is byte-for-byte what the mesher produces when called directly, so a
+	# culling change can never have quietly altered the terrain.
+	var direct := GreedyMesher.build(w._blocks[key],
+		w._gather_neighbours(Vector3i.ZERO, key))
+	check(_surface_hash(mi.mesh) == _surface_hash(direct[0]),
+		"chunk geometry is not identical to the mesher's direct output")
 
-	# It has to go when the chunk does. A leaked occluder keeps rejecting
-	# geometry for a chunk that is no longer drawn.
+	# It has to go when the chunk does, whatever the world is holding.
 	w._unload_chunk(Vector3i.ZERO, key)
-	check(not w._occluders.has(key),
-		"unloading a chunk left its occluder behind")
+	check(_count_occluders(w) == 0,
+		"unloading a chunk left an occluder behind")
 	w.queue_free()
+
+
+## Every OccluderInstance3D under the world, counted. Written as a tree walk
+## rather than a dict lookup so it also catches an occluder that was parented
+## into the scene without being recorded.
+static func _count_occluders(w: Node) -> int:
+	var n := 0
+	for c in w.get_children():
+		if c is OccluderInstance3D:
+			n += 1
+	return n

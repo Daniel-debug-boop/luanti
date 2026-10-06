@@ -28,6 +28,7 @@ func _init() -> void:
 	_test_cache_survives_churn()
 	_test_force_load_consumes_the_cache()
 	_test_mesh_deferral_accounting()
+	_test_ensure_region_produces_geometry()
 	_test_cancel_all()
 	print("\nstreaming: %s" % ("PASS" if failures == 0
 		else "%d FAILURES" % failures))
@@ -229,7 +230,12 @@ func _test_force_load_consumes_the_cache() -> void:
 
 func _test_mesh_deferral_accounting() -> void:
 	var w := VoxelWorld.new()
-	w.view_radius = 1
+	# View radius 2, region radius 1: the region's own chunks are meshed by
+	# `ensure_region`, while the neighbour ring it loaded sits at distance
+	# 1..sqrt(6) -- inside the view, dirty, and still missing THEIR outer
+	# neighbours. That is the real deferral case: work is wanted, nothing is
+	# ready.
+	w.view_radius = 2
 	w.generator = WorldGenerator.new(1337)
 	w.materials = MaterialLibrary.new()
 	root.add_child(w)
@@ -240,14 +246,79 @@ func _test_mesh_deferral_accounting() -> void:
 	s.step(w._generate_job, w._mesh_job, w._has_mesh_work)
 	check(int(s.stats["deferred"]) == before,
 		"an idle frame is not counted as a deferral")
-	# Now load a sphere. Every chunk is dirty but none has all 26
-	# neighbours, so meshing really is blocked on generation.
+	# Now load a small region. Its neighbour ring is resident but not fully
+	# surrounded, so meshing really is blocked on generation.
 	w.ensure_region(Vector3i.ZERO, 1)
 	check(w.get_stats()["dirty"] > 0, "loading marks chunks dirty")
 	var mid := int(s.stats["deferred"])
 	s.step(w._generate_job, w._mesh_job, w._has_mesh_work)
 	check(int(s.stats["deferred"]) > mid,
 		"a dirty chunk with missing neighbours is deferred")
+	w.queue_free()
+
+
+## The contract of `ensure_region` itself: "loaded AND meshed".
+##
+## Before, it loaded blocks and flushed a queue nothing had submitted, so it
+## returned with chunks resident, every one of them dirty, and no geometry at
+## all -- which reads as success to the caller and as a hole in the world to
+## the player. This queries the region the instant the call returns.
+func _test_ensure_region_produces_geometry() -> void:
+	var w := VoxelWorld.new()
+	w.view_radius = 2
+	w.generator = WorldGenerator.new(1337)
+	w.materials = MaterialLibrary.new()
+	root.add_child(w)
+	w.ensure_region(Vector3i.ZERO, 2)
+
+	var checked := 0
+	var missing := []
+	var centre := Vector3i.ZERO
+	var r2 := 2 * 2 + 2
+	for dx in range(-2, 3):
+		for dy in range(-2, 3):
+			for dz in range(-2, 3):
+				if dx * dx + dy * dy + dz * dz > r2:
+					continue
+				var p := centre + Vector3i(dx, dy, dz)
+				var key := w._key(p)
+				if not w._blocks.has(key):
+					continue
+				# Only chunks with all 26 neighbours can be meshed at all.
+				if not w._can_mesh(p):
+					continue
+				checked += 1
+				var mi: MeshInstance3D = w._meshes.get(key, null)
+				# The geometry the world installed must be exactly what the mesher
+				# produces from the same neighbour data now. An EMPTY result is
+				# legitimate -- a chunk fully enclosed by solid rock has no
+				# visible surface -- so emptiness alone is not a failure; a mesh
+				# that does not match the sweep, or a chunk left dirty or in
+				# flight, is.
+				var direct := GreedyMesher.build(w._blocks[key],
+					w._gather_neighbours(p, key)["neighbours"])
+				var want := 0
+				if direct[0] != null:
+					want = direct[0].get_surface_count()
+				var got := 0
+				if mi != null and mi.mesh != null:
+					got = mi.mesh.get_surface_count()
+				if got != want or w._dirty.has(key) or w._pending_mesh.has(key):
+					missing.append("%s (installed %d, mesher %d)" % [str(p), got, want])
+	check(checked > 0, "the region produced no meshable chunks to verify")
+	check(missing.is_empty(),
+		("ensure_region left %d of %d chunk(s) without the geometry it "
+		+ "should have: %s")
+		% [missing.size(), checked, ", ".join(PackedStringArray(missing))])
+
+	# And the region really produced terrain, so the check above is not
+	# vacuous: an all-null region would pass it chunk by chunk.
+	var with_geometry := 0
+	for key in w._meshes.keys():
+		var mi: MeshInstance3D = w._meshes[key]
+		if mi != null and mi.mesh != null and mi.mesh.get_surface_count() > 0:
+			with_geometry += 1
+	check(with_geometry > 0, "the region produced no geometry at all")
 	w.queue_free()
 
 
