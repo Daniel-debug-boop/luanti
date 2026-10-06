@@ -117,8 +117,14 @@ func _swap_panorama(d: float) -> void:
 	elif d >= 0.12:
 		# Low sun: the sunset panoramas read better than a full-day sky.
 		pool = DUSK_SKIES
-	# Two slots per panorama so the index changes slowly through the day.
-	var idx := int(fmod(time_of_day * float(pool.size()) * 2.0, 2.0))
+	if pool.is_empty():
+		return
+	# Two slots per panorama so the index changes slowly through the day, and
+	# wrapped over the POOL: the old `fmod(..., 2.0)` folded the index into
+	# {0, 1}, so every phase ever only showed the first two panoramas of its
+	# set no matter how far the day had advanced.
+	var idx := int(fmod(time_of_day * float(pool.size()) * 2.0,
+		float(pool.size())))
 	var wanted := "%s/%s.hdr" % [HDRI_DIR, pool[idx]]
 	if wanted == _current_sky:
 		return

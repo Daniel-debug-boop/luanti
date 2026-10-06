@@ -111,6 +111,11 @@ static func world_digest(graph: EmergentGraph) -> String:
 	return "\n".join(parts)
 
 
-static func report() -> String:
+## A one-line summary for the debug overlay. The entity count is a property
+## of the live graph, so it is read from the system this describes: the old
+## signature took no argument and hardcoded 0, which reported an empty world
+## no matter how much the player had built.
+static func report(emergent: Object) -> String:
+	var graph: EmergentGraph = emergent.graph
 	return ("emergent save: %d entities, %d rules, v%d") % [
-		0, EmergentRules.count(), VERSION]
+		graph.all_entities().size(), EmergentRules.count(), VERSION]

@@ -461,8 +461,13 @@ static func _daylight(light: PackedByteArray, p: Vector3) -> float:
 	var x := clampi(floori(p.x), 0, BS - 1)
 	var y := clampi(floori(p.y), 0, BS - 1)
 	var z := clampi(floori(p.z), 0, BS - 1)
-	return float(light[MapNode.index(x, y, z)] & 0x3F) / 4.0 \
-		/ float(MapNode.LIGHT_SUN)
+	# The day light is the low nibble -- the nibble every other reader in the
+	# codebase takes (`VoxelBlock.get_day_light`, the AO term in the greedy
+	# mesher). Masking 0x3F and dividing by 4 pulled in two bits of the other
+	# nibble and left the top two out, so the result could exceed 1.0 and the
+	# surface was shaded by a number that was not a light level at all.
+	return clampf(float(light[MapNode.index(x, y, z)] & 0x0F)
+		/ float(MapNode.LIGHT_SUN), 0.0, 1.0)
 
 
 ## UVs in block units, projected on the plane the quad faces.
