@@ -174,35 +174,55 @@ static func _lattice(block: VoxelBlock, neighbours: Dictionary) -> PackedInt32Ar
 			var s := src + y * BS
 			for x in BS:
 				ids[row + x] = content[s + x]
-	# Skirt: six 16x16 faces, each a direct read from one neighbour.
+	# Skirt: every neighbour, not just the six faces.
 	#
-	# These were 1736 individual `_sample` calls, each of which re-derived
-	# which block a coordinate belongs to and re-did a dictionary lookup --
-	# to fetch 1736 values that actually live in six flat planes. Copying the
-	# planes took the lattice from 3.3 ms to well under 1.
-	for axis in 3:
-		for dir in 2:
-			var bo := Vector3i.ZERO
-			bo[axis] = 1 if dir == 0 else -1
-			var nb := _trusted(neighbours, bo)
-			if nb == null:
-				# Absent or unfinished neighbour: leave the skirt as air,
-				# which draws the faces rather than hiding a hole.
-				continue
-			var u := (axis + 1) % 3
-			var v := (axis + 2) % 3
-			var pu := _pad_stride(u)
-			var pv := _pad_stride(v)
-			# The skirt plane sits at local -1 (dir 1) or BS (dir 0), which
-			# is the far edge of the neighbour: BS-1 or 0 in its own block.
-			var dst_plane := (0 if dir == 1 else BS + 1) * _pad_stride(axis)
-			var src_plane := (BS - 1 if dir == 1 else 0) * _block_stride(axis)
-			var src_content := nb.content
-			for j in BS:
-				var dst := dst_plane + (j + 1) * pv
-				var src := src_plane + j * _block_stride(v)
-				for i in BS:
-					ids[dst + (i + 1) * pu] = src_content[src + i * _block_stride(u)]
+	# The padded lattice has one cell of margin on each side, and those cells
+	# are not all owned by the face neighbours. A cell on the border of a face
+	# -- an edge or a corner of the block -- belongs to the DIAGONAL neighbour,
+	# and the AO term samples it whenever it looks diagonally across a face.
+	# Copying only the six planes left every edge and corner cell reading air,
+	# so the whole rim of every block was shaded as if it were open to the sky.
+	#
+	# The work is the same either way: the 26 neighbours between them contribute
+	# exactly the 1736 padded cells the six planes were reaching for (6x16x16
+	# faces, 12x16 edges, 8 corners). A neighbour that is absent or not yet
+	# filled in leaves its cells as air, which draws the faces rather than
+	# hiding a hole.
+	for ox in [-1, 0, 1]:
+		for oy in [-1, 0, 1]:
+			for oz in [-1, 0, 1]:
+				if ox == 0 and oy == 0 and oz == 0:
+					continue
+				var nb := _trusted(neighbours, Vector3i(ox, oy, oz))
+				if nb == null:
+					continue
+				# Per axis: the padded cells this neighbour contributes, paired
+				# with the cell each one comes from in the neighbour's block. An
+				# axis both blocks share (0) contributes the 16 cells indexed the
+				# same way; an axis the neighbour is offset along contributes the
+				# single layer that touches this block.
+				var pairs := []
+				for axis in 3:
+					var row := []
+					var off: int = [ox, oy, oz][axis]
+					if off == 0:
+						for c in BS:
+							row.append([c + 1, c])
+					elif off < 0:
+						row.append([0, BS - 1])
+					else:
+						row.append([BS + 1, 0])
+					pairs.append(row)
+				var ps := [_pad_stride(0), _pad_stride(1), _pad_stride(2)]
+				var bs := [_block_stride(0), _block_stride(1), _block_stride(2)]
+				var src_content := nb.content
+				for xp in pairs[0]:
+					for yp in pairs[1]:
+						for zp in pairs[2]:
+							ids[int(xp[0]) * ps[0] + int(yp[0]) * ps[1]
+									+ int(zp[0]) * ps[2]] = src_content[
+									int(xp[1]) * bs[0] + int(yp[1]) * bs[1]
+									+ int(zp[1]) * bs[2]]
 	return ids
 
 

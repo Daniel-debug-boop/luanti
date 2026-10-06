@@ -18,6 +18,7 @@ func _init() -> void:
 	_test_ao_colour_stays_with_its_corner()
 	_test_geometry_invariants()
 	_test_a_chunk_mesh_stays_under_its_budget()
+	_test_lattice_rim_uses_its_real_neighbour()
 	# --- Isolated block: exactly 12 triangles (6 faces x 2) ---
 	var solo := VoxelBlock.new()
 	solo.is_loaded = true
@@ -193,6 +194,55 @@ func _ao_darkens() -> bool:
 	print("AO: open top face darkest %.3f, tucked top face darkest %.3f"
 		% [open_min, tucked_min])
 	return tucked_min < open_min - 0.05
+
+
+## The padded lattice has a cell of margin on every side, and the cells on the
+## border of a face are owned by the DIAGONAL neighbour -- they are what the AO
+## term samples when it looks diagonally across a face. Copying only the six
+## face planes left them as air, so the rim of every block was shaded as if it
+## were open to the sky.
+func _test_lattice_rim_uses_its_real_neighbour() -> void:
+	var bs := GreedyMesher.BS
+	var block := VoxelBlock.new()
+	block.is_loaded = true
+	block.is_generated = true
+	var opaque := VoxelBlock.new()
+	opaque.is_loaded = true
+	opaque.is_generated = true
+	# `fill` fills the LIGHT array; content is set cell by cell.
+	for i in opaque.content.size():
+		opaque.content[i] = ContentDB.STONE
+	var px := GreedyMesher._pad_stride(0)
+	var py := GreedyMesher._pad_stride(1)
+	var pz := GreedyMesher._pad_stride(2)
+	var edge_cell: int = (bs + 1) * px + (bs + 1) * py + 1 * pz
+	var corner_cell: int = (bs + 1) * px + (bs + 1) * py + (bs + 1) * pz
+
+	# An EDGE neighbour (offset in two axes) owns the cells one step past the
+	# block in both of them, for every z.
+	var lattice := GreedyMesher._lattice(block, {Vector3i(1, 1, 0): opaque})
+	var got := 0
+	for z in bs:
+		if lattice[(bs + 1) * px + (bs + 1) * py + (z + 1) * pz] \
+				== ContentDB.STONE:
+			got += 1
+	check(got == bs,
+		"edge cells must come from the edge neighbour, got %d of %d" % [got, bs])
+
+	# The three-axis diagonal owns the corner.
+	var corner := GreedyMesher._lattice(block, {Vector3i(1, 1, 1): opaque})
+	check(corner[corner_cell] == ContentDB.STONE,
+		"the corner cell must come from the corner neighbour")
+
+	# With nothing there -- absent, or present but not filled in yet -- the
+	# cells stay air, which draws faces rather than hiding a hole.
+	check(GreedyMesher._lattice(block, {})[edge_cell] == ContentDB.AIR,
+		"an absent neighbour must leave its cells as air")
+	var unfinished := VoxelBlock.new()
+	for i in unfinished.content.size():
+		unfinished.content[i] = ContentDB.STONE
+	check(GreedyMesher._lattice(block, {Vector3i(1, 1, 0): unfinished})[edge_cell]
+		== ContentDB.AIR, "an unfinished neighbour must not be trusted")
 
 
 ## Vertex colours of the upward-facing quads in a mesh, across all surfaces.
