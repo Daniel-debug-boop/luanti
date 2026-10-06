@@ -443,9 +443,13 @@ void TestNOWS::testMassPreservingProjection()
 
 	long total = 0;
 	for (size_t i = 0; i < n; i++) {
-		if (applicable[i])
+		if (applicable[i]) {
 			total += predicted[i];
-		UASSERT(predicted[i] >= 0 && predicted[i] <= max_level);
+			// Levels are only defined on applicable cells; the projection
+			// leaves inapplicable cells at their sentinel untouched (the
+			// predicted[7] == -1 check below proves it).
+			UASSERT(predicted[i] >= 0 && predicted[i] <= max_level);
+		}
 	}
 	UASSERTEQ(long, total, 16);
 
@@ -834,8 +838,36 @@ struct LiquidHarness
 
 	~LiquidHarness()
 	{
-		if (env)
+		shutdown();
+	}
+
+	/*
+	 * Tear the engine objects down in the order the engine itself uses, while
+	 * the process is still in a normal state.
+	 *
+	 * The harness is a function-local static so the world is built once for
+	 * both integration tests, which means its EmergeManager threads, server
+	 * scripting state and world database would otherwise be destroyed during
+	 * static destruction at exit -- after other translation units' globals and
+	 * in an order the standard leaves unspecified. That teardown corrupts the
+	 * heap ("corrupted double-linked list", exit code 134). Stopping emerge
+	 * first, then the environment that owns the map, then the server, is both
+	 * the engine's own order and the fix: nothing heavyweight is left to race
+	 * the rest of the process's shutdown.
+	 */
+	void shutdown()
+	{
+		if (emerge)
+			emerge->stopThreads();
+		if (env) {
 			env->deactivateBlocksAndObjects();
+			env.reset();
+		}
+		emerge.reset();
+		server.reset();
+		mb.reset();
+		map = nullptr;
+		ready = false;
 	}
 
 	std::map<v3s16, MapNode> snapshot() const
@@ -1174,5 +1206,9 @@ void TestNOWS::testABTable(IGameDef *gamedef)
 	Settings off;
 	mgr.initialize(&off);
 	mgr.resetStats();
+
+	// Last user of the shared harness: take the world down here rather than
+	// leaving it to static destruction at exit.
+	h.shutdown();
 }
 

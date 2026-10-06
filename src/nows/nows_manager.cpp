@@ -147,8 +147,21 @@ void Manager::initialize(const Settings *settings, MetricsBackend *metrics)
 	// Telemetry goes through the engine's own metrics backend, so NOWS shows
 	// up in the same Prometheus output as everything else and costs no
 	// logging on the hot path.
-	if (metrics && metrics != m_metrics) {
+	if (metrics != m_metrics) {
+		// The handles below are shared_ptr, but increment() on them writes
+		// through the backend's registry -- so a counter that outlives the
+		// backend that created it is a use-after-free, and the allocator
+		// reports it as heap corruption at exit. Re-pointing at a different
+		// backend (or at none at all, which is what a plain reload does)
+		// therefore drops the old backend's handles instead of keeping the
+		// newest ones forever.
 		m_metrics = metrics;
+		m_counter_applied.reset();
+		m_counter_fallbacks.reset();
+		m_counter_inference_us.reset();
+		m_counter_solver_us.reset();
+	}
+	if (metrics && !m_counter_applied) {
 		m_counter_applied = metrics->addCounter("nows_warm_starts_total",
 				"Warm-started liquid solves");
 		m_counter_fallbacks = metrics->addCounter("nows_fallbacks_total",
@@ -253,6 +266,13 @@ bool Manager::predictWarmStart(Map *map, IGameDef *gamedef,
 	if (!m_model) {
 		status = !m_config.model_path.empty() ? Status::ModelInvalid : Status::NoModel;
 		m_stats.nows_skipped++;
+		// The solver is about to run with no warm start at all: that IS the
+		// fallback, whether the model was never configured or failed to
+		// load, so it is counted here and not only on the slow paths below
+		// that already return through the shared fallback accounting.
+		m_stats.fallbacks++;
+		if (m_counter_fallbacks)
+			m_counter_fallbacks->increment();
 		return false;
 	}
 
