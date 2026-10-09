@@ -1010,3 +1010,5 @@ gmake: *** [Makefile:151: godot-cpp.template_release] Terminated
 [ 91%] Building CXX object CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/zip_reader.cpp.o
 [ 91%] Building CXX object CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/utility_functions.cpp.o
 [ 94%] Linking CXX static library bin/libgodot-cpp.linux.template_release.x86_64.a
+[100%] Built target godot-cpp.template_release
+RC=0
