@@ -85,3 +85,28 @@ def payload_offset(cwidth: int) -> int:
 def expected_size(cwidth: int) -> int:
     """Total file size for a given content width."""
     return HEADER_SIZE + cwidth * BLOCK_VOLUME + 2 * BLOCK_VOLUME
+
+
+def authoritative_manifest(pipeline: str = "arnis",
+                          pipeline_version: str = "unpinned",
+                          world_format: str = "luanti-v29") -> dict:
+    """The provenance fields a converted-world manifest must carry to be
+    treated as authoritative by the Godot client.
+
+    The writer records these when it is converting a world whose upstream
+    generator has been pinned as the authoritative source -- here, Arnis.
+    The defaults match the current intake contract; when Arnis is pinned,
+    callers should pass the concrete version instead of leaving this on the
+    generic "unpinned" marker.
+    """
+    if pipeline_version == "":
+        raise ValueError("authoritative manifest needs a non-empty "
+                         "source_pipeline_version")
+    if world_format == "":
+        raise ValueError("authoritative manifest needs a non-empty "
+                         "world_format")
+    return {
+        "source_pipeline": pipeline,
+        "source_pipeline_version": pipeline_version,
+        "world_format": world_format,
+    }

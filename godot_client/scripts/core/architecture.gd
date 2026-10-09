@@ -84,6 +84,33 @@ const MODULES := {
 	"VoxelPick":          {"layer": "world",       "visibility": PUBLIC},
 	"StreamScheduler":    {"layer": "world",       "visibility": INTERNAL},
 	"DayNight":           {"layer": "world",       "visibility": PUBLIC},
+	# Terrain3D integration. All three are world-layer: they read the
+	# authoritative Arnis data that `ChunkFiles` already reads and hand
+	# geometry to the mesh renderer, which is exactly what the rest of this
+	# layer does. None of them is PUBLIC except the layer itself, because
+	# `main.gd` (app) is the only thing outside the world layer that names
+	# one -- and it names `TerrainLayer` and nothing under it.
+	#
+	# Stating the direction here is the point: `ArnisTerrainSource` reads
+	# the converted world and never writes it, `TerrainLayer` never
+	# generates terrain, and these are rendering types, not a second world
+	# backend. A future module that reaches from a gameplay layer straight
+	# into the adapter would trip this table, which is what it is for.
+	"TerrainLayer":          {"layer": "world",    "visibility": PUBLIC},
+	"ArnisTerrainSource":    {"layer": "world",    "visibility": INTERNAL},
+	"Terrain3DMaterialSet":  {"layer": "world",    "visibility": INTERNAL},
+
+	# WorldStream is the scripted face of the native worldstream module
+	# (`ws_build/`, `worldstream/`): H3 cells in, vector-tile features out,
+	# meshlet geometry out of those. World-layer by the same argument as the
+	# Terrain3D adapter -- it produces geometry for this layer to draw and
+	# never owns a voxel -- and INTERNAL for the same reason: nothing above
+	# the world layer names it, so nothing is allowed to start.
+	#
+	# It is emphatically not a world backend. It does not register with
+	# `WorldBackend`, does not generate voxels and holds no region data; the
+	# "exactly one world" rule this table exists to protect is unaffected.
+	"WorldStream":           {"layer": "world",    "visibility": INTERNAL},
 
 	# --- mob ---
 	"Mob":                {"layer": "gameplay",         "visibility": PUBLIC},

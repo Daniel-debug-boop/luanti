@@ -1,0 +1,24 @@
+; WorldStream native module registration.
+;
+; The library is built by `sh ws_build/build.sh` (see docs/WORLDSTREAM.md).
+; When it has not been built yet, Godot prints a load error and the project
+; runs normally: scripts/world/world_stream.gd detects the absence through
+; ClassDB and reports itself unavailable instead of failing at call time.
+;
+; debug and release point at the same file on purpose. The module is compiled
+; once, from the same source with the same godot-cpp profile, and a release
+; library is loadable by a debug editor; building a second copy purely to
+; satisfy the filename convention would double build time to buy nothing.
+; The debug slot exists so a project that does build both can drop the debug
+; artifact in place without editing this file.
+
+[configuration]
+
+entry_symbol = "worldstream_library_init"
+compatibility_minimum = "4.4"
+reloadable = false
+
+[libraries]
+
+linux.debug.x86_64 = "res://ws_build/bin/libworldstream.linux.template_release.x86_64.so"
+linux.release.x86_64 = "res://ws_build/bin/libworldstream.linux.template_release.x86_64.so"

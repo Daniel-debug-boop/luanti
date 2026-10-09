@@ -6,3 +6,13 @@
 # Converted worlds produced by tools/convert_world.py. Anchored to the project
 # root so it does not also swallow scripts/world/, which is source.
 /world/
+
+# WorldStream build outputs (sh ws_build/build.sh). The generated godot-cpp
+# bindings under ws_build/gen and the build logs are tracked -- they are the
+# record of which godot-cpp revision and profile the module was built from --
+# but the machine-specific build trees and the shared library are not: both
+# are reproducible, and Godot treats a missing library as "the module is not
+# built", which scripts/world/world_stream.gd reports instead of crashing.
+/ws_build/worldstream/
+/ws_build/bin/
+/ws_build/godot-cpp/

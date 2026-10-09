@@ -68,14 +68,20 @@ const MAX_QUEUED := 48
 ##
 ## Returns false when the pool is saturated. The caller should treat that as
 ## "keep it dirty and try again next frame", not as a failure.
+## `hidden_tops` is the block-local "another renderer draws this upward face"
+## mask (see `GreedyMesher.geometry`). It travels with the job so the worker
+## computes exactly the geometry the main thread would have; a packed array is
+## copy-on-write, so passing it costs a reference, not a copy.
 func submit(key: String, pos: Vector3i, block: VoxelBlock,
-		neighbours: Dictionary, d2: int, gen: int) -> bool:
+		neighbours: Dictionary, d2: int, gen: int,
+		hidden_tops := PackedByteArray()) -> bool:
 	if outstanding() >= MAX_QUEUED:
 		return false
 	var job := {
 		"key": key, "pos": pos, "d2": d2, "gen": gen, "done": false,
 		"block": _copy_block(block),
 		"neighbours": _copy_neighbours(neighbours),
+		"hidden_tops": hidden_tops,
 	}
 	_mutex.lock()
 	_pending.append(job)
@@ -201,7 +207,8 @@ func _prune() -> void:
 ## buffers back. Never touches the scene tree or the rendering server.
 func _work(job: Dictionary) -> void:
 	var t0 := Time.get_ticks_usec()
-	var faces := GreedyMesher.geometry(job["block"], job["neighbours"])
+	var faces := GreedyMesher.geometry(job["block"], job["neighbours"],
+		job["hidden_tops"])
 	var ms := float(Time.get_ticks_usec() - t0) / 1000.0
 	_mutex.lock()
 	_results.append({

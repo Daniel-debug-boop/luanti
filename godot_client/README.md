@@ -160,6 +160,43 @@ The project **still runs on stock Godot 4.4**. `ZylannWorld` checks
 `ClassDB.class_exists("VoxelTerrain")` and degrades to an inert node, so both
 engines pass the full test suite.
 
+## WorldStream (native geospatial streaming)
+
+A second native module, and a different job from the voxel world: a
+latitude/longitude in, H3 cells out; Mapbox vector-tile bytes in, buildings,
+roads and landuse out; that geometry out again as meshlets. Built with
+[`sh ws_build/build.sh`](docs/WORLDSTREAM.md), loaded through
+`addons/worldstream/worldstream.gdextension`, used through
+`scripts/world/world_stream.gd`.
+
+It is built on h3, vtzero/protozero, meshoptimizer and earcut (all pinned
+submodules), and it is compiled for **stock Godot 4.4** — nothing here needs a
+custom engine. The godot-cpp bindings are trimmed by
+`worldstream/ws_build_profile.json` from 1 964 generated files to 82, because
+the extension uses variant types and its own classes and no engine class at
+all; `--full-godotcpp` builds the untrimmed set when that changes.
+
+Three properties are the point:
+
+* **It is not a second world.** It never registers with `WorldBackend`, never
+generates a voxel and holds no region data, so the "exactly one world" rules
+in `systems_test` and `zylann_test` are untouched; `architecture_test`
+declares the class as a world-layer *internal*, next to the Terrain3D adapter
+it resembles.
+* **It is optional in every state.** `WorldStream` checks that the class
+exists *and* that `module_version()` matches before it reports `available`;
+otherwise every method degrades to an empty result. Built, not built, and
+built-but-stale all leave the game running — and both the Godot suite and
+`run_tests.sh` report the absence explicitly rather than passing silently.
+* **The build is resumable and offline.** Pinned submodules, no downloads, and
+every stage skips itself when its artifact already exists, because godot-cpp
+is the long pole and on one core it will be interrupted.
+
+What it does **not** do yet: nothing renders it. The output is verified to
+build a real `ArrayMesh`, and no scene draws one — there is no tile fetcher (a
+caller supplies bytes), every feature gets `material_id = 0`, and `ao` is a
+placeholder gradient. See [docs/WORLDSTREAM.md](docs/WORLDSTREAM.md).
+
 ## Loading a real Luanti world
 
 Godot 4.4 exposes no zstd binding and no SQLite, so map format 29 (zstd) is
@@ -450,6 +487,7 @@ All thirty-two suites run headless and pass on a clean checkout
 | Suite | Covers |
 |---|---|
 | `zylann_test` | Voxel Tools presence, graceful degradation on stock Godot, streaming + GDScript generation + voxel read/write on the custom build |
+| `worldstream_test` | the native geospatial module through Godot: H3 disk sizes and the streaming-resolution band, degree↔radian handling, a hand-encoded vector tile parsed to footprints/roads with metres, y-flip, `height` beating `building:levels` and per-class stats, garbage refused, meshlet limits (64/126) checked inside each meshlet's own window, and `mesh_from_meshlets` producing a real `ArrayMesh`. Plus its own graceful absence: with the library unbuilt the suite reports it and passes on the degradation path. Its native half (`ws_build/worldstream/worldstream_tests`, run by `run_tests.sh` as `worldstream_native`) covers the same chain without Godot |
 | `gameplay_test` | GLoot protoset/stacking/hotbar/serialization, shaped + shapeless recipe matching, craft consumes-and-produces, save/load round-trip including world edits, malformed-payload rejection |
 | `creature_test` | every declared sound resolves to a real CC0 file, playback and distance culling, KayKit models load and are deterministic, the 76+ shipped clips drive every animator state, mobs flee/attack/avoid ledges, villager schedules and trading, **every job actually changes the world** (Farmer tills, Miner cuts stone, Woodcutter fells; a job with no edit stays honestly idle; an asleep villager touches nothing; a villager with no world does not crash), A\* routes around a wall without tunnelling and gives up when sealed, drops spawn/settle/collect |
 | `crafting_ui_test` | 3x3 grid construction, shaped and shapeless matching through the panel, drag payload source/target rules, an unaffordable craft is refused and consumes nothing, villager production requires shift + work site + nearby resource, stock caps, and production draws down on trade |
@@ -483,6 +521,14 @@ All thirty-two suites run headless and pass on a clean checkout
 | `emergent_test` | the emergent gameplay system end to end: capability-driven content, driver probing, and the adapter path from a declared capability to the system that satisfies it |
 
 ## Honest limitations
+
+* **WorldStream geometry is not drawn by anything yet.** The module is wired
+  end to end -- built, loaded, tested through Godot, and able to hand back a
+  real `ArrayMesh` -- but no node streams OSM tiles into the world and no
+  material exists for the ids it emits. Everything it produces is verified;
+  none of it is visible. See `docs/WORLDSTREAM.md` for the full list (no tile
+  fetcher, `material_id` always 0, placeholder AO, meshlet normal cones with
+  no mesh shader to read them).
 
 * **Nineteen suites all passed while the game was still unplayable in three
   separate ways.** `playable_test` was added specifically to answer "can a

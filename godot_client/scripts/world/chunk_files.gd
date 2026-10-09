@@ -32,6 +32,31 @@ const BLOCK_VOLUME := 4096
 ## writer uses; the two agreeing is what `asset_test` checks.
 const HEADER_SIZE := 10
 
+## The authoritative provenance fields. Kept here so tests can assert on them
+## without importing the Python module, but the one source is
+## `tools/chunk_format.py::authoritative_manifest()`.
+const PIPELINE_NAME := "arnis"
+const WORLD_FORMAT := "luanti-v29"
+
+
+## The provenance fields an authoritative converted world carries. The one
+## definition is `tools/chunk_format.py::authoritative_manifest()`; this is its
+## GDScript view, so the reader and the writer can be checked against the same
+## contract instead of against a copy that quietly drifts. A missing required
+## field is a programming error, not a world to accept.
+static func authoritative_manifest(pipeline: String = PIPELINE_NAME,
+		pipeline_version: String = "unpinned",
+		world_format: String = WORLD_FORMAT) -> Dictionary:
+	assert(pipeline_version != "",
+		"authoritative manifest needs a non-empty source_pipeline_version")
+	assert(world_format != "",
+		"authoritative manifest needs a non-empty world_format")
+	return {
+		"source_pipeline": pipeline,
+		"source_pipeline_version": pipeline_version,
+		"world_format": world_format,
+	}
+
 
 ## Directory holding the converted chunks, or "" to search `user://world`.
 static func resolve_dir(explicit: String = "") -> String:
@@ -42,6 +67,17 @@ static func resolve_dir(explicit: String = "") -> String:
 			return cand
 	return "user://world"
 
+## The coordinate palette a converted world was built from, if the manifest
+## recorded it. The client uses this only as documentation and for a runtime
+## provenance check: a world created by an external generator carries its
+## conversion origin here so the player and the dev tools can tell where the
+## overworld came from rather than assuming it lines up with the procedural
+## generator's seed.
+static func bounds(dir: String) -> Dictionary:
+	var m := load_manifest(dir)
+	var b: Variant = m.get("bounds", null)
+	return b if b is Dictionary else {}
+
 
 static func load_manifest(dir: String) -> Dictionary:
 	var path := dir.path_join(MANIFEST)
@@ -51,6 +87,42 @@ static func load_manifest(dir: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(text)
 	return parsed if parsed is Dictionary else {}
 
+## Whether this converted world declares itself authoritative for the overworld.
+##
+## A converted world that arrives with a `source_pipeline` field is the result
+## of an upstream generator (here: Arnis). That world is the source of truth
+## for its overworld -- the client loads what is on disk and falls back to the
+## procedural generator only when a chunk is genuinely absent, never as a way
+## to reinterpret absent data. Worlds that omit the field keep the older
+## behaviour, where the procedural generator can fill gaps.
+static func is_authoritative(dir: String) -> bool:
+	var m := load_manifest(dir)
+	if not m.has("source_pipeline"):
+		return false
+	var pipeline := String(m["source_pipeline"])
+	if pipeline == "":
+		return false
+	if pipeline != PIPELINE_NAME:
+		push_warning("ChunkFiles: %s declares an unrecognised "
+			% dir + "source_pipeline '%s'" % pipeline)
+		return false
+	# An empty version is not a pinned provenance record, so it is refused for
+	# the same reason `authoritative_manifest` refuses to build one: the whole
+	# point of the field is to say which upstream run produced the world.
+	if not m.has("source_pipeline_version") \
+			or String(m["source_pipeline_version"]) == "":
+		push_warning("ChunkFiles: %s is marked authoritative but has no "
+			% dir + "source_pipeline_version")
+		return false
+	if not m.has("world_format"):
+		push_warning("ChunkFiles: %s is marked authoritative but has no "
+			% dir + "world_format")
+		return false
+	if String(m["world_format"]) != WORLD_FORMAT:
+		push_warning("ChunkFiles: %s is marked authoritative but its "
+			% dir + "world_format is '%s'" % String(m["world_format"]))
+		return false
+	return true
 
 # --- the id bridge ----------------------------------------------------------
 #

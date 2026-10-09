@@ -32,6 +32,8 @@ func _init() -> void:
 	_test_reader_refuses_malformed_files()
 	_test_reader_agrees_with_the_python_writer()
 	_test_luanti_ids_are_mapped_to_content_db()
+	_test_authoritative_manifest_field()
+	_test_bounds_are_recorded_and_readable()
 	# tools/run_tests.sh matches a verdict line at column 0.
 	print("chunk_format: %s" % ("PASS" if failures == 0 else "FAIL"))
 	quit(0 if failures == 0 else 1)
@@ -334,7 +336,7 @@ func _test_luanti_ids_are_mapped_to_content_db() -> void:
 		"format": 1,
 		"content_names": {"9": "default:stone", "40": "default:unobtainium",
 			"3": "default:water"},
-	}).to_utf8_buffer()))
+}).to_utf8_buffer()))
 	var block := _load(dir)
 	check(block != null, "the chunk with a name table loads")
 	if block != null:
@@ -378,3 +380,133 @@ func _test_luanti_ids_are_mapped_to_content_db() -> void:
 		"the converter never writes the manifest's content_names field")
 	check(src.contains("content_ids.txt"),
 		"the converter never reads the world's content_ids.txt")
+
+
+## The authoritative-provenance fields are the contract the Arnis intake path
+## relies on. They must exist in the Python definition, be emitted by the writer,
+## and be recognised by the Godot reader without forcing anything about the ids.
+func _test_authoritative_manifest_field() -> void:
+	var py_src := FileAccess.get_file_as_string("res://tools/chunk_format.py")
+	check(py_src.contains("source_pipeline"),
+		"chunk_format.py defines the authoritative manifest fields")
+	check(py_src.contains("authoritative_manifest"),
+		"and exposes them through one function")
+
+	var prov := ChunkFiles.authoritative_manifest()
+	check(prov.has("source_pipeline"),
+		"the authoritative manifest names its pipeline")
+	check(prov["source_pipeline"] == "arnis",
+		"the authoritative pipeline is Arnis")
+	check(prov.has("source_pipeline_version"),
+		"and pins which version of it produced the world")
+	check(prov.has("world_format"),
+		"and records the world format it came from")
+
+	check(ChunkFiles.PIPELINE_NAME == prov["source_pipeline"],
+		"the GDScript constants match the Python definition")
+	check(ChunkFiles.WORLD_FORMAT == prov["world_format"],
+		"and the world_format constant matches too")
+
+	# The function is explicit about what it returns, so a pinned Arnis run
+	# can say which version produced the world without editing the contract.
+	var pinned := ChunkFiles.authoritative_manifest(
+		"arnis", "arnis-2026-02-01", "luanti-v29")
+	check(pinned["source_pipeline_version"] == "arnis-2026-02-01",
+		"a pinned run can state its concrete version")
+	check(ChunkFiles.is_authoritative("user://chunkfmt_auth") == false,
+		"is_authoritative only reads the manifest, not this function call")
+
+	# A world that declares itself authoritative is recognised by the reader.
+	var content := _make_content(4)
+	var light := PackedByteArray()
+	light.resize(4096)
+	light.fill(15)
+	var param2 := PackedByteArray()
+	param2.resize(4096)
+	var dir := "user://chunkfmt_auth"
+	DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(dir))
+	_write(dir, "c_1_2_3.chunk", _make_chunk(1, 0, content, light, param2))
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify(
+		{"format": 1, "content_names": {}, "source_pipeline": "arnis",
+		 "source_pipeline_version": "unpinned",
+		 "world_format": "luanti-v29"}).to_utf8_buffer()))
+	check(ChunkFiles.is_authoritative(dir),
+		"the reader recognises an Arnis-authored manifest")
+	check(ChunkFiles.unmapped_names(dir).is_empty(),
+		"authoritative does not alter the id bridge")
+
+	# A manifest without the field keeps the old behaviour.
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify(
+		{"format": 1, "content_names": {}}).to_utf8_buffer()))
+	check(not ChunkFiles.is_authoritative(dir),
+		"a legacy converted world is not authoritative")
+
+	# An authoritative world whose manifest fails validation is refused, not
+	# accepted by default. That is the corruption check for the provenance path.
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify(
+		{"format": 1, "content_names": {},
+		 "source_pipeline": "arnis",
+		 "world_format": "luanti-v28"}).to_utf8_buffer()))
+	check(not ChunkFiles.is_authoritative(dir),
+		"an authoritative-looking manifest with a wrong world_format is refused")
+
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify(
+		{"format": 1, "content_names": {},
+		 "source_pipeline": "arnis",
+		 "source_pipeline_version": "",
+		 "world_format": "luanti-v29"}).to_utf8_buffer()))
+	check(not ChunkFiles.is_authoritative(dir),
+		"an authoritative-looking manifest with an empty pipeline version is refused")
+
+
+## A converted world from an external generator should record its coordinate
+## bounds so the client and dev tools can reason about where it lives.
+func _test_bounds_are_recorded_and_readable() -> void:
+	var py_src := FileAccess.get_file_as_string("res://tools/convert_world.py")
+	check(py_src.contains("\"bounds\":"),
+		"convert_world.py writes the bounds field")
+
+	var content := _make_content(3)
+	var light := PackedByteArray()
+	light.resize(4096)
+	light.fill(15)
+	var param2 := PackedByteArray()
+	param2.resize(4096)
+	var dir := "user://chunkfmt_bounds"
+	DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(dir))
+	_write(dir, "c_1_2_3.chunk", _make_chunk(1, 0, content, light, param2))
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify({
+		"format": 1,
+		"blocks_total": 1,
+		"blocks_written": 1,
+		"blocks_failed": 0,
+		"serialization_versions": {"29": 1},
+		"origin": [0, 0, 0],
+		"content_names": {},
+		"bounds": {"x": [-3, 3], "y": [-1, 2], "z": [-3, 3]},
+		"source_pipeline": "arnis",
+		"source_pipeline_version": "unpinned",
+		"world_format": "luanti-v29",
+	}).to_utf8_buffer()))
+	var b := ChunkFiles.bounds(dir)
+	check(b.has("x") and b.has("y") and b.has("z"),
+		"the reader exposes the bounds fields")
+	# JSON numbers arrive as floats, so compare numerically rather than by
+	# array identity -- the contract is the values, not the numeric type.
+	check(b["x"].size() == 2 and float(b["x"][0]) == -3.0
+			and float(b["x"][1]) == 3.0,
+		"and the x extent survives the round trip (got %s)" % str(b["x"]))
+	check(float(b["y"][0]) == -1.0 and float(b["y"][1]) == 2.0,
+		"and the y extent survives (got %s)" % str(b["y"]))
+	check(float(b["z"][0]) == -3.0 and float(b["z"][1]) == 3.0,
+		"and the z extent survives (got %s)" % str(b["z"]))
+
+	# A world whose manifest has no bounds still answers with an empty dict,
+	# so callers can ask without guarding.
+	_write(dir, "manifest.json", PackedByteArray(JSON.stringify({
+		"format": 1, "content_names": {},
+	}).to_utf8_buffer()))
+	check(ChunkFiles.bounds(dir) == {},
+		"a manifest with no bounds answers empty rather than null")

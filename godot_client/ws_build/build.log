@@ -1012,3 +1012,106 @@ gmake: *** [Makefile:151: godot-cpp.template_release] Terminated
 [ 94%] Linking CXX static library bin/libgodot-cpp.linux.template_release.x86_64.a
 [100%] Built target godot-cpp.template_release
 RC=0
+[ 45%] Built target meshoptimizer
+[ 90%] Built target h3
+[100%] Built target worldstream_core
+[ 41%] Built target meshoptimizer
+[ 83%] Built target h3
+[ 91%] Built target worldstream_core
+[ 91%] Building CXX object CMakeFiles/worldstream_tests.dir/tools/worldstream_test.cpp.o
+[100%] Linking CXX executable worldstream_tests
+[100%] Built target worldstream_tests
+[ 20%] Built target meshoptimizer
+[ 40%] Built target h3
+[ 44%] Built target worldstream_core
+[ 44%] Generating bindings
+Built-in type config: float_64
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/classes/editor_plugin_registration.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/classes/low_level.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/classes/wrapped.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/core/class_db.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/core/error_macros.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/core/method_bind.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/core/object.cpp.o
+[ 48%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/core/print_string.cpp.o
+[ 52%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/godot.cpp.o
+[ 52%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/aabb.cpp.o
+[ 52%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/basis.cpp.o
+[ 52%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/callable_custom.cpp.o
+[ 52%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/callable_method_pointer.cpp.o
+[ 56%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/char_string.cpp.o
+[ 56%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/color.cpp.o
+[ 56%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/packed_arrays.cpp.o
+[ 56%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/plane.cpp.o
+[ 60%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/projection.cpp.o
+[ 60%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/quaternion.cpp.o
+[ 60%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/rect2.cpp.o
+[ 60%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/rect2i.cpp.o
+[ 60%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/transform2d.cpp.o
+[ 64%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/transform3d.cpp.o
+[ 64%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/variant.cpp.o
+[ 64%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/variant_internal.cpp.o
+[ 64%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector2.cpp.o
+[ 68%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector2i.cpp.o
+[ 68%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector3.cpp.o
+[ 68%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector3i.cpp.o
+[ 68%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector4.cpp.o
+[ 68%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/src/variant/vector4i.cpp.o
+[ 72%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/string.cpp.o
+[ 72%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/string_name.cpp.o
+[ 72%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/node_path.cpp.o
+[ 72%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/rid.cpp.o
+[ 76%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/callable.cpp.o
+[ 76%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/signal.cpp.o
+[ 76%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/dictionary.cpp.o
+[ 76%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/array.cpp.o
+[ 76%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_byte_array.cpp.o
+[ 80%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_int32_array.cpp.o
+[ 80%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_int64_array.cpp.o
+[ 80%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_float32_array.cpp.o
+[ 80%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_float64_array.cpp.o
+[ 84%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_string_array.cpp.o
+[ 84%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_vector2_array.cpp.o
+[ 84%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_vector3_array.cpp.o
+[ 84%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_color_array.cpp.o
+[ 84%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/packed_vector4_array.cpp.o
+[ 88%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/class_db_singleton.cpp.o
+[ 88%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/file_access.cpp.o
+[ 88%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/image.cpp.o
+[ 88%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/mutex.cpp.o
+[ 88%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/os.cpp.o
+[ 92%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/object.cpp.o
+[ 92%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/ref_counted.cpp.o
+[ 92%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/resource.cpp.o
+[ 92%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/semaphore.cpp.o
+[ 96%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/worker_thread_pool.cpp.o
+[ 96%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/classes/xml_parser.cpp.o
+[ 96%] Building CXX object godot-cpp/CMakeFiles/godot-cpp.template_release.dir/gen/src/variant/utility_functions.cpp.o
+[ 96%] Linking CXX static library ../bin/libgodot-cpp.linux.template_release.x86_64.a
+[100%] Built target godot-cpp.template_release
+[100%] Building CXX object CMakeFiles/worldstream.dir/src/gdextension/register_types.cpp.o
+[100%] Building CXX object CMakeFiles/worldstream.dir/src/gdextension/world_stream_native.cpp.o
+In file included from /home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/classes/ref.hpp:38,
+                 from /home/daytona/codebase/godot_client/ws_build/worldstream/godot-cpp/gen/include/godot_cpp/classes/ref_counted.hpp:36,
+                 from /home/daytona/codebase/godot_client/worldstream/src/gdextension/world_stream_native.h:18,
+                 from /home/daytona/codebase/godot_client/worldstream/src/gdextension/world_stream_native.cpp:6:
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp: In instantiation of ‘GDExtensionVariantType godot::call_get_argument_type(int) [with P = {}]’:
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:532:39:   required from ‘GDExtensionVariantType godot::MethodBindTRC<R, P>::gen_argument_type(int) const [with R = long int; P = {}]’
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:530:33:   required from here
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp:489:51: warning: parameter ‘p_arg’ set but not used [-Wunused-but-set-parameter]
+  489 | GDExtensionVariantType call_get_argument_type(int p_arg) {
+      |                                               ~~~~^~~~~
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp: In instantiation of ‘void godot::call_get_argument_type_info(int, godot::PropertyInfo&) [with P = {}]’:
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:541:37:   required from ‘godot::PropertyInfo godot::MethodBindTRC<R, P>::gen_argument_type_info(int) const [with R = long int; P = {}]’
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:538:23:   required from here
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp:509:38: warning: parameter ‘p_arg’ set but not used [-Wunused-but-set-parameter]
+  509 | void call_get_argument_type_info(int p_arg, PropertyInfo &info) {
+      |                                  ~~~~^~~~~
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp: In instantiation of ‘GDExtensionClassMethodArgumentMetadata godot::call_get_argument_metadata(int) [with P = {}]’:
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:554:43:   required from ‘GDExtensionClassMethodArgumentMetadata godot::MethodBindTRC<R, P>::get_argument_metadata(int) const [with R = long int; P = {}]’
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/method_bind.hpp:552:49:   required from here
+/home/daytona/codebase/godot_client/godot-cpp/include/godot_cpp/core/binder_common.hpp:527:71: warning: parameter ‘p_arg’ set but not used [-Wunused-but-set-parameter]
+  527 | GDExtensionClassMethodArgumentMetadata call_get_argument_metadata(int p_arg) {
+      |                                                                   ~~~~^~~~~
+[100%] Linking CXX shared library /home/daytona/codebase/godot_client/ws_build/bin/libworldstream.linux.template_release.x86_64.so
+[100%] Built target worldstream

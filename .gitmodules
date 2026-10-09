@@ -1,0 +1,18 @@
+[submodule "godot_client/godot-cpp"]
+	path = godot_client/godot-cpp
+	url = https://github.com/godotengine/godot-cpp.git
+[submodule "godot_client/worldstream/third_party/h3"]
+	path = godot_client/worldstream/third_party/h3
+	url = https://github.com/uber/h3.git
+[submodule "godot_client/worldstream/third_party/meshoptimizer"]
+	path = godot_client/worldstream/third_party/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
+[submodule "godot_client/worldstream/third_party/protozero"]
+	path = godot_client/worldstream/third_party/protozero
+	url = https://github.com/mapbox/protozero.git
+[submodule "godot_client/worldstream/third_party/spz"]
+	path = godot_client/worldstream/third_party/spz
+	url = https://github.com/nianticlabs/spz.git
+[submodule "godot_client/worldstream/third_party/vtzero"]
+	path = godot_client/worldstream/third_party/vtzero
+	url = https://github.com/mapbox/vtzero.git

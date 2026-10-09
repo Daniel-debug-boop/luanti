@@ -1,5 +1,8 @@
 class_name VoxelWorld
 extends Node3D
+## Loaded by path as well as by name: the terrain adapter must resolve in a
+## headless run, where nothing has regenerated the global class cache.
+const ArnisSource := preload("res://scripts/world/arnis_terrain_source.gd")
 ## Streams chunks around the player from a converted world directory, or
 ## generates them procedurally when no converted world is available.
 ##
@@ -98,6 +101,23 @@ var view_forward := Vector3.FORWARD
 ## The worker pool. Created here rather than per job so the thread handoff is
 ## amortised and so `flush` has something stable to wait on.
 var _mesh_worker := ChunkMeshWorker.new()
+
+## Optional terrain layer (a `TerrainLayer`) that draws the *ground surface*
+## with Terrain3D. Null by default, and that default is not a configuration
+## detail: with no layer this class meshes exactly what it always meshed.
+##
+## The handoff is one-directional and narrow. Terrain3D never generates,
+## never decides where terrain is, and never touches voxel data; the voxels
+## stay authoritative for gameplay, collision, caves and every edit. All the
+## layer gets is permission to draw the *upward faces of ground blocks* in a
+## chunk it has complete authoritative coverage of -- and this class takes
+## that permission back the moment coverage is lost, because the renderer
+## holding all the data must be the one that draws.
+var ground_layer: Object = null
+## Chunk key -> whether its ground is currently handed to `ground_layer`.
+## Kept per resident chunk so a coverage change re-meshes only the chunks
+## whose status actually changed rather than the whole view.
+var _ground_handoff := {}
 
 
 func _ready() -> void:
@@ -406,6 +426,13 @@ func _generate_block(pos: Vector3i) -> VoxelBlock:
 		if converted != null:
 			stream.stats["disk_hits"] = int(stream.stats["disk_hits"]) + 1
 			return converted
+	# An authoritative converted world must not be reinterpreted by the
+	# procedural generator. If the chunk is absent from an authoritative world,
+	# the correct answer is the chunk is genuinely missing, not "generate it
+	# procedurally".
+	if dimension == WorldGenerator.DIM_OVERWORLD \
+			and world_dir != "" and ChunkFiles.is_authoritative(world_dir):
+		return null
 	if dimension == WorldGenerator.DIM_OVERWORLD:
 		return generator.generate_block(pos)
 	return generator.generate_deeps_block(pos)
@@ -417,6 +444,75 @@ func _generate_job(p: Vector3i) -> bool:
 	if _blocks.has(_key(p)):
 		return true
 	return _load_chunk(p)
+
+
+## Hand the ground over to a terrain layer, or take it back with `null`.
+##
+## `set_ground_layer(null)` is a supported, tested state: everything goes back
+## to the voxel mesher, which is what the terrain layer does at a streaming
+## boundary and what a build without the addon always does.
+func set_ground_layer(layer: Object) -> void:
+	if ground_layer == layer:
+		return
+	if ground_layer != null and is_instance_valid(ground_layer) \
+			and ground_layer.has_signal("coverage_changed") \
+			and ground_layer.coverage_changed.is_connected(_on_ground_coverage_changed):
+		ground_layer.coverage_changed.disconnect(_on_ground_coverage_changed)
+	ground_layer = layer
+	if ground_layer != null and is_instance_valid(ground_layer) \
+			and ground_layer.has_signal("coverage_changed"):
+		ground_layer.coverage_changed.connect(_on_ground_coverage_changed)
+	_refresh_ground_handoff(true)
+
+
+## The layer's coverage moved: re-decide every resident chunk and re-mesh the
+## ones that changed hands. A chunk that starts or stops being covered has a
+## different set of faces to draw, and no other event would ever tell this
+## class that.
+func _on_ground_coverage_changed() -> void:
+	_refresh_ground_handoff(false)
+
+
+func _refresh_ground_handoff(force: bool) -> void:
+	for key in _blocks.keys():
+		var pos := _key_pos(String(key))
+		var covered := _ground_covered(pos)
+		var had: bool = bool(_ground_handoff.get(key, false))
+		if covered == had and not force:
+			continue
+		_ground_handoff[key] = covered
+		if covered != had:
+			_mark_dirty(String(key))
+
+
+## Can the terrain layer draw every upward ground face of this chunk? Only
+## when it has complete authoritative coverage of it, so a chunk with even one
+## hole in the layer keeps its own surface and no hole is ever visible.
+func _ground_covered(pos: Vector3i) -> bool:
+	if ground_layer == null or not is_instance_valid(ground_layer):
+		return false
+	if dimension != WorldGenerator.DIM_OVERWORLD:
+		return false
+	return bool(ground_layer.covers_chunk(pos))
+
+
+## The mask `GreedyMesher` takes: one byte per voxel, set when the voxel is
+## terrain whose upward face the terrain layer is drawing.
+func _hidden_tops(pos: Vector3i, key: String) -> PackedByteArray:
+	if not bool(_ground_handoff.get(key, false)):
+		return PackedByteArray()
+	var block: VoxelBlock = _blocks.get(key, null)
+	if block == null:
+		return PackedByteArray()
+	var lut := ArnisSource.ground_lut()
+	var mask := PackedByteArray()
+	mask.resize(MapNode.BLOCK_VOLUME)
+	var content: PackedInt32Array = block.content
+	for i in MapNode.BLOCK_VOLUME:
+		var cid: int = content[i]
+		if cid >= 0 and cid < lut.size():
+			mask[i] = lut[cid]
+	return mask
 
 
 ## Next mesh generation id. One global counter, so an id handed out before a
@@ -479,15 +575,16 @@ func _submit_mesh(key: String) -> bool:
 	# The generation is reserved before the data is copied, so the worker
 	# result carries the identity of the exact state it was computed from.
 	var gen := _bump_generation(key)
+	var hidden := _hidden_tops(pos, key)
 	if not async_meshing:
 		var meshes := GreedyMesher.to_meshes(
-			GreedyMesher.geometry(data["block"], data["neighbours"]))
+			GreedyMesher.geometry(data["block"], data["neighbours"], hidden))
 		_mesh_chunk(pos, key, meshes[0], meshes[1])
 		_dirty.erase(key)
 		_pending_mesh.erase(key)
 		return true
 	if not _mesh_worker.submit(key, pos, data["block"], data["neighbours"], d2,
-			gen):
+			gen, hidden):
 		# Saturated: leave it dirty so the next frame tries again. This is
 		# back-pressure, not a cancellation, so it must not read as failure.
 		# The generation was reserved but never published to the worker, so
@@ -631,6 +728,10 @@ func _load_chunk(pos: Vector3i) -> bool:
 		return false
 	_apply_edits(block, pos)
 	_blocks[key] = block
+	# A chunk that arrives inside the terrain layer's coverage starts out
+	# handed over, so walking back into an area does not briefly draw the
+	# ground twice.
+	_ground_handoff[key] = _ground_covered(pos)
 	_mark_neighbours_dirty(pos)
 	chunk_loaded.emit(pos)
 	return true
@@ -666,6 +767,7 @@ func _unload_chunk(pos: Vector3i, key: String) -> void:
 	# The terrain goes to the cache, not into the void: walking back three
 	# chunks should not regenerate the world.
 	stream.cache_put(key, _blocks.get(key))
+	_ground_handoff.erase(key)
 	_blocks.erase(key)
 	_dirty.erase(key)
 	# Forget any in-flight job for it, and drop its generation id. The result
@@ -742,6 +844,11 @@ func set_block(world_pos: Vector3i, id: int) -> bool:
 			var nkey := _key(bpos + off)
 			if _blocks.has(nkey):
 				_mark_dirty(nkey)
+	# The terrain surface is derived from these voxels, so an edit is also a
+	# change to the terrain layer's height at that column. The layer coalesces
+	# these into one map update per frame; nothing here rebuilds anything.
+	if ground_layer != null and is_instance_valid(ground_layer):
+		ground_layer.notify_block_changed(world_pos)
 	block_changed.emit(world_pos, id)
 	return true
 

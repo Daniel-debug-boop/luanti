@@ -84,15 +84,28 @@ class FaceBuffer:
 ## packed arrays, safe on a worker thread) and `to_meshes()` (creates
 ## ArrayMeshes, main thread only), so background meshing can run the first and
 ## hand the second to the frame that presents the result.
-static func build(block: VoxelBlock, neighbours: Dictionary) -> Array:
-	return to_meshes(geometry(block, neighbours))
+static func build(block: VoxelBlock, neighbours: Dictionary,
+		hidden_tops := PackedByteArray()) -> Array:
+	return to_meshes(geometry(block, neighbours, hidden_tops))
 
 
 ## The pure-CPU half: sweep the block and return
 ## [opaque_faces: Dictionary, trans_faces: Dictionary], each mapping block id
 ## -> FaceBuffer. Nothing here allocates an engine resource or reads global
 ## mutable state, so it is safe to call from a WorkerThreadPool thread.
-static func geometry(block: VoxelBlock, neighbours: Dictionary) -> Array:
+##
+## `hidden_tops` is an optional block-local mask (`MapNode.index` order, one
+## byte per voxel) marking voxels whose **upward face another renderer is
+## drawing** -- the Terrain3D terrain layer, in this project. Everything else
+## about such a voxel is still meshed: its side faces, and the faces of every
+## voxel around it. That distinction is the whole point of doing it here
+## rather than deleting ground blocks: a voxel world's ground is also its
+## cliffs, its cave ceilings and its overhangs, and hiding the block would
+## punch holes through all of them. An empty mask is the historical
+## behaviour, byte for byte, and is what every caller that does not set one
+## still gets.
+static func geometry(block: VoxelBlock, neighbours: Dictionary,
+		hidden_tops := PackedByteArray()) -> Array:
 	# Fast path: an all-air block meshes to nothing. This keeps streaming
 	# cheap over open sky, where most chunks are empty.
 	var any_solid := false
@@ -111,7 +124,7 @@ static func geometry(block: VoxelBlock, neighbours: Dictionary) -> Array:
 
 	for axis in 3:
 		for dir in 2:
-			_mesh_axis(block, ids, lut, axis, dir, opaque, trans)
+			_mesh_axis(block, ids, lut, axis, dir, opaque, trans, hidden_tops)
 
 	return [opaque, trans]
 
@@ -299,9 +312,15 @@ static func _buffer_for(store: Dictionary, id: int) -> FaceBuffer:
 
 static func _mesh_axis(block: VoxelBlock, ids: PackedInt32Array,
 		lut: Dictionary, axis: int, dir: int,
-		opaque: Dictionary, trans: Dictionary) -> void:
+		opaque: Dictionary, trans: Dictionary,
+		hidden_tops := PackedByteArray()) -> void:
 	var u := (axis + 1) % 3
 	var v := (axis + 2) % 3
+	# Only the +Y pass can hand its faces over: that pass emits the face a
+	# voxel presents to the sky, which is the surface a heightfield
+	# represents. Recomputing the block-local coordinate in that pass is the
+	# price of keeping the mask in the caller's own index space.
+	var hide_up := axis == 1 and dir == 0 and not hidden_tops.is_empty()
 	var du := Vector3i.ZERO
 	du[u] = 1
 	var dv := Vector3i.ZERO
@@ -339,15 +358,21 @@ static func _mesh_axis(block: VoxelBlock, ids: PackedInt32Array,
 	# Face detection: a solid voxel gets a face where the neighbour on the far
 	# side of that face does not occlude it. Same-id translucent neighbours
 	# cull against each other so water surfaces stay clean.
+	var bc := Vector3i.ZERO
 	for d in BS:
 		var plane := pbase + d * pa
+		bc[axis] = d
 		for x in BS:
 			var row := plane + x * pu
+			bc[u] = x
 			for y in BS:
+				bc[v] = y
 				var li := row + y * pv
 				var own: int = ids[li]
 				# `is_solid`: a registered id above air.
 				if own <= 0 or own > max_id or solid[own] == 0:
+					continue
+				if hide_up and hidden_tops[MapNode.index(bc.x, bc.y, bc.z)] != 0:
 					continue
 				var nb: int = ids[li + pstep]
 				# `is_opaque`: solid, and neither translucent nor a cutout.

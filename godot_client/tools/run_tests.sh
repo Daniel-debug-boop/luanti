@@ -41,6 +41,29 @@ if [ ! -d /tmp/testchunks ]; then
 fi
 
 FAIL=0
+
+# The WorldStream native suite is a C++ binary, not a Godot script, so discovery
+# cannot see it -- it lives in worldstream/tools/worldstream_test.cpp and is run
+# by that project's own CTest target. It is run here too, so that "the suite"
+# is still one command. When it has not been built it is SKIPPED with the
+# command that builds it, not silently absent.
+NATIVE_TESTS="$DIR/ws_build/worldstream/worldstream_tests"
+if [ -x "$NATIVE_TESTS" ]; then
+  printf "%-22s " "worldstream_native"
+  NATIVE_OUT=$("$NATIVE_TESTS" 2>&1)
+  NATIVE_RC=$?
+  if [ "$NATIVE_RC" -eq 0 ] &&
+     echo "$NATIVE_OUT" | grep -qE "^worldstream-native: PASS"; then
+    echo "PASS"
+  else
+    echo "FAIL"
+    echo "$NATIVE_OUT" | grep -E "^ *FAIL" | head -5
+    FAIL=1
+  fi
+else
+  printf "%-22s %s\n" "worldstream_native" "SKIP (sh ws_build/build.sh)"
+fi
+
 for t in $SUITES; do
   printf "%-22s " "$t"
   # A suite passes when it prints a verdict line at column 0 (`mesher: PASS`,

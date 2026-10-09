@@ -2,6 +2,11 @@ extends Node3D
 ## Assembles the world, player, mobs, village, sky, interaction and HUD, and
 ## drives streaming.
 
+## Loaded by path: the Terrain3D layer must resolve in a build whose global
+## class cache has not seen it yet, and an editor pass is not part of running
+## the game.
+const TerrainLayerScript := preload("res://scripts/world/terrain_layer.gd")
+
 ## Converted chunk directory. Empty = auto-detect; when absent, terrain is
 ## generated procedurally.
 @export var world_dir := ""
@@ -28,6 +33,11 @@ extends Node3D
 @export_enum("Plain", "Triplanar", "Parallax", "Stochastic", "Slope") var texture_mapping := 2
 
 var world: VoxelWorld
+## The Terrain3D ground layer, present only under `--terrain3d`. See
+## `_setup_terrain_layer`.
+var terrain_layer: Node3D = null
+## Set once the terrain layer has reported what it built this session.
+var _terrain_reported := false
 var player: Player
 var hud: WorldHud
 ## Developer diagnostics, off until F10. Never part of the player's view.
@@ -135,6 +145,7 @@ func _ready() -> void:
 	# point at which the starting tier can reach it.
 	world.materials.apply_quality(render_quality)
 	world.rebind_materials()
+	_setup_terrain_layer()
 	# The world is deterministic already (the generator is seeded with a
 	# constant in VoxelWorld._ready), but the benchmark states the seed it
 	# used and honours a caller-supplied one, so two runs on different
@@ -465,12 +476,55 @@ func _setup_environment() -> void:
 	add_child(_deeps_ambience)
 
 
+## Terrain3D ground rendering, for an authoritative converted world.
+##
+## Opt-in, with `--terrain3d` (or `-- --terrain3d`), and deliberately so:
+## this mode changes who draws the ground surface. The voxel world is still
+## the world -- collision, digging, caves, buildings and roads are all
+## untouched -- but the ground the player walks on is drawn by Terrain3D with
+## its own LOD and materials, fed from the same Arnis chunks, and the voxel
+## mesher stops drawing the upward faces of ground blocks it has handed over.
+## A refusal (no addon, no converted world, no manifest) leaves the game
+## running exactly as it did without the flag.
+func _setup_terrain_layer() -> void:
+	var asked := OS.get_cmdline_args().has("--terrain3d") \
+		or OS.get_cmdline_user_args().has("--terrain3d")
+	if not asked:
+		return
+	var layer: Node3D = TerrainLayerScript.new()
+	layer.name = "TerrainLayer"
+	layer.world_dir = world_dir
+	var refusal: String = layer.configure()
+	if refusal != "":
+		push_warning("[main] --terrain3d refused: %s" % refusal)
+		layer.free()
+		return
+	add_child(layer)
+	layer.attach_world(world)
+	world.set_ground_layer(layer)
+	terrain_layer = layer
+	# One line of runtime evidence that the layer is live and what it is
+	# drawing from, in the same spirit as the material report VoxelWorld
+	# prints. A flag that silently did nothing would otherwise look identical
+	# to a flag that worked.
+	print("[main] terrain3d: ", layer.describe())
+
+
 func _process(delta: float) -> void:
 	if world == null or player == null:
 		return
 	_update_adaptive_quality(delta)
 	profiler.begin("world")
 	world.update_around(_player_chunk())
+	if terrain_layer != null:
+		terrain_layer.update_around(player.global_position)
+		if not _terrain_reported:
+			# Reported after the first streaming tick rather than at setup, so
+			# the line shows what the layer actually built -- a setup-time
+			# report of zero regions is indistinguishable from a layer that
+			# never streams anything.
+			_terrain_reported = true
+			print("[main] terrain3d: ", terrain_layer.describe())
 	# Keep the probe and fog volumes on the player: SDFGI traces through the
 	# volume, so a volume left behind would bake probes for terrain the player
 	# can no longer see.

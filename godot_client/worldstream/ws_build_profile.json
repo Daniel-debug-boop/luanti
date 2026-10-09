@@ -1,0 +1,24 @@
+{
+	"_comment": [
+		"godot-cpp build profile for the worldstream GDExtension.",
+		"The extension registers its own RefCounted classes and passes Variant",
+		"types around (PackedByteArray, PackedInt64Array, PackedFloat32Array,",
+		"Array, Dictionary, String, Vector3). It never calls an engine class",
+		"method, so the generated bindings for the ~900 engine classes are dead",
+		"weight: the default build compiles 1 964 source files, this one compiles",
+		"a few dozen, and both produce an extension with identical behaviour.",
+		"godot-cpp always keeps the classes its own core needs (ClassDB,",
+		"FileAccess, Image, XMLParser, WorkerThreadPool, Semaphore), so listing",
+		"RefCounted brings Object and those with it. The remaining entries are",
+		"the classes godot-cpp's own core sources include directly (print_string",
+		"uses OS, the thread pool types use Mutex and Semaphore); they are not",
+		"optional, because the trim applies to the headers godot-cpp compiles",
+		"against itself. global_constants.hpp is generated unconditionally."
+	],
+	"enabled_classes": [
+		"RefCounted",
+		"OS",
+		"Mutex",
+		"Semaphore"
+	]
+}

@@ -105,6 +105,29 @@ A manifest with **no** `content_names` means the ids are already ContentDB's,
 and they pass through untouched. That is the generated fixture, and it is why
 the two conventions can coexist without either one guessing.
 
+### Provenance
+
+A converted world can declare itself **authoritative** for the overworld.
+
+A converter run with `--authoritative` writes this:
+
+```json
+"source_pipeline": "arnis",
+"source_pipeline_version": "unpinned",
+"world_format": "luanti-v29"
+```
+
+When the manifest carries `source_pipeline`, the client treats that directory
+as the authoritative overworld for this build. Chunks that exist on disk are
+loaded directly; chunks that are absent are reported as absent rather than
+filled in by the procedural generator. That is what keeps the old
+`src/mapgen`-equivalent path from silently re-deriving terrain for a world
+that was produced elsewhere.
+
+A world that omits `source_pipeline` keeps the older behaviour: the procedural
+generator may still fill gaps. That is the generated fixture and any legacy
+converted world that has not been given a provenance marker yet.
+
 ## Versioning
 
 `version` is checked, not ignored. A future format change must either stay

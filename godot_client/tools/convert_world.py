@@ -257,6 +257,10 @@ def main() -> int:
                     metavar=("X", "Y", "Z"))
     ap.add_argument("--stats", action="store_true",
                     help="print per-content-type voxel counts")
+    ap.add_argument("--authoritative", action="store_true",
+                    help="mark the output world as authoritative for the "
+                         "overworld (the client then refuses to fill absent "
+                         "chunks from the procedural generator)")
     args = ap.parse_args()
 
     db = os.path.join(args.world, "map.sqlite")
@@ -301,6 +305,28 @@ def main() -> int:
         write_chunk(os.path.join(args.out, f"c_{x}_{y}_{z}.chunk"), block)
         written += 1
 
+    # The converter can watermark its output as authoritative when the caller
+    # asks for it. That is what the Arnis intake path wants: a converted world
+    # produced from a pinned Arnis run is the source of truth for the overworld,
+    # and the client must not let the procedural generator silently re-derive
+    # terrain for chunks that are simply absent.
+    provenance = (chunk_format.authoritative_manifest()
+                  if args.authoritative else {})
+
+    pos_min_x = pos_max_x = pos_min_y = pos_max_y = pos_min_z = pos_max_z = None
+    for (x, y, z) in positions:
+        if pos_min_x is None:
+            pos_min_x = pos_max_x = x
+            pos_min_y = pos_max_y = y
+            pos_min_z = pos_max_z = z
+        else:
+            pos_min_x = min(pos_min_x, x)
+            pos_max_x = max(pos_max_x, x)
+            pos_min_y = min(pos_min_y, y)
+            pos_max_y = max(pos_max_y, y)
+            pos_min_z = min(pos_min_z, z)
+            pos_max_z = max(pos_max_z, z)
+
     manifest = {
         "format": 1,
         "source": os.path.abspath(args.world),
@@ -314,6 +340,12 @@ def main() -> int:
         # ContentDB's", which is what the generated fixture is.
         "content_names": {str(k): v
                           for k, v in sorted(load_content_names(args.world).items())},
+        "bounds": {
+            "x": [pos_min_x, pos_max_x],
+            "y": [pos_min_y, pos_max_y],
+            "z": [pos_min_z, pos_max_z],
+        } if pos_min_x is not None else None,
+        **provenance,
     }
     with open(os.path.join(args.out, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
@@ -321,6 +353,10 @@ def main() -> int:
     print(f"wrote {written} chunks to {args.out}")
     print(f"  source blocks: {total}, failed: {failed}")
     print(f"  serialization versions: {manifest['serialization_versions']}")
+    if provenance:
+        print("  provenance: this converted world is authoritative for the "
+              "overworld and must not be reinterpreted by the procedural "
+              "generator")
     if args.stats and content_hist:
         top = sorted(content_hist.items(), key=lambda kv: -kv[1])[:12]
         print("  most common content ids:")
